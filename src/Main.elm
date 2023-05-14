@@ -77,7 +77,14 @@ innerView model =
 
 init : Model
 init =
-    { input = "{ a = 13, b = 'c'}.b"
+    { input = """let
+    boom x =
+        if x <= 0 then
+            False
+        else
+            boom (x - 1)
+in
+boom 100000"""
     , output = ""
     }
 
@@ -121,5 +128,5 @@ errorToString err =
         EvalError (Unsupported message) ->
             "Unsupported: " ++ message
 
-        EvalError (NameError message) ->
-            "Name error: " ++ message
+        EvalError (NameError name) ->
+            "Name error: " ++ name ++ " not found"

@@ -15,6 +15,7 @@ import List.Extra
 import Parser exposing (DeadEnd)
 import Result.Extra
 import Result.MyExtra
+import Syntax exposing (fakeNode)
 import Unicode
 import Value exposing (EvalError(..), Value(..))
 
@@ -127,10 +128,82 @@ evalExpression env expression =
         Expression.OperatorApplication opName _ _ _ ->
             Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
 
-        Expression.Application args ->
-            args
-                |> Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg)
-                |> Result.andThen evalApply
+        Expression.Application [] ->
+            Err <| TypeError "Empty application"
+
+        Expression.Application ((Node _ first) :: rest) ->
+            case evalExpression env first of
+                Err e ->
+                    Err e
+
+                Ok (Value.Custom name customArgs) ->
+                    rest
+                        |> Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg)
+                        |> Result.map (\values -> Value.Custom name (customArgs ++ values))
+
+                Ok (Value.PartiallyApplied localEnv oldArgs patterns implementation) ->
+                    let
+                        ( used, leftover ) =
+                            List.Extra.splitAt (patternsLength - oldArgsLength) rest
+
+                        oldArgsLength : Int
+                        oldArgsLength =
+                            List.length oldArgs
+
+                        restLength : Int
+                        restLength =
+                            List.length rest
+
+                        patternsLength : Int
+                        patternsLength =
+                            List.length patterns
+                    in
+                    if oldArgsLength + restLength < patternsLength then
+                        -- Still not enough
+                        rest
+                            |> Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg)
+                            |> Result.map (\values -> Value.PartiallyApplied localEnv (oldArgs ++ values) patterns implementation)
+
+                    else if oldArgsLength + restLength == patternsLength then
+                        -- Just right, we special case this for TCO
+                        case Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg) rest of
+                            Err e ->
+                                Err e
+
+                            Ok values ->
+                                let
+                                    fakeName : QualifiedNameRef
+                                    fakeName =
+                                        { moduleName = [], name = "..." }
+
+                                    maybeNewEnv : Result EvalError (Maybe Env)
+                                    maybeNewEnv =
+                                        match
+                                            (NamedPattern fakeName patterns)
+                                            (Custom fakeName (oldArgs ++ values))
+                                in
+                                case maybeNewEnv of
+                                    Err e ->
+                                        Err e
+
+                                    Ok Nothing ->
+                                        Err (TypeError "Could not match lambda patterns")
+
+                                    Ok (Just newEnv) ->
+                                        evalExpression (Env.with newEnv env) implementation
+
+                    else
+                        -- Too many args, we split
+                        evalExpression env
+                            (Expression.Application
+                                (fakeNode
+                                    (Expression.Application (fakeNode first :: used))
+                                    :: leftover
+                                )
+                            )
+
+                _ ->
+                    Err <| TypeError "Trying to apply a non-lambda non-variant"
 
         Expression.FunctionOrValue moduleName name ->
             if isVariant name then
@@ -166,7 +239,8 @@ evalExpression env expression =
                                 evalFunction env function
 
                             Nothing ->
-                                Err <| NameError <| fullName ++ " not found"
+                                Err <|
+                                    NameError fullName
 
         Expression.IfBlock (Node _ cond) (Node _ true) (Node _ false) ->
             evalExpression env cond
@@ -235,15 +309,19 @@ evalExpression env expression =
                                 implementation : FunctionImplementation
                                 implementation =
                                     Node.value function.declaration
+
+                                functionVal : Value
+                                functionVal =
+                                    PartiallyApplied env
+                                        []
+                                        implementation.arguments
+                                        (Node.value implementation.expression)
                             in
-                            evalFunction env implementation
-                                |> Result.map
-                                    (\functionVal ->
-                                        Env.addValue
-                                            (Node.value implementation.name)
-                                            functionVal
-                                            acc
-                                    )
+                            Env.addValue
+                                (Node.value implementation.name)
+                                functionVal
+                                acc
+                                |> Ok
 
                         Expression.LetDestructuring _ _ ->
                             Err <| Unsupported "LetDestructuring"
@@ -569,72 +647,6 @@ match pattern value =
 
         ( AsPattern _ _, _ ) ->
             Debug.todo "branch '( AsPattern _ _, _ )' not implemented"
-
-
-evalApply : List Value -> Result EvalError Value
-evalApply values =
-    case values of
-        [] ->
-            Err <| TypeError "Empty application"
-
-        first :: rest ->
-            case first of
-                Value.Custom name customArgs ->
-                    Ok (Value.Custom name (customArgs ++ rest))
-
-                Value.PartiallyApplied localEnv oldArgs patterns implementation ->
-                    let
-                        newArgs : List Value
-                        newArgs =
-                            oldArgs ++ rest
-
-                        newArgsLength : Int
-                        newArgsLength =
-                            List.length newArgs
-
-                        patternsLength : Int
-                        patternsLength =
-                            List.length patterns
-                    in
-                    if newArgsLength < patternsLength then
-                        Ok <| Value.PartiallyApplied localEnv newArgs patterns implementation
-
-                    else
-                        let
-                            ( used, leftover ) =
-                                List.Extra.splitAt patternsLength newArgs
-
-                            fakeName : QualifiedNameRef
-                            fakeName =
-                                { moduleName = [], name = "..." }
-
-                            maybeNewEnv : Result EvalError (Maybe Env)
-                            maybeNewEnv =
-                                match
-                                    (NamedPattern fakeName patterns)
-                                    (Custom fakeName used)
-                        in
-                        case maybeNewEnv of
-                            Err e ->
-                                Err e
-
-                            Ok Nothing ->
-                                Err (Debug.todo "WAT")
-
-                            Ok (Just newEnv) ->
-                                if List.isEmpty leftover then
-                                    evalExpression newEnv implementation
-
-                                else
-                                    case evalExpression newEnv implementation of
-                                        Err e ->
-                                            Err e
-
-                                        Ok result ->
-                                            evalApply (result :: leftover)
-
-                _ ->
-                    Err <| TypeError "Trying to apply a non-lambda non-variant"
 
 
 evalNumberOperator :
