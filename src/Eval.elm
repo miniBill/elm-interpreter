@@ -139,12 +139,20 @@ evalExpression env expression =
 
         Expression.FunctionOrValue moduleName name ->
             if isVariant name then
-                let
-                    qualifiedNameRef : QualifiedNameRef
-                    qualifiedNameRef =
-                        { moduleName = moduleName, name = name }
-                in
-                Ok (Value.Custom qualifiedNameRef [])
+                case ( moduleName, name ) of
+                    ( [], "True" ) ->
+                        Ok (Value.Bool True)
+
+                    ( [], "False" ) ->
+                        Ok (Value.Bool False)
+
+                    _ ->
+                        let
+                            qualifiedNameRef : QualifiedNameRef
+                            qualifiedNameRef =
+                                { moduleName = moduleName, name = name }
+                        in
+                        Ok (Value.Custom qualifiedNameRef [])
 
             else
                 let

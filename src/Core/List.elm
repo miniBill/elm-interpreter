@@ -14,7 +14,9 @@ functions =
                 (CaseExpression
                     { expression = fakeNode (FunctionOrValue [] "list")
                     , cases =
-                        []
+                        [ ( fakeNode (ListPattern []), fakeNode (FunctionOrValue [] "True") )
+                        , ( fakeNode AllPattern, fakeNode (FunctionOrValue [] "False") )
+                        ]
                     }
                 )
       }
