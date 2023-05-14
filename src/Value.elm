@@ -6,6 +6,7 @@ import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import Elm.Syntax.Range exposing (Location, Range)
 import Elm.Writer
 import FastDict exposing (Dict)
+import Maybe.Extra
 
 
 type Value
@@ -93,8 +94,13 @@ toExpression value =
         Record _ ->
             Debug.todo "branch 'Record _' not implemented"
 
-        Custom _ _ ->
-            Debug.todo "branch 'Custom _ _' not implemented"
+        Custom name args ->
+            (Just (Expression.FunctionOrValue name.moduleName name.name) :: List.map toExpression args)
+                |> Maybe.Extra.combine
+                |> Maybe.map
+                    (List.map fakeNode
+                        >> Expression.Application
+                    )
 
         Lambda _ ->
             Nothing
