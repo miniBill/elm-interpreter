@@ -4,8 +4,10 @@ import Browser
 import Element exposing (Element, column, fill, padding, spacing, text, width)
 import Element.Border as Border
 import Element.Input as Input
-import Eval
-import Value
+import Elm.Syntax.Expression as Expression
+import Eval exposing (Error(..))
+import Parser
+import Value exposing (EvalError(..))
 
 
 type Msg
@@ -45,7 +47,30 @@ innerView model =
             [ padding 10
             , Border.width 1
             ]
-            { onPress = Just Eval, label = text "Eval" }
+            { onPress = Just Eval
+            , label =
+                if String.startsWith "module " model.input then
+                    let
+                        moduleName : Maybe String
+                        moduleName =
+                            model.input
+                                |> String.split "\n"
+                                |> List.head
+                                |> Maybe.withDefault ""
+                                |> String.split " "
+                                |> List.drop 1
+                                |> List.head
+                    in
+                    case moduleName of
+                        Nothing ->
+                            text "Eval main"
+
+                        Just name ->
+                            text <| "Eval " ++ name ++ ".main"
+
+                else
+                    text "Eval"
+            }
         , text model.output
         ]
 
@@ -66,10 +91,35 @@ update msg model =
         Eval ->
             { model
                 | output =
-                    case Eval.eval model.input of
+                    let
+                        result : Result Error Value.Value
+                        result =
+                            if String.startsWith "module " model.input then
+                                Eval.evalModule model.input (Expression.FunctionOrValue [] "main")
+
+                            else
+                                Eval.eval model.input
+                    in
+                    case result of
                         Err e ->
-                            Debug.toString e
+                            errorToString e
 
                         Ok value ->
                             Value.toString value
             }
+
+
+errorToString : Error -> String
+errorToString err =
+    case err of
+        ParsingError deadEnds ->
+            "Parsing error: " ++ Parser.deadEndsToString deadEnds
+
+        EvalError (TypeError message) ->
+            "Type error: " ++ message
+
+        EvalError (Unsupported message) ->
+            "Unsupported: " ++ message
+
+        EvalError (NameError message) ->
+            "Name error: " ++ message

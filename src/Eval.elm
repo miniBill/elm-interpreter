@@ -1,4 +1,4 @@
-module Eval exposing (Error, eval, evalModule)
+module Eval exposing (Error(..), eval, evalModule)
 
 import Core.Basics
 import Elm.Parser
@@ -596,6 +596,7 @@ functionToValue env function =
 
                                     Ok Nothing ->
                                         let
+                                            message : String
                                             message =
                                                 "Error in pattern matching while calling " ++ Node.value function.name
                                         in
