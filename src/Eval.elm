@@ -274,11 +274,11 @@ evalExpression env expression =
                         _ ->
                             Err <| TypeError "ifThenElse condition was not a boolean"
 
-        Expression.PrefixOperator _ ->
-            Err <| Unsupported "branch 'PrefixOperator _' not implemented"
+        Expression.PrefixOperator opName ->
+            evalOperator opName
 
-        Expression.Operator _ ->
-            Err <| Unsupported "Free operator"
+        Expression.Operator opName ->
+            evalOperator opName
 
         Expression.Integer i ->
             Ok (Value.Int i)
@@ -456,6 +456,19 @@ evalExpression env expression =
 
         Expression.GLSLExpression _ ->
             Err <| Unsupported "GLSL not supported"
+
+
+evalOperator : String -> Result EvalError Value
+evalOperator opName =
+    PartiallyApplied Env.empty
+        []
+        [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
+        (Expression.OperatorApplication opName
+            Infix.Non
+            (fakeNode <| Expression.FunctionOrValue [] "l")
+            (fakeNode <| Expression.FunctionOrValue [] "r")
+        )
+        |> Ok
 
 
 isVariant : String -> Bool
