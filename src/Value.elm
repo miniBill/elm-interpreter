@@ -1,8 +1,9 @@
 module Value exposing (EvalError(..), Value(..), toString)
 
 import Elm.Syntax.Expression as Expression
-import Elm.Syntax.Node exposing (Node)
+import Elm.Syntax.Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
+import Elm.Syntax.Range exposing (Location, Range)
 import Elm.Writer
 import FastDict exposing (Dict)
 
@@ -29,7 +30,19 @@ type EvalError
 
 fakeNode : a -> Node a
 fakeNode value =
-    Debug.todo "fakeNode"
+    Node fakeRange value
+
+
+fakeRange : Range
+fakeRange =
+    { start = fakeLocation, end = fakeLocation }
+
+
+fakeLocation : Location
+fakeLocation =
+    { row = -1
+    , column = -1
+    }
 
 
 toExpression : Value -> Maybe Expression.Expression
@@ -38,26 +51,44 @@ toExpression value =
         String s ->
             Just (Expression.Literal s)
 
-        Int _ ->
-            Debug.todo "branch 'Int _' not implemented"
+        Int i ->
+            Just (Expression.Integer i)
 
-        Float _ ->
-            Debug.todo "branch 'Float _' not implemented"
+        Float f ->
+            Just (Expression.Floatable f)
 
-        Char _ ->
-            Debug.todo "branch 'Char _' not implemented"
+        Char c ->
+            Just (Expression.CharLiteral c)
 
-        Bool _ ->
-            Debug.todo "branch 'Bool _' not implemented"
+        Bool b ->
+            Just (Expression.FunctionOrValue [] (boolToString b))
 
         Unit ->
-            Debug.todo "branch 'Unit' not implemented"
+            Just Expression.UnitExpr
 
-        Tuple _ _ ->
-            Debug.todo "branch 'Tuple _ _' not implemented"
+        Tuple l r ->
+            Maybe.map2
+                (\le re ->
+                    Expression.TupledExpression
+                        [ fakeNode le
+                        , fakeNode re
+                        ]
+                )
+                (toExpression l)
+                (toExpression r)
 
-        Triple _ _ _ ->
-            Debug.todo "branch 'Triple _ _ _' not implemented"
+        Triple l m r ->
+            Maybe.map3
+                (\le me re ->
+                    Expression.TupledExpression
+                        [ fakeNode le
+                        , fakeNode me
+                        , fakeNode re
+                        ]
+                )
+                (toExpression l)
+                (toExpression m)
+                (toExpression r)
 
         Record _ ->
             Debug.todo "branch 'Record _' not implemented"
@@ -66,7 +97,16 @@ toExpression value =
             Debug.todo "branch 'Custom _ _' not implemented"
 
         Lambda _ ->
-            Debug.todo "branch 'Lambda _' not implemented"
+            Nothing
+
+
+boolToString : Bool -> String
+boolToString b =
+    if b then
+        "True"
+
+    else
+        "False"
 
 
 toString : Value -> String
