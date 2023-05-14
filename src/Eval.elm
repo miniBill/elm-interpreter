@@ -361,8 +361,21 @@ evalExpression env expression =
                                 acc
                                 |> Ok
 
-                        Expression.LetDestructuring _ _ ->
-                            Err <| Unsupported "LetDestructuring"
+                        Expression.LetDestructuring (Node _ letPattern) (Node _ letExpression) ->
+                            case evalExpression env letExpression of
+                                Err e ->
+                                    Err e
+
+                                Ok letValue ->
+                                    case match letPattern letValue of
+                                        Err e ->
+                                            Err e
+
+                                        Ok Nothing ->
+                                            Err (TypeError "Could not match pattern inside let")
+
+                                        Ok (Just patternEnv) ->
+                                            Ok (Env.with patternEnv acc)
             in
             case newEnv of
                 Err e ->
