@@ -653,8 +653,34 @@ match pattern value =
         ( FloatPattern _, _ ) ->
             noMatch
 
+        ( TuplePattern [ Node _ lpattern, Node _ rpattern ], Value.Tuple lvalue rvalue ) ->
+            match lpattern lvalue
+                |> andThen
+                    (\lenv ->
+                        match rpattern rvalue
+                            |> andThen
+                                (\renv ->
+                                    ok <| Env.with renv lenv
+                                )
+                    )
+
+        ( TuplePattern [ Node _ lpattern, Node _ mpattern, Node _ rpattern ], Value.Triple lvalue mvalue rvalue ) ->
+            match lpattern lvalue
+                |> andThen
+                    (\lenv ->
+                        match mpattern mvalue
+                            |> andThen
+                                (\menv ->
+                                    match rpattern rvalue
+                                        |> andThen
+                                            (\renv ->
+                                                ok <| Env.with renv <| Env.with menv lenv
+                                            )
+                                )
+                    )
+
         ( TuplePattern _, _ ) ->
-            Debug.todo "branch '( TuplePattern _, _ )' not implemented"
+            noMatch
 
         ( RecordPattern _, _ ) ->
             Debug.todo "branch '( RecordPattern _, _ )' not implemented"

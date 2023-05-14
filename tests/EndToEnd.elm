@@ -18,8 +18,9 @@ suite =
         , standardLibraryTest
         , tailCallTest
         , closureTest
-        , tooMuchApply
-        , mutualRecursion
+        , tooMuchApplyTest
+        , mutualRecursionTest
+        , tuplesTest
         ]
 
 
@@ -86,15 +87,15 @@ closureTest =
         (Int 5)
 
 
-tooMuchApply : Test
-tooMuchApply =
+tooMuchApplyTest : Test
+tooMuchApplyTest =
     evalTest "Too much apply"
         "(\\a -> Foo a) 0 1 2"
         (Custom { moduleName = [], name = "Foo" } [ Int 0, Int 1, Int 2 ])
 
 
-mutualRecursion : Test
-mutualRecursion =
+mutualRecursionTest : Test
+mutualRecursionTest =
     describe "Mutual recursion"
         [ evalTestModule "At the top level"
             """module Test exposing (..)
@@ -129,6 +130,13 @@ main =
 in
 fib1 7""" (Int 13)
         ]
+
+
+tuplesTest : Test
+tuplesTest =
+    evalTest "Tuples"
+        """let (a, b) = (2, 3) in let (c, d, e) = (4, 5, 6) in a + b + c + d + e"""
+        (Int 20)
 
 
 evalTest : String -> String -> Value -> Test
