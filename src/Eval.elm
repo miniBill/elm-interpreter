@@ -1,5 +1,6 @@
 module Eval exposing (Error, eval, evalModule)
 
+import Core.Basics
 import Elm.Parser
 import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
@@ -98,13 +99,10 @@ buildEnv file =
                     CustomTypeDeclaration _ ->
                         Ok env
             )
-            (Ok Env.empty)
+            (Ok Core.Basics.env)
 
 
-evalExpression :
-    Env
-    -> Expression
-    -> Result EvalError Value
+evalExpression : Env -> Expression -> Result EvalError Value
 evalExpression env expression =
     case expression of
         Expression.UnitExpr ->
@@ -390,9 +388,11 @@ match pattern value =
         noMatch =
             Ok Nothing
 
+        typeError : String -> Result EvalError value
         typeError message =
             Err <| TypeError message
 
+        andThen : (a -> Result error (Maybe a)) -> Result error (Maybe a) -> Result error (Maybe a)
         andThen f v =
             case v of
                 Err _ ->
