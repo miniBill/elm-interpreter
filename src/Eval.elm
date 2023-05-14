@@ -110,23 +110,27 @@ evalExpression env expression =
         Expression.UnitExpr ->
             Ok Value.Unit
 
-        Expression.OperatorApplication "+" Infix.Left l r ->
-            evalNumberOperator env "+" (+) (+) l r
+        Expression.OperatorApplication opName infix_ l r ->
+            evalExpression2 env l r <|
+                \lvalue rvalue ->
+                    case ( opName, infix_ ) of
+                        ( "+", Infix.Left ) ->
+                            evalNumberOperator "+" (+) (+) lvalue rvalue
 
-        Expression.OperatorApplication "-" Infix.Left l r ->
-            evalNumberOperator env "-" (-) (-) l r
+                        ( "-", Infix.Left ) ->
+                            evalNumberOperator "-" (-) (-) lvalue rvalue
 
-        Expression.OperatorApplication "*" Infix.Left l r ->
-            evalNumberOperator env "*" (*) (*) l r
+                        ( "*", Infix.Left ) ->
+                            evalNumberOperator "*" (*) (*) lvalue rvalue
 
-        Expression.OperatorApplication "<=" Infix.Left l r ->
-            evalRelationOperator env "<=" (<=) (<=) l r
+                        ( "<=", Infix.Left ) ->
+                            evalRelationOperator "<=" (<=) (<=) lvalue rvalue
 
-        Expression.OperatorApplication ">=" Infix.Left l r ->
-            evalRelationOperator env ">=" (>=) (>=) l r
+                        ( ">=", Infix.Left ) ->
+                            evalRelationOperator ">=" (>=) (>=) lvalue rvalue
 
-        Expression.OperatorApplication opName _ _ _ ->
-            Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
+                        _ ->
+                            Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
 
         Expression.Application [] ->
             Err <| TypeError "Empty application"
@@ -194,7 +198,8 @@ evalExpression env expression =
 
                     else
                         -- Too many args, we split
-                        evalExpression env
+                        evalExpression
+                            env
                             (Expression.Application
                                 (fakeNode
                                     (Expression.Application (fakeNode first :: used))
@@ -239,26 +244,35 @@ evalExpression env expression =
                     Nothing ->
                         case Dict.get fullName env.functions of
                             Just function ->
-                                evalFunction env function
+                                if List.isEmpty function.arguments then
+                                    evalExpression env (Node.value function.expression)
+
+                                else
+                                    PartiallyApplied env
+                                        []
+                                        function.arguments
+                                        (Node.value function.expression)
+                                        |> Ok
 
                             Nothing ->
                                 Err <|
                                     NameError fullName
 
         Expression.IfBlock (Node _ cond) (Node _ true) (Node _ false) ->
-            evalExpression env cond
-                |> Result.andThen
-                    (\condValue ->
-                        case condValue of
-                            Value.Bool True ->
-                                evalExpression env true
+            case evalExpression env cond of
+                Err e ->
+                    Err e
 
-                            Value.Bool False ->
-                                evalExpression env false
+                Ok condValue ->
+                    case condValue of
+                        Value.Bool True ->
+                            evalExpression env true
 
-                            _ ->
-                                Err <| TypeError "ifThenElse condition was not a boolean"
-                    )
+                        Value.Bool False ->
+                            evalExpression env false
+
+                        _ ->
+                            Err <| TypeError "ifThenElse condition was not a boolean"
 
         Expression.PrefixOperator _ ->
             Err <| Unsupported "branch 'PrefixOperator _' not implemented"
@@ -285,7 +299,28 @@ evalExpression env expression =
             Ok (Value.Char c)
 
         Expression.TupledExpression exprs ->
-            evalTupleExpression env exprs
+            case exprs of
+                [] ->
+                    Ok Value.Unit
+
+                [ c ] ->
+                    evalExpression env (Node.value c)
+
+                [ l, r ] ->
+                    evalExpression2
+                        env
+                        l
+                        r
+                        (\lvalue rvalue -> Ok (Value.Tuple lvalue rvalue))
+
+                [ l, m, r ] ->
+                    Result.map3 Value.Triple
+                        (evalExpression env (Node.value l))
+                        (evalExpression env (Node.value m))
+                        (evalExpression env (Node.value r))
+
+                _ :: _ :: _ :: _ :: _ ->
+                    Err <| TypeError "Tuples with more than three elements are not supported"
 
         Expression.ParenthesizedExpression (Node _ child) ->
             evalExpression env child
@@ -398,19 +433,6 @@ evalExpression env expression =
             Err <| Unsupported "GLSL not supported"
 
 
-evalFunction : Env -> FunctionImplementation -> Result EvalError Value
-evalFunction env function =
-    if List.isEmpty function.arguments then
-        evalExpression env (Node.value function.expression)
-
-    else
-        PartiallyApplied env
-            []
-            function.arguments
-            (Node.value function.expression)
-            |> Ok
-
-
 isVariant : String -> Bool
 isVariant name =
     case String.uncons name of
@@ -419,30 +441,6 @@ isVariant name =
 
         Just ( first, _ ) ->
             Unicode.isUpper first
-
-
-evalTupleExpression : Env -> List (Node Expression) -> Result EvalError Value
-evalTupleExpression env args =
-    case args of
-        [] ->
-            Ok Value.Unit
-
-        [ c ] ->
-            evalExpression env (Node.value c)
-
-        [ l, r ] ->
-            Result.map2 Value.Tuple
-                (evalExpression env (Node.value l))
-                (evalExpression env (Node.value r))
-
-        [ l, m, r ] ->
-            Result.map3 Value.Triple
-                (evalExpression env (Node.value l))
-                (evalExpression env (Node.value m))
-                (evalExpression env (Node.value r))
-
-        _ :: _ :: _ :: _ :: _ ->
-            Err <| TypeError "Tuples with more than three elements are not supported"
 
 
 evalCase : Env -> Expression.CaseBlock -> Result EvalError Value
@@ -653,25 +651,22 @@ match pattern value =
 
 
 evalNumberOperator :
-    Env
-    -> String
+    String
     -> (Int -> Int -> Int)
     -> (Float -> Float -> Float)
-    -> Node Expression
-    -> Node Expression
+    -> Value
+    -> Value
     -> Result EvalError Value
-evalNumberOperator env opName opInt opFloat l r =
-    evalExpression2 env l r <|
-        \lvalue rvalue ->
-            case ( lvalue, rvalue ) of
-                ( Value.Int li, Value.Int ri ) ->
-                    Ok (Value.Int (opInt li ri))
+evalNumberOperator opName opInt opFloat lvalue rvalue =
+    case ( lvalue, rvalue ) of
+        ( Value.Int li, Value.Int ri ) ->
+            Ok (Value.Int (opInt li ri))
 
-                ( Value.Float lf, Value.Float rf ) ->
-                    Ok (Value.Float (opFloat lf rf))
+        ( Value.Float lf, Value.Float rf ) ->
+            Ok (Value.Float (opFloat lf rf))
 
-                _ ->
-                    operatorTypeError opName lvalue rvalue
+        _ ->
+            operatorTypeError opName lvalue rvalue
 
 
 operatorTypeError : String -> Value -> Value -> Result EvalError v
@@ -685,25 +680,22 @@ operatorTypeError opName lvalue rvalue =
 
 
 evalRelationOperator :
-    Env
-    -> String
+    String
     -> (Int -> Int -> Bool)
     -> (Float -> Float -> Bool)
-    -> Node Expression
-    -> Node Expression
+    -> Value
+    -> Value
     -> Result EvalError Value
-evalRelationOperator env opName opInt opFloat l r =
-    evalExpression2 env l r <|
-        \lvalue rvalue ->
-            case ( lvalue, rvalue ) of
-                ( Value.Int li, Value.Int ri ) ->
-                    Ok (Value.Bool (opInt li ri))
+evalRelationOperator opName opInt opFloat lvalue rvalue =
+    case ( lvalue, rvalue ) of
+        ( Value.Int li, Value.Int ri ) ->
+            Ok (Value.Bool (opInt li ri))
 
-                ( Value.Float lf, Value.Float rf ) ->
-                    Ok (Value.Bool (opFloat lf rf))
+        ( Value.Float lf, Value.Float rf ) ->
+            Ok (Value.Bool (opFloat lf rf))
 
-                _ ->
-                    operatorTypeError opName lvalue rvalue
+        _ ->
+            operatorTypeError opName lvalue rvalue
 
 
 evalExpression2 :
