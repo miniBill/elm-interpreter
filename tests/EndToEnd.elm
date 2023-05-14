@@ -81,7 +81,7 @@ closureTest : Test
 closureTest =
     evalTest "Closure"
         "let a = 3 in let closed x = a + x in closed 2"
-        (Int 6)
+        (Int 5)
 
 
 tooMuchApply : Test

@@ -230,6 +230,9 @@ evalExpression env expression =
                             |> String.join "."
                 in
                 case Dict.get fullName env.values of
+                    Just (PartiallyApplied localEnv [] [] implementation) ->
+                        evalExpression (Env.with localEnv env) implementation
+
                     Just value ->
                         Ok value
 
@@ -336,8 +339,8 @@ evalExpression env expression =
         Expression.CaseExpression caseExpr ->
             evalCase env caseExpr
 
-        Expression.LambdaExpression _ ->
-            Err <| Unsupported "branch 'LambdaExpression _' not implemented"
+        Expression.LambdaExpression lambda ->
+            Ok <| PartiallyApplied env [] lambda.args (Node.value lambda.expression)
 
         Expression.RecordExpr fields ->
             fields

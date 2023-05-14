@@ -92,7 +92,7 @@ toExpression value =
                     )
 
         PartiallyApplied _ _ _ _ ->
-            Debug.todo "branch 'PartiallyApplied _ _ _' not implemented"
+            Just (Expression.Literal "TODO")
 
 
 boolToString : Bool -> String
