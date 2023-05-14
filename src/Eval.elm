@@ -8,11 +8,11 @@ import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Infix as Infix
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
-import Elm.Syntax.Type exposing (Type)
 import Env exposing (Env)
 import FastDict as Dict
 import Parser exposing (DeadEnd)
 import Result.Extra
+import Result.MyExtra
 import Unicode
 import Value exposing (EvalError(..), Value)
 
@@ -259,7 +259,19 @@ evalExpression env expression =
             Err <| Unsupported "branch 'LambdaExpression _' not implemented"
 
         Expression.RecordExpr fields ->
-            Err <| Unsupported "branch 'RecordExpr _' not implemented"
+            fields
+                |> Result.Extra.combineMap
+                    (\(Node _ ( Node _ fieldName, Node _ fieldExpr )) ->
+                        Result.map
+                            (Tuple.pair fieldName)
+                            (evalExpression env fieldExpr)
+                    )
+                |> Result.map
+                    (\tuples ->
+                        tuples
+                            |> Dict.fromList
+                            |> Value.Record
+                    )
 
         Expression.ListExpr elements ->
             elements
@@ -343,38 +355,101 @@ evalCase env { expression, cases } =
             Err e
 
         Ok exprValue ->
-            List.foldl
-                (\( Node _ pattern, Node _ result ) acc ->
-                    case acc of
-                        Just _ ->
-                            acc
+            cases
+                |> Result.MyExtra.combineFoldl
+                    (\( Node _ pattern, Node _ result ) acc ->
+                        case acc of
+                            Just _ ->
+                                Ok acc
 
-                        Nothing ->
-                            match pattern exprValue
-                                |> Maybe.map
-                                    (\additionalEnv ->
+                            Nothing ->
+                                case match pattern exprValue of
+                                    Err e ->
+                                        Err e
+
+                                    Ok Nothing ->
+                                        Ok Nothing
+
+                                    Ok (Just additionalEnv) ->
                                         evalExpression (Env.with additionalEnv env) result
-                                    )
-                )
-                Nothing
-                cases
-                |> Maybe.withDefault (Err <| TypeError "Missing case branch")
+                                            |> Result.map Just
+                    )
+                    Nothing
+                |> Result.andThen
+                    (\result ->
+                        case result of
+                            Nothing ->
+                                Err <| TypeError "Missing case branch"
+
+                            Just res ->
+                                Ok res
+                    )
 
 
-match : Pattern -> Value -> Maybe Env
+match : Pattern -> Value -> Result EvalError (Maybe Env)
 match pattern value =
+    let
+        ok : a -> Result error (Maybe a)
+        ok val =
+            Ok (Just val)
+
+        noMatch : Result error (Maybe a)
+        noMatch =
+            Ok Nothing
+    in
     case ( pattern, value ) of
         ( UnitPattern, Value.Unit ) ->
-            Just Env.empty
+            ok Env.empty
 
         ( UnitPattern, _ ) ->
-            Nothing
+            noMatch
 
         ( AllPattern, _ ) ->
-            Just Env.empty
+            ok Env.empty
 
         ( ParenthesizedPattern subPattern, _ ) ->
             match (Node.value subPattern) value
+
+        ( NamedPattern namePattern argsPatterns, Value.Custom variant args ) ->
+            -- two names from different modules can never have the same type
+            -- so if we assume the code typechecks we can skip the module name check
+            if namePattern.name == variant.name then
+                let
+                    go :
+                        Env
+                        -> ( List (Node Pattern), List Value )
+                        -> Result EvalError (Maybe Env)
+                    go env queue =
+                        case queue of
+                            ( [], [] ) ->
+                                ok env
+
+                            ( (Node _ patternHead) :: patternTail, argHead :: argTail ) ->
+                                let
+                                    matched : Result EvalError (Maybe Env)
+                                    matched =
+                                        match patternHead argHead
+                                in
+                                case matched of
+                                    Err _ ->
+                                        matched
+
+                                    Ok Nothing ->
+                                        matched
+
+                                    Ok (Just newEnv) ->
+                                        go (Env.with newEnv env) ( patternTail, argTail )
+
+                            _ ->
+                                Err <| TypeError "Mismatched number of arguments to variant"
+                in
+                go Env.empty ( argsPatterns, args )
+
+            else
+                noMatch
+
+        ( NamedPattern _ _, _ ) ->
+            noMatch
 
         ( CharPattern _, _ ) ->
             Debug.todo "branch '( CharPattern _, _ )' not implemented"
@@ -405,9 +480,6 @@ match pattern value =
 
         ( VarPattern _, _ ) ->
             Debug.todo "branch '( VarPattern _, _ )' not implemented"
-
-        ( NamedPattern _ _, _ ) ->
-            Debug.todo "branch '( NamedPattern _ _, _ )' not implemented"
 
         ( AsPattern _ _, _ ) ->
             Debug.todo "branch '( AsPattern _ _, _ )' not implemented"

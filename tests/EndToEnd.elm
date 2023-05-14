@@ -12,6 +12,8 @@ suite =
         [ helloWorldTest
         , sumTest
         , fibonacciTest
+        , recordTest
+        , customTypeTest
         , standardLibraryTest
         ]
 
@@ -35,6 +37,26 @@ fibonacciTest =
     evalTest "Fibonacci"
         "let fib n = if n <= 2 then 1 else fib (n - 1) + fib (n - 2) in fib 7"
         (Int 13)
+
+
+recordTest : Test
+recordTest =
+    evalTest "Record"
+        "{ a = 13, b = 'c'}.b"
+        (Char 'c')
+
+
+customTypeTest : Test
+customTypeTest =
+    evalTest "Custom type"
+        """let
+    foo = Just []
+in
+case foo of
+    Nothing -> -1
+    Just [ x ] -> 1
+"""
+        (Int 0)
 
 
 standardLibraryTest : Test
