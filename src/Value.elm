@@ -99,8 +99,22 @@ toExpression value =
                         >> Expression.Application
                     )
 
-        PartiallyApplied _ _ _ _ ->
-            Just (Expression.Literal "TODO")
+        PartiallyApplied _ [] patterns implementation ->
+            Just
+                (Expression.LambdaExpression
+                    { args = patterns
+                    , expression = fakeNode implementation
+                    }
+                )
+
+        PartiallyApplied localEnv args patterns implementation ->
+            Maybe.map2
+                (\lambda argExprs ->
+                    Expression.Application <|
+                        List.map fakeNode (lambda :: argExprs)
+                )
+                (toExpression (PartiallyApplied localEnv [] patterns implementation))
+                (Maybe.Extra.traverse toExpression args)
 
 
 boolToString : Bool -> String
