@@ -682,11 +682,29 @@ match pattern value =
         ( TuplePattern _, _ ) ->
             noMatch
 
-        ( RecordPattern _, _ ) ->
-            Debug.todo "branch '( RecordPattern _, _ )' not implemented"
+        ( AsPattern (Node _ childPattern) (Node _ asName), _ ) ->
+            match childPattern value
+                |> andThen
+                    (\env -> ok <| Env.addValue asName value env)
 
-        ( AsPattern _ _, _ ) ->
-            Debug.todo "branch '( AsPattern _ _, _ )' not implemented"
+        ( RecordPattern fields, Value.Record fieldValues ) ->
+            List.foldl
+                (\(Node _ fieldName) ->
+                    andThen
+                        (\acc ->
+                            case Dict.get fieldName fieldValues of
+                                Nothing ->
+                                    Err <| TypeError <| "Field " ++ fieldName ++ " not found in record"
+
+                                Just fieldValue ->
+                                    ok <| Env.addValue fieldName fieldValue acc
+                        )
+                )
+                (ok Env.empty)
+                fields
+
+        ( RecordPattern _, _ ) ->
+            noMatch
 
 
 evalNumberOperator :
