@@ -448,8 +448,16 @@ evalExpression env expression =
                                 Err <| TypeError "Trying to access a field on a non-record value"
                     )
 
-        Expression.RecordAccessFunction _ ->
-            Err <| Unsupported "branch 'RecordAccessFunction _' not implemented"
+        Expression.RecordAccessFunction field ->
+            PartiallyApplied
+                Env.empty
+                []
+                [ fakeNode (VarPattern "r") ]
+                (Expression.RecordAccess
+                    (fakeNode <| Expression.FunctionOrValue [] "r")
+                    (fakeNode <| field)
+                )
+                |> Ok
 
         Expression.RecordUpdateExpression _ _ ->
             Err <| Unsupported "branch 'RecordUpdateExpression _ _' not implemented"
