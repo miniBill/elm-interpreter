@@ -442,7 +442,7 @@ evalExpression env expression =
                                         Ok fieldValue
 
                                     Nothing ->
-                                        Err <| TypeError <| "Field " ++ field ++ " not found"
+                                        Err <| TypeError <| "Field " ++ field ++ " not found [record access]"
 
                             _ ->
                                 Err <| TypeError "Trying to access a field on a non-record value"
@@ -455,12 +455,30 @@ evalExpression env expression =
                 [ fakeNode (VarPattern "r") ]
                 (Expression.RecordAccess
                     (fakeNode <| Expression.FunctionOrValue [] "r")
-                    (fakeNode <| field)
+                    (fakeNode <| String.dropLeft 1 field)
                 )
                 |> Ok
 
-        Expression.RecordUpdateExpression _ _ ->
-            Err <| Unsupported "branch 'RecordUpdateExpression _ _' not implemented"
+        Expression.RecordUpdateExpression (Node _ name) setters ->
+            case evalExpression env (Expression.FunctionOrValue [] name) of
+                Err e ->
+                    Err e
+
+                Ok (Value.Record fields) ->
+                    Result.MyExtra.combineFoldl
+                        (\(Node _ ( Node _ fieldName, Node _ fieldExpression )) acc ->
+                            evalExpression env fieldExpression
+                                |> Result.map
+                                    (\fieldValue ->
+                                        Dict.insert fieldName fieldValue acc
+                                    )
+                        )
+                        (Ok fields)
+                        setters
+                        |> Result.map Value.Record
+
+                Ok _ ->
+                    Err <| TypeError "Trying to update fields on a value which is not a record"
 
         Expression.GLSLExpression _ ->
             Err <| Unsupported "GLSL not supported"
