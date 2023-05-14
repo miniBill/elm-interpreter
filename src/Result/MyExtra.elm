@@ -1,7 +1,7 @@
 module Result.MyExtra exposing (combineFoldl)
 
 
-combineFoldl : (a -> b -> Result error b) -> b -> List a -> Result error b
+combineFoldl : (a -> b -> Result error b) -> Result error b -> List a -> Result error b
 combineFoldl f init list =
     List.foldl
         (\e acc ->
@@ -12,5 +12,5 @@ combineFoldl f init list =
                 Ok a ->
                     f e a
         )
-        (Ok init)
+        init
         list

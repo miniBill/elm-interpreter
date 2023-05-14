@@ -73,33 +73,30 @@ evalModule source expression =
 buildEnv : File -> Result Error Env
 buildEnv file =
     file.declarations
-        |> List.foldl
-            (\(Node _ decl) ->
-                Result.andThen
-                    (\env ->
-                        case decl of
-                            FunctionDeclaration function ->
-                                let
-                                    (Node _ implementation) =
-                                        function.declaration
-                                in
-                                Ok (Env.addFunction implementation env)
+        |> Result.MyExtra.combineFoldl
+            (\(Node _ decl) env ->
+                case decl of
+                    FunctionDeclaration function ->
+                        let
+                            (Node _ implementation) =
+                                function.declaration
+                        in
+                        Ok (Env.addFunction implementation env)
 
-                            PortDeclaration _ ->
-                                Err (EvalError <| Unsupported "PortDeclaration")
+                    PortDeclaration _ ->
+                        Err (EvalError <| Unsupported "PortDeclaration")
 
-                            InfixDeclaration _ ->
-                                Err (EvalError <| Unsupported "InfixDeclaration")
+                    InfixDeclaration _ ->
+                        Err (EvalError <| Unsupported "InfixDeclaration")
 
-                            Destructuring _ _ ->
-                                Err (EvalError <| Unsupported "Destructuring")
+                    Destructuring _ _ ->
+                        Err (EvalError <| Unsupported "Destructuring")
 
-                            AliasDeclaration _ ->
-                                Ok env
+                    AliasDeclaration _ ->
+                        Ok env
 
-                            CustomTypeDeclaration _ ->
-                                Ok env
-                    )
+                    CustomTypeDeclaration _ ->
+                        Ok env
             )
             (Ok Env.empty)
 
@@ -135,12 +132,9 @@ evalExpression env expression =
             Err <| TypeError "Empty Application"
 
         Expression.Application ((Node _ first) :: rest) ->
-            List.foldl
-                (\(Node _ arg) ->
-                    Result.andThen
-                        (\acc ->
-                            evalApply env acc arg
-                        )
+            Result.MyExtra.combineFoldl
+                (\(Node _ arg) acc ->
+                    evalApply env acc arg
                 )
                 (evalExpression env first)
                 rest
@@ -222,10 +216,9 @@ evalExpression env expression =
             let
                 newEnv : Result EvalError Env
                 newEnv =
-                    List.foldl
+                    Result.MyExtra.combineFoldl
                         (\(Node _ letDeclaration) ->
-                            Result.andThen
-                                (addDeclaration letDeclaration)
+                            addDeclaration letDeclaration
                         )
                         (Ok env)
                         letBlock.declarations
@@ -374,7 +367,7 @@ evalCase env { expression, cases } =
                                         evalExpression (Env.with additionalEnv env) result
                                             |> Result.map Just
                     )
-                    Nothing
+                    (Ok Nothing)
                 |> Result.andThen
                     (\result ->
                         case result of
