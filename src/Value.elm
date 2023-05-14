@@ -1,12 +1,11 @@
 module Value exposing (EvalError(..), Value(..), toString)
 
 import Elm.Syntax.Expression as Expression
-import Elm.Syntax.Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
-import Elm.Syntax.Range exposing (Location, Range)
 import Elm.Writer
 import FastDict exposing (Dict)
 import Maybe.Extra
+import Syntax exposing (fakeNode)
 
 
 type Value
@@ -27,23 +26,6 @@ type EvalError
     = TypeError String
     | Unsupported String
     | NameError String
-
-
-fakeNode : a -> Node a
-fakeNode value =
-    Node fakeRange value
-
-
-fakeRange : Range
-fakeRange =
-    { start = fakeLocation, end = fakeLocation }
-
-
-fakeLocation : Location
-fakeLocation =
-    { row = -1
-    , column = -1
-    }
 
 
 toExpression : Value -> Maybe Expression.Expression

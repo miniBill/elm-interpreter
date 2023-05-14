@@ -1,22 +1,8 @@
 module Core.Basics exposing (env)
 
-{-
-   import Basics exposing (..)
-   import List exposing (List, (::))
-   import Maybe exposing (Maybe(..))
-   import Result exposing (Result(..))
-   import String exposing (String)
-   import Char exposing (Char)
-   import Tuple
-
-   import Debug
-
-   import Platform exposing ( Program )
-   import Platform.Cmd as Cmd exposing ( Cmd )
-   import Platform.Sub as Sub exposing ( Sub )
--}
-
+import Core.List
 import Elm.Syntax.Expression exposing (FunctionImplementation)
+import Elm.Syntax.Node as Node
 import Env exposing (Env)
 import FastDict as Dict
 
@@ -24,10 +10,55 @@ import FastDict as Dict
 env : Env
 env =
     { values = Dict.empty
-    , functions = Dict.fromList functions
+    , functions =
+        functions
+            |> List.map (\fun -> ( Node.value fun.name, fun ))
+            |> Dict.fromList
     }
 
 
-functions : List ( String, FunctionImplementation )
+functions : List FunctionImplementation
 functions =
+    basics
+        ++ Core.List.functions
+        ++ maybe
+        ++ result
+        ++ string
+        ++ char
+        ++ tuple
+        ++ debug
+
+
+basics : List FunctionImplementation
+basics =
+    []
+
+
+maybe : List FunctionImplementation
+maybe =
+    []
+
+
+result : List FunctionImplementation
+result =
+    []
+
+
+string : List FunctionImplementation
+string =
+    []
+
+
+char : List FunctionImplementation
+char =
+    []
+
+
+tuple : List FunctionImplementation
+tuple =
+    []
+
+
+debug : List FunctionImplementation
+debug =
     []
