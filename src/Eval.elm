@@ -1,6 +1,5 @@
 module Eval exposing (Error, eval, evalModule)
 
-import Dict exposing (Dict)
 import Elm.Parser
 import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
@@ -8,34 +7,31 @@ import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImpleme
 import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Infix as Infix
 import Elm.Syntax.Node as Node exposing (Node(..))
-import Elm.Syntax.Pattern exposing (Pattern(..))
+import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
+import Elm.Syntax.Type exposing (Type)
+import Env exposing (Env)
+import FastDict as Dict
 import Parser exposing (DeadEnd)
+import Result.Extra
+import Unicode
 import Value exposing (EvalError(..), Value)
+
+
+{-| Variant names for list
+-}
+list :
+    { cons : QualifiedNameRef
+    , nil : QualifiedNameRef
+    }
+list =
+    { cons = { moduleName = [ "List" ], name = "Cons" }
+    , nil = { moduleName = [ "List" ], name = "Nil" }
+    }
 
 
 type Error
     = ParsingError (List DeadEnd)
     | EvalError EvalError
-
-
-type alias Env =
-    { functions : Dict String FunctionImplementation
-    , values : Dict String Value
-    }
-
-
-addValueToEnv : String -> Value -> Env -> Env
-addValueToEnv name value env =
-    { functions = env.functions
-    , values = Dict.insert name value env.values
-    }
-
-
-addFunctionToEnv : FunctionImplementation -> Env -> Env
-addFunctionToEnv function env =
-    { functions = Dict.insert (Node.value function.name) function env.functions
-    , values = env.values
-    }
 
 
 eval : String -> Result Error Value
@@ -87,7 +83,7 @@ buildEnv file =
                                     (Node _ implementation) =
                                         function.declaration
                                 in
-                                Ok (addFunctionToEnv implementation env)
+                                Ok (Env.addFunction implementation env)
 
                             PortDeclaration _ ->
                                 Err (EvalError <| Unsupported "PortDeclaration")
@@ -105,11 +101,7 @@ buildEnv file =
                                 Ok env
                     )
             )
-            (Ok
-                { functions = Dict.empty
-                , values = Dict.empty
-                }
-            )
+            (Ok Env.empty)
 
 
 evalExpression :
@@ -153,21 +145,33 @@ evalExpression env expression =
                 (evalExpression env first)
                 rest
 
-        Expression.FunctionOrValue [] name ->
-            case Dict.get name env.values of
-                Just value ->
-                    Ok value
+        Expression.FunctionOrValue moduleName name ->
+            if isVariant name then
+                let
+                    qualifiedNameRef : QualifiedNameRef
+                    qualifiedNameRef =
+                        { moduleName = moduleName, name = name }
+                in
+                Ok (Value.Custom qualifiedNameRef [])
 
-                Nothing ->
-                    case Dict.get name env.functions of
-                        Just function ->
-                            functionToValue env function
+            else
+                let
+                    fullName : String
+                    fullName =
+                        (moduleName ++ [ name ])
+                            |> String.join "."
+                in
+                case Dict.get fullName env.values of
+                    Just value ->
+                        Ok value
 
-                        Nothing ->
-                            Err <| NameError <| name ++ " not found"
+                    Nothing ->
+                        case Dict.get fullName env.functions of
+                            Just function ->
+                                functionToValue env function
 
-        Expression.FunctionOrValue _ _ ->
-            Err <| Unsupported "branch 'FunctionOrValue _ _' not implemented"
+                            Nothing ->
+                                Err <| NameError <| fullName ++ " not found"
 
         Expression.IfBlock (Node _ cond) (Node _ true) (Node _ false) ->
             evalExpression env cond
@@ -208,25 +212,8 @@ evalExpression env expression =
         Expression.CharLiteral c ->
             Ok (Value.Char c)
 
-        Expression.TupledExpression [] ->
-            Ok Value.Unit
-
-        Expression.TupledExpression [ c ] ->
-            evalExpression env (Node.value c)
-
-        Expression.TupledExpression [ l, r ] ->
-            Result.map2 Value.Tuple
-                (evalExpression env (Node.value l))
-                (evalExpression env (Node.value r))
-
-        Expression.TupledExpression [ l, m, r ] ->
-            Result.map3 Value.Triple
-                (evalExpression env (Node.value l))
-                (evalExpression env (Node.value m))
-                (evalExpression env (Node.value r))
-
-        Expression.TupledExpression (_ :: _ :: _ :: _ :: _) ->
-            Err <| TypeError "Tuples with more than three elements are not supported"
+        Expression.TupledExpression exprs ->
+            evalTupleExpression env exprs
 
         Expression.ParenthesizedExpression (Node _ child) ->
             evalExpression env child
@@ -251,7 +238,7 @@ evalExpression env expression =
                     case letDeclaration of
                         Expression.LetFunction function ->
                             Ok <|
-                                addFunctionToEnv
+                                Env.addFunction
                                     (Node.value function.declaration)
                                     acc
 
@@ -265,20 +252,45 @@ evalExpression env expression =
                 Ok ne ->
                     evalExpression ne (Node.value letBlock.expression)
 
-        Expression.CaseExpression _ ->
-            Err <| Unsupported "branch 'CaseExpression _' not implemented"
+        Expression.CaseExpression caseExpr ->
+            evalCase env caseExpr
 
         Expression.LambdaExpression _ ->
             Err <| Unsupported "branch 'LambdaExpression _' not implemented"
 
-        Expression.RecordExpr _ ->
+        Expression.RecordExpr fields ->
             Err <| Unsupported "branch 'RecordExpr _' not implemented"
 
-        Expression.ListExpr _ ->
-            Err <| Unsupported "branch 'ListExpr _' not implemented"
+        Expression.ListExpr elements ->
+            elements
+                |> Result.Extra.combineMap
+                    (\element -> evalExpression env (Node.value element))
+                |> Result.map
+                    (\values ->
+                        List.foldr
+                            (\value acc ->
+                                Value.Custom list.cons [ value, acc ]
+                            )
+                            (Value.Custom list.nil [])
+                            values
+                    )
 
-        Expression.RecordAccess _ _ ->
-            Err <| Unsupported "branch 'RecordAccess _ _' not implemented"
+        Expression.RecordAccess (Node _ recordExpr) (Node _ field) ->
+            evalExpression env recordExpr
+                |> Result.andThen
+                    (\value ->
+                        case value of
+                            Value.Record fields ->
+                                case Dict.get field fields of
+                                    Just fieldValue ->
+                                        Ok fieldValue
+
+                                    Nothing ->
+                                        Err <| TypeError <| "Field " ++ field ++ " not found"
+
+                            _ ->
+                                Err <| TypeError "Trying to access a field on a non-record value"
+                    )
 
         Expression.RecordAccessFunction _ ->
             Err <| Unsupported "branch 'RecordAccessFunction _' not implemented"
@@ -290,6 +302,117 @@ evalExpression env expression =
             Err <| Unsupported "GLSL not supported"
 
 
+isVariant : String -> Bool
+isVariant name =
+    case String.uncons name of
+        Nothing ->
+            False
+
+        Just ( first, _ ) ->
+            Unicode.isUpper first
+
+
+evalTupleExpression : Env -> List (Node Expression) -> Result EvalError Value
+evalTupleExpression env args =
+    case args of
+        [] ->
+            Ok Value.Unit
+
+        [ c ] ->
+            evalExpression env (Node.value c)
+
+        [ l, r ] ->
+            Result.map2 Value.Tuple
+                (evalExpression env (Node.value l))
+                (evalExpression env (Node.value r))
+
+        [ l, m, r ] ->
+            Result.map3 Value.Triple
+                (evalExpression env (Node.value l))
+                (evalExpression env (Node.value m))
+                (evalExpression env (Node.value r))
+
+        _ :: _ :: _ :: _ :: _ ->
+            Err <| TypeError "Tuples with more than three elements are not supported"
+
+
+evalCase : Env -> Expression.CaseBlock -> Result EvalError Value
+evalCase env { expression, cases } =
+    case evalExpression env (Node.value expression) of
+        Err e ->
+            Err e
+
+        Ok exprValue ->
+            List.foldl
+                (\( Node _ pattern, Node _ result ) acc ->
+                    case acc of
+                        Just _ ->
+                            acc
+
+                        Nothing ->
+                            match pattern exprValue
+                                |> Maybe.map
+                                    (\additionalEnv ->
+                                        evalExpression (Env.with additionalEnv env) result
+                                    )
+                )
+                Nothing
+                cases
+                |> Maybe.withDefault (Err <| TypeError "Missing case branch")
+
+
+match : Pattern -> Value -> Maybe Env
+match pattern value =
+    case ( pattern, value ) of
+        ( UnitPattern, Value.Unit ) ->
+            Just Env.empty
+
+        ( UnitPattern, _ ) ->
+            Nothing
+
+        ( AllPattern, _ ) ->
+            Just Env.empty
+
+        ( ParenthesizedPattern subPattern, _ ) ->
+            match (Node.value subPattern) value
+
+        ( CharPattern _, _ ) ->
+            Debug.todo "branch '( CharPattern _, _ )' not implemented"
+
+        ( StringPattern _, _ ) ->
+            Debug.todo "branch '( StringPattern _, _ )' not implemented"
+
+        ( IntPattern _, _ ) ->
+            Debug.todo "branch '( IntPattern _, _ )' not implemented"
+
+        ( HexPattern _, _ ) ->
+            Debug.todo "branch '( HexPattern _, _ )' not implemented"
+
+        ( FloatPattern _, _ ) ->
+            Debug.todo "branch '( FloatPattern _, _ )' not implemented"
+
+        ( TuplePattern _, _ ) ->
+            Debug.todo "branch '( TuplePattern _, _ )' not implemented"
+
+        ( RecordPattern _, _ ) ->
+            Debug.todo "branch '( RecordPattern _, _ )' not implemented"
+
+        ( UnConsPattern _ _, _ ) ->
+            Debug.todo "branch '( UnConsPattern _ _, _ )' not implemented"
+
+        ( ListPattern _, _ ) ->
+            Debug.todo "branch '( ListPattern _, _ )' not implemented"
+
+        ( VarPattern _, _ ) ->
+            Debug.todo "branch '( VarPattern _, _ )' not implemented"
+
+        ( NamedPattern _ _, _ ) ->
+            Debug.todo "branch '( NamedPattern _ _, _ )' not implemented"
+
+        ( AsPattern _ _, _ ) ->
+            Debug.todo "branch '( AsPattern _ _, _ )' not implemented"
+
+
 evalApply : Env -> Value -> Expression -> Result EvalError Value
 evalApply env lValue r =
     case lValue of
@@ -299,6 +422,11 @@ evalApply env lValue r =
                     (\rValue ->
                         f rValue
                     )
+
+        Value.Custom name args ->
+            evalExpression env r
+                |> Result.map
+                    (\rValue -> Value.Custom name (args ++ [ rValue ]))
 
         _ ->
             Err <| TypeError "Trying to apply a non-lambda"
@@ -316,7 +444,7 @@ functionToValue env function =
                 (VarPattern varName) :: tail ->
                     Ok
                         (Value.Lambda <|
-                            \varValue -> go (addValueToEnv varName varValue newEnv) tail
+                            \varValue -> go (Env.addValue varName varValue newEnv) tail
                         )
 
                 _ :: _ ->
@@ -344,12 +472,17 @@ evalNumberOperator env opName opInt opFloat l r =
                     Ok (Value.Float (opFloat lf rf))
 
                 _ ->
-                    let
-                        message : String
-                        message =
-                            "Trying to use operator " ++ opName ++ " with wrong arguments"
-                    in
-                    Err (TypeError message)
+                    operatorTypeError opName lvalue rvalue
+
+
+operatorTypeError : String -> Value -> Value -> Result EvalError v
+operatorTypeError opName lvalue rvalue =
+    let
+        message : String
+        message =
+            "Cannot apply operator " ++ opName ++ " to values " ++ Value.toString lvalue ++ " and " ++ Value.toString rvalue
+    in
+    Err (TypeError message)
 
 
 evalRelationOperator :
@@ -371,12 +504,7 @@ evalRelationOperator env opName opInt opFloat l r =
                     Ok (Value.Bool (opFloat lf rf))
 
                 _ ->
-                    let
-                        message : String
-                        message =
-                            "Trying to use operator " ++ opName ++ " with wrong arguments"
-                    in
-                    Err (TypeError message)
+                    operatorTypeError opName lvalue rvalue
 
 
 evalExpression2 :
