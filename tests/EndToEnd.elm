@@ -1,5 +1,6 @@
 module EndToEnd exposing (suite)
 
+import Elm.Syntax.Expression as Expression
 import Eval
 import Expect
 import Test exposing (Test, describe, test)
@@ -18,6 +19,7 @@ suite =
         , tailCallTest
         , closureTest
         , tooMuchApply
+        , mutualRecursion
         ]
 
 
@@ -91,9 +93,55 @@ tooMuchApply =
         (Custom { moduleName = [], name = "Foo" } [ Int 0, Int 1, Int 2 ])
 
 
+mutualRecursion : Test
+mutualRecursion =
+    describe "Mutual recursion"
+        [ evalTestModule "At the top level"
+            """module Test exposing (..)
+
+fib1 n =
+    if n <= 2 then
+        1
+    else
+        fib2 (n - 1) + fib2 (n - 2)
+
+fib2 n =
+    if n <= 2 then
+        1
+    else
+        fib1 (n - 1) + fib1 (n - 2)
+
+main =
+    fib1 7"""
+            (Int 13)
+        , evalTest "Inside a let" """let
+    fib1 n =
+        if n <= 2 then
+            1
+        else
+            fib2 (n - 1) + fib2 (n - 2)
+
+    fib2 n =
+        if n <= 2 then
+            1
+        else
+            fib1 (n - 1) + fib1 (n - 2)
+in
+fib1 7""" (Int 13)
+        ]
+
+
 evalTest : String -> String -> Value -> Test
 evalTest name expression result =
     test name <|
         \_ ->
             Eval.eval expression
+                |> Expect.equal (Ok result)
+
+
+evalTestModule : String -> String -> Value -> Test
+evalTestModule name expression result =
+    test name <|
+        \_ ->
+            Eval.evalModule expression (Expression.FunctionOrValue [] "main")
                 |> Expect.equal (Ok result)
