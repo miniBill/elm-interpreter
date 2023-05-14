@@ -1,4 +1,4 @@
-module Eval exposing (Error, eval)
+module Eval exposing (Error, eval, evalModule)
 
 import Dict exposing (Dict)
 import Elm.Parser
@@ -16,7 +16,6 @@ import Value exposing (EvalError(..), Value)
 type Error
     = ParsingError (List DeadEnd)
     | EvalError EvalError
-    | InternalError String
 
 
 type alias Env =
@@ -40,8 +39,22 @@ addFunctionToEnv function env =
 
 
 eval : String -> Result Error Value
-eval expression =
-    toModule expression
+eval expressionSource =
+    let
+        source : String
+        source =
+            toModule expressionSource
+
+        expression : Expression
+        expression =
+            Expression.FunctionOrValue [] "main"
+    in
+    evalModule source expression
+
+
+evalModule : String -> Expression -> Result Error Value
+evalModule source expression =
+    source
         |> Elm.Parser.parse
         |> Result.mapError ParsingError
         |> Result.map
@@ -53,40 +66,28 @@ eval expression =
                 in
                 Elm.Processing.process context rawFile
             )
-        |> Result.andThen extractMain
+        |> Result.andThen buildEnv
         |> Result.andThen
-            (\( context, expr ) ->
+            (\env ->
                 Result.mapError EvalError <|
-                    evalExpression
-                        { functions = context
-                        , values = Dict.empty
-                        }
-                        expr
+                    evalExpression env expression
             )
 
 
-extractMain : File -> Result Error ( Dict String FunctionImplementation, Expression )
-extractMain file =
+buildEnv : File -> Result Error Env
+buildEnv file =
     file.declarations
         |> List.foldl
             (\(Node _ decl) ->
                 Result.andThen
-                    (\(( functions, mains ) as acc) ->
+                    (\env ->
                         case decl of
                             FunctionDeclaration function ->
                                 let
                                     (Node _ implementation) =
                                         function.declaration
                                 in
-                                case ( implementation.name, implementation.arguments ) of
-                                    ( Node _ "main", [] ) ->
-                                        Ok ( functions, Node.value implementation.expression :: mains )
-
-                                    ( Node _ "main", _ :: _ ) ->
-                                        Err (InternalError "Found a `main` function with arguments")
-
-                                    ( Node _ name, _ ) ->
-                                        Ok ( Dict.insert name implementation functions, mains )
+                                Ok (addFunctionToEnv implementation env)
 
                             PortDeclaration _ ->
                                 Err (EvalError <| Unsupported "PortDeclaration")
@@ -98,24 +99,16 @@ extractMain file =
                                 Err (EvalError <| Unsupported "Destructuring")
 
                             AliasDeclaration _ ->
-                                Ok acc
+                                Ok env
 
                             CustomTypeDeclaration _ ->
-                                Ok acc
+                                Ok env
                     )
             )
-            (Ok ( Dict.empty, [] ))
-        |> Result.andThen
-            (\( functions, mains ) ->
-                case mains of
-                    [ main ] ->
-                        Ok ( functions, main )
-
-                    [] ->
-                        Err (InternalError "Didn't find `main`")
-
-                    _ :: _ :: _ ->
-                        Err (InternalError "Found multiple `main`s")
+            (Ok
+                { functions = Dict.empty
+                , values = Dict.empty
+                }
             )
 
 
