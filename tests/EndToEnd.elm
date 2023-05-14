@@ -55,6 +55,7 @@ in
 case foo of
     Nothing -> -1
     Just [ x ] -> 1
+    Just [] -> 0
 """
         (Int 0)
 

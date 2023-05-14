@@ -389,6 +389,20 @@ match pattern value =
         noMatch : Result error (Maybe a)
         noMatch =
             Ok Nothing
+
+        typeError message =
+            Err <| TypeError message
+
+        andThen f v =
+            case v of
+                Err _ ->
+                    v
+
+                Ok Nothing ->
+                    v
+
+                Ok (Just w) ->
+                    f w
     in
     case ( pattern, value ) of
         ( UnitPattern, Value.Unit ) ->
@@ -404,7 +418,7 @@ match pattern value =
             match (Node.value subPattern) value
 
         ( NamedPattern namePattern argsPatterns, Value.Custom variant args ) ->
-            -- two names from different modules can never have the same type
+            -- Two names from different modules can never have the same type
             -- so if we assume the code typechecks we can skip the module name check
             if namePattern.name == variant.name then
                 let
@@ -418,23 +432,14 @@ match pattern value =
                                 ok env
 
                             ( (Node _ patternHead) :: patternTail, argHead :: argTail ) ->
-                                let
-                                    matched : Result EvalError (Maybe Env)
-                                    matched =
-                                        match patternHead argHead
-                                in
-                                case matched of
-                                    Err _ ->
-                                        matched
-
-                                    Ok Nothing ->
-                                        matched
-
-                                    Ok (Just newEnv) ->
-                                        go (Env.with newEnv env) ( patternTail, argTail )
+                                match patternHead argHead
+                                    |> andThen
+                                        (\newEnv ->
+                                            go (Env.with newEnv env) ( patternTail, argTail )
+                                        )
 
                             _ ->
-                                Err <| TypeError "Mismatched number of arguments to variant"
+                                typeError "Mismatched number of arguments to variant"
                 in
                 go Env.empty ( argsPatterns, args )
 
@@ -442,6 +447,25 @@ match pattern value =
                 noMatch
 
         ( NamedPattern _ _, _ ) ->
+            noMatch
+
+        ( ListPattern [], Value.Custom _ [] ) ->
+            -- We assume the code typechecks!
+            ok Env.empty
+
+        ( ListPattern ((Node _ patternHead) :: patternTail), Value.Custom _ [ listHead, listTail ] ) ->
+            match patternHead listHead
+                |> andThen
+                    (\headEnv ->
+                        match (ListPattern patternTail) listTail
+                            |> andThen
+                                (\tailEnv ->
+                                    ok
+                                        (Env.with tailEnv headEnv)
+                                )
+                    )
+
+        ( ListPattern _, _ ) ->
             noMatch
 
         ( CharPattern _, _ ) ->
@@ -467,9 +491,6 @@ match pattern value =
 
         ( UnConsPattern _ _, _ ) ->
             Debug.todo "branch '( UnConsPattern _ _, _ )' not implemented"
-
-        ( ListPattern _, _ ) ->
-            Debug.todo "branch '( ListPattern _, _ )' not implemented"
 
         ( VarPattern _, _ ) ->
             Debug.todo "branch '( VarPattern _, _ )' not implemented"
