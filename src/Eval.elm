@@ -465,35 +465,82 @@ match pattern value =
                                 )
                     )
 
+        ( UnConsPattern (Node _ patternHead) (Node _ patternTail), Value.Custom _ [ listHead, listTail ] ) ->
+            match patternHead listHead
+                |> andThen
+                    (\headEnv ->
+                        match patternTail listTail
+                            |> andThen
+                                (\tailEnv ->
+                                    ok
+                                        (Env.with tailEnv headEnv)
+                                )
+                    )
+
+        ( UnConsPattern _ _, _ ) ->
+            noMatch
+
+        ( VarPattern name, _ ) ->
+            ok <| Env.addValue name value Env.empty
+
         ( ListPattern _, _ ) ->
             noMatch
 
+        ( CharPattern c, Value.Char d ) ->
+            if c == d then
+                ok Env.empty
+
+            else
+                noMatch
+
         ( CharPattern _, _ ) ->
-            Debug.todo "branch '( CharPattern _, _ )' not implemented"
+            noMatch
+
+        ( StringPattern c, Value.String d ) ->
+            if c == d then
+                ok Env.empty
+
+            else
+                noMatch
 
         ( StringPattern _, _ ) ->
-            Debug.todo "branch '( StringPattern _, _ )' not implemented"
+            noMatch
+
+        ( IntPattern c, Value.Int d ) ->
+            if c == d then
+                ok Env.empty
+
+            else
+                noMatch
 
         ( IntPattern _, _ ) ->
-            Debug.todo "branch '( IntPattern _, _ )' not implemented"
+            noMatch
+
+        ( HexPattern c, Value.Int d ) ->
+            if c == d then
+                ok Env.empty
+
+            else
+                noMatch
 
         ( HexPattern _, _ ) ->
-            Debug.todo "branch '( HexPattern _, _ )' not implemented"
+            noMatch
+
+        ( FloatPattern c, Value.Float d ) ->
+            if c == d then
+                ok Env.empty
+
+            else
+                noMatch
 
         ( FloatPattern _, _ ) ->
-            Debug.todo "branch '( FloatPattern _, _ )' not implemented"
+            noMatch
 
         ( TuplePattern _, _ ) ->
             Debug.todo "branch '( TuplePattern _, _ )' not implemented"
 
         ( RecordPattern _, _ ) ->
             Debug.todo "branch '( RecordPattern _, _ )' not implemented"
-
-        ( UnConsPattern _ _, _ ) ->
-            Debug.todo "branch '( UnConsPattern _ _, _ )' not implemented"
-
-        ( VarPattern _, _ ) ->
-            Debug.todo "branch '( VarPattern _, _ )' not implemented"
 
         ( AsPattern _ _, _ ) ->
             Debug.todo "branch '( AsPattern _ _, _ )' not implemented"
@@ -539,14 +586,24 @@ functionToValue env function =
                 [] ->
                     evalExpression newEnv (Node.value function.expression)
 
-                (VarPattern varName) :: tail ->
+                pattern :: tail ->
                     Ok
                         (Value.Lambda <|
-                            \varValue -> go (Env.addValue varName varValue newEnv) tail
-                        )
+                            \varValue ->
+                                case match pattern varValue of
+                                    Err e ->
+                                        Err e
 
-                _ :: _ ->
-                    Err <| Unsupported "functionToValue - branch '_ :: _' not implemented"
+                                    Ok Nothing ->
+                                        let
+                                            message =
+                                                "Error in pattern matching while calling " ++ Node.value function.name
+                                        in
+                                        Err <| TypeError message
+
+                                    Ok (Just add) ->
+                                        go (newEnv |> Env.with add) tail
+                        )
     in
     go env (List.map Node.value function.arguments)
 
