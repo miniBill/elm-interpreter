@@ -21,6 +21,7 @@ suite =
         , tooMuchApplyTest
         , mutualRecursionTest
         , tuplesTest
+        , negationTest
         ]
 
 
@@ -137,6 +138,11 @@ tuplesTest =
     evalTest "Tuples"
         """let (a, b) = (2, 3) in let (c, d, e) = (4, 5, 6) in a + b + c + d + e"""
         (Int 20)
+
+
+negationTest : Test
+negationTest =
+    evalTest "Negation" "-2" (Int -2)
 
 
 evalTest : String -> String -> Value -> Test

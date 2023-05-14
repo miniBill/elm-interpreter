@@ -87,13 +87,13 @@ buildEnv file =
                         Ok (Env.addFunction implementation env)
 
                     PortDeclaration _ ->
-                        Err (EvalError <| Unsupported "PortDeclaration")
+                        Err (EvalError <| Unsupported "Port declaration")
 
                     InfixDeclaration _ ->
-                        Err (EvalError <| Unsupported "InfixDeclaration")
+                        Err (EvalError <| Unsupported "Infix declaration")
 
                     Destructuring _ _ ->
-                        Err (EvalError <| Unsupported "Destructuring")
+                        Err (EvalError <| Unsupported "Top level destructuring")
 
                     AliasDeclaration _ ->
                         Ok env
@@ -278,7 +278,7 @@ evalExpression env expression =
             Err <| Unsupported "branch 'PrefixOperator _' not implemented"
 
         Expression.Operator _ ->
-            Err <| Unsupported "branch 'Operator _' not implemented"
+            Err <| Unsupported "Free operator"
 
         Expression.Integer i ->
             Ok (Value.Int i)
@@ -289,8 +289,20 @@ evalExpression env expression =
         Expression.Floatable f ->
             Ok (Value.Float f)
 
-        Expression.Negation _ ->
-            Err <| Unsupported "branch 'Negation _' not implemented"
+        Expression.Negation (Node _ child) ->
+            evalExpression env child
+                |> Result.andThen
+                    (\value ->
+                        case value of
+                            Value.Int i ->
+                                Ok <| Value.Int -i
+
+                            Value.Float f ->
+                                Ok <| Value.Float -f
+
+                            _ ->
+                                Err <| TypeError "Trying to negate a non-number"
+                    )
 
         Expression.Literal string ->
             Ok (Value.String string)
