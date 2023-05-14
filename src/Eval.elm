@@ -11,11 +11,12 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Env exposing (Env)
 import FastDict as Dict
+import List.Extra
 import Parser exposing (DeadEnd)
 import Result.Extra
 import Result.MyExtra
 import Unicode
-import Value exposing (EvalError(..), Value)
+import Value exposing (EvalError(..), Value(..))
 
 
 {-| Variant names for list
@@ -126,16 +127,10 @@ evalExpression env expression =
         Expression.OperatorApplication opName _ _ _ ->
             Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
 
-        Expression.Application ((Node _ first) :: rest) ->
-            case evalExpression env first of
-                Err e ->
-                    Err e
-
-                Ok val ->
-                    evalApply env val rest
-
-        Expression.Application _ ->
-            Err <| TypeError "Application with less than two args"
+        Expression.Application args ->
+            args
+                |> Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg)
+                |> Result.andThen evalApply
 
         Expression.FunctionOrValue moduleName name ->
             if isVariant name then
@@ -168,7 +163,7 @@ evalExpression env expression =
                     Nothing ->
                         case Dict.get fullName env.functions of
                             Just function ->
-                                functionToValue env function
+                                evalFunction env function
 
                             Nothing ->
                                 Err <| NameError <| fullName ++ " not found"
@@ -236,10 +231,19 @@ evalExpression env expression =
                 addDeclaration letDeclaration acc =
                     case letDeclaration of
                         Expression.LetFunction function ->
-                            Ok <|
-                                Env.addFunction
-                                    (Node.value function.declaration)
-                                    acc
+                            let
+                                implementation : FunctionImplementation
+                                implementation =
+                                    Node.value function.declaration
+                            in
+                            evalFunction env implementation
+                                |> Result.map
+                                    (\functionVal ->
+                                        Env.addValue
+                                            (Node.value implementation.name)
+                                            functionVal
+                                            acc
+                                    )
 
                         Expression.LetDestructuring _ _ ->
                             Err <| Unsupported "LetDestructuring"
@@ -311,6 +315,19 @@ evalExpression env expression =
 
         Expression.GLSLExpression _ ->
             Err <| Unsupported "GLSL not supported"
+
+
+evalFunction : Env -> FunctionImplementation -> Result EvalError Value
+evalFunction env function =
+    if List.isEmpty function.arguments then
+        evalExpression env (Node.value function.expression)
+
+    else
+        PartiallyApplied env
+            []
+            function.arguments
+            (Node.value function.expression)
+            |> Ok
 
 
 isVariant : String -> Bool
@@ -430,11 +447,11 @@ match pattern value =
             -- so if we assume the code typechecks we can skip the module name check
             if namePattern.name == variant.name then
                 let
-                    go :
+                    matchNamedPatternHelper :
                         Env
                         -> ( List (Node Pattern), List Value )
                         -> Result EvalError (Maybe Env)
-                    go env queue =
+                    matchNamedPatternHelper env queue =
                         case queue of
                             ( [], [] ) ->
                                 ok env
@@ -443,13 +460,13 @@ match pattern value =
                                 match patternHead argHead
                                     |> andThen
                                         (\newEnv ->
-                                            go (Env.with newEnv env) ( patternTail, argTail )
+                                            matchNamedPatternHelper (Env.with newEnv env) ( patternTail, argTail )
                                         )
 
                             _ ->
                                 typeError "Mismatched number of arguments to variant"
                 in
-                go Env.empty ( argsPatterns, args )
+                matchNamedPatternHelper Env.empty ( argsPatterns, args )
 
             else
                 noMatch
@@ -554,67 +571,70 @@ match pattern value =
             Debug.todo "branch '( AsPattern _ _, _ )' not implemented"
 
 
-evalApply : Env -> Value -> List (Node Expression) -> Result EvalError Value
-evalApply env val args =
-    case args of
+evalApply : List Value -> Result EvalError Value
+evalApply values =
+    case values of
         [] ->
-            Ok val
+            Err <| TypeError "Empty application"
 
-        (Node _ first) :: rest ->
-            case val of
-                Value.Lambda f ->
-                    case evalExpression env first of
-                        Err e ->
-                            Err e
-
-                        Ok rValue ->
-                            case f rValue of
-                                Err e ->
-                                    Err e
-
-                                Ok newF ->
-                                    evalApply env newF rest
-
+        first :: rest ->
+            case first of
                 Value.Custom name customArgs ->
-                    args
-                        |> Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg)
-                        |> Result.map
-                            (\added -> Value.Custom name (customArgs ++ added))
+                    Ok (Value.Custom name (customArgs ++ rest))
+
+                Value.PartiallyApplied localEnv oldArgs patterns implementation ->
+                    let
+                        newArgs : List Value
+                        newArgs =
+                            oldArgs ++ rest
+
+                        newArgsLength : Int
+                        newArgsLength =
+                            List.length newArgs
+
+                        patternsLength : Int
+                        patternsLength =
+                            List.length patterns
+                    in
+                    if newArgsLength < patternsLength then
+                        Ok <| Value.PartiallyApplied localEnv newArgs patterns implementation
+
+                    else
+                        let
+                            ( used, leftover ) =
+                                List.Extra.splitAt patternsLength newArgs
+
+                            fakeName : QualifiedNameRef
+                            fakeName =
+                                { moduleName = [], name = "..." }
+
+                            maybeNewEnv : Result EvalError (Maybe Env)
+                            maybeNewEnv =
+                                match
+                                    (NamedPattern fakeName patterns)
+                                    (Custom fakeName used)
+                        in
+                        case maybeNewEnv of
+                            Err e ->
+                                Err e
+
+                            Ok Nothing ->
+                                Err (Debug.todo "WAT")
+
+                            Ok (Just newEnv) ->
+                                if List.isEmpty leftover then
+                                    evalExpression newEnv implementation
+
+                                else
+                                    case evalExpression newEnv implementation of
+                                        Err e ->
+                                            Err e
+
+                                        Ok result ->
+                                            evalApply (result :: leftover)
 
                 _ ->
                     Err <| TypeError "Trying to apply a non-lambda non-variant"
-
-
-functionToValue : Env -> FunctionImplementation -> Result EvalError Value
-functionToValue env function =
-    let
-        go : Env -> List Pattern -> Result EvalError Value
-        go newEnv args =
-            case args of
-                [] ->
-                    evalExpression newEnv (Node.value function.expression)
-
-                pattern :: tail ->
-                    Ok
-                        (Value.Lambda <|
-                            \varValue ->
-                                case match pattern varValue of
-                                    Err e ->
-                                        Err e
-
-                                    Ok Nothing ->
-                                        let
-                                            message : String
-                                            message =
-                                                "Error in pattern matching while calling " ++ Node.value function.name
-                                        in
-                                        Err <| TypeError message
-
-                                    Ok (Just add) ->
-                                        go (newEnv |> Env.with add) tail
-                        )
-    in
-    go env (List.map Node.value function.arguments)
 
 
 evalNumberOperator :

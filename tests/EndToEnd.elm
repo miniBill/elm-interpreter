@@ -16,6 +16,8 @@ suite =
         , customTypeTest
         , standardLibraryTest
         , tailCallTest
+        , closureTest
+        , tooMuchApply
         ]
 
 
@@ -73,6 +75,20 @@ tailCallTest =
     evalTest "Tail Call"
         "let boom x = if x <= 0 then False else boom (x - 1) in boom 100000"
         (Bool False)
+
+
+closureTest : Test
+closureTest =
+    evalTest "Closure"
+        "let a = 3 in let closed x = a + x in closed 2"
+        (Int 6)
+
+
+tooMuchApply : Test
+tooMuchApply =
+    evalTest "Too much apply"
+        "(\\a -> Foo a) 0 1 2"
+        (Custom { moduleName = [], name = "Foo" } [ Int 0, Int 1, Int 2 ])
 
 
 evalTest : String -> String -> Value -> Test

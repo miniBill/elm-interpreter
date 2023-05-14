@@ -2,14 +2,12 @@ module Env exposing (Env, addFunction, addValue, empty, with)
 
 import Elm.Syntax.Expression exposing (FunctionImplementation)
 import Elm.Syntax.Node as Node
-import FastDict as Dict exposing (Dict)
+import FastDict as Dict
 import Value exposing (Value)
 
 
 type alias Env =
-    { functions : Dict String FunctionImplementation
-    , values : Dict String Value
-    }
+    Value.Env
 
 
 addValue : String -> Value -> Env -> Env

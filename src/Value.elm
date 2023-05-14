@@ -1,7 +1,8 @@
-module Value exposing (EvalError(..), Value(..), toString)
+module Value exposing (Env, EvalError(..), Value(..), toString)
 
-import Elm.Syntax.Expression as Expression
-import Elm.Syntax.Pattern exposing (QualifiedNameRef)
+import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
+import Elm.Syntax.Node exposing (Node)
+import Elm.Syntax.Pattern exposing (Pattern, QualifiedNameRef)
 import Elm.Writer
 import FastDict exposing (Dict)
 import Maybe.Extra
@@ -19,7 +20,13 @@ type Value
     | Triple Value Value Value
     | Record (Dict String Value)
     | Custom QualifiedNameRef (List Value)
-    | Lambda (Value -> Result EvalError Value)
+    | PartiallyApplied Env (List Value) (List (Node Pattern)) Expression
+
+
+type alias Env =
+    { functions : Dict String FunctionImplementation
+    , values : Dict String Value
+    }
 
 
 type EvalError
@@ -28,7 +35,7 @@ type EvalError
     | NameError String
 
 
-toExpression : Value -> Maybe Expression.Expression
+toExpression : Value -> Maybe Expression
 toExpression value =
     case value of
         String s ->
@@ -84,8 +91,8 @@ toExpression value =
                         >> Expression.Application
                     )
 
-        Lambda _ ->
-            Nothing
+        PartiallyApplied _ _ _ _ ->
+            Debug.todo "branch 'PartiallyApplied _ _ _' not implemented"
 
 
 boolToString : Bool -> String
