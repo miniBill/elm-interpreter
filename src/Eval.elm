@@ -126,16 +126,16 @@ evalExpression env expression =
         Expression.OperatorApplication opName _ _ _ ->
             Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
 
-        Expression.Application [] ->
-            Err <| TypeError "Empty Application"
-
         Expression.Application ((Node _ first) :: rest) ->
-            Result.MyExtra.combineFoldl
-                (\(Node _ arg) acc ->
-                    evalApply env acc arg
-                )
-                (evalExpression env first)
-                rest
+            case evalExpression env first of
+                Err e ->
+                    Err e
+
+                Ok val ->
+                    evalApply env val rest
+
+        Expression.Application _ ->
+            Err <| TypeError "Application with less than two args"
 
         Expression.FunctionOrValue moduleName name ->
             if isVariant name then
@@ -499,23 +499,35 @@ match pattern value =
             Debug.todo "branch '( AsPattern _ _, _ )' not implemented"
 
 
-evalApply : Env -> Value -> Expression -> Result EvalError Value
-evalApply env lValue r =
-    case lValue of
-        Value.Lambda f ->
-            evalExpression env r
-                |> Result.andThen
-                    (\rValue ->
-                        f rValue
-                    )
+evalApply : Env -> Value -> List (Node Expression) -> Result EvalError Value
+evalApply env val args =
+    case args of
+        [] ->
+            Ok val
 
-        Value.Custom name args ->
-            evalExpression env r
-                |> Result.map
-                    (\rValue -> Value.Custom name (args ++ [ rValue ]))
+        (Node _ first) :: rest ->
+            case val of
+                Value.Lambda f ->
+                    case evalExpression env first of
+                        Err e ->
+                            Err e
 
-        _ ->
-            Err <| TypeError "Trying to apply a non-lambda"
+                        Ok rValue ->
+                            case f rValue of
+                                Err e ->
+                                    Err e
+
+                                Ok newF ->
+                                    evalApply env newF rest
+
+                Value.Custom name customArgs ->
+                    args
+                        |> Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg)
+                        |> Result.map
+                            (\added -> Value.Custom name (customArgs ++ added))
+
+                _ ->
+                    Err <| TypeError "Trying to apply a non-lambda non-variant"
 
 
 functionToValue : Env -> FunctionImplementation -> Result EvalError Value
