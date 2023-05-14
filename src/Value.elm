@@ -4,7 +4,7 @@ import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImpleme
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern, QualifiedNameRef)
 import Elm.Writer
-import FastDict exposing (Dict)
+import FastDict as Dict exposing (Dict)
 import Maybe.Extra
 import Syntax exposing (fakeNode)
 
@@ -80,8 +80,16 @@ toExpression value =
                 (toExpression m)
                 (toExpression r)
 
-        Record _ ->
-            Debug.todo "branch 'Record _' not implemented"
+        Record fields ->
+            fields
+                |> Dict.toList
+                |> Maybe.Extra.traverse
+                    (\( fieldName, fieldValue ) ->
+                        Maybe.map
+                            (\expr -> fakeNode ( fakeNode fieldName, fakeNode expr ))
+                            (toExpression fieldValue)
+                    )
+                |> Maybe.map Expression.RecordExpr
 
         Custom name args ->
             (Just (Expression.FunctionOrValue name.moduleName name.name) :: List.map toExpression args)
