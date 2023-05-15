@@ -83,9 +83,22 @@ tailCallTest =
 
 closureTest : Test
 closureTest =
-    evalTest "Closure"
-        "let a = 3 in let closed x = a + x in closed 2"
-        (Int 5)
+    describe "Closures"
+        [ evalTest "Simple"
+            "let a = 3 in let closed x = a + x in closed 2"
+            (Int 5)
+        , evalTest "Recursive" """let
+    closure =
+        let
+            odd x =
+                x < 0 || even (x - 1)
+            even x =
+                x <= 0 || odd (x - 1)
+        in
+        odd
+in
+closure 3""" (Bool True)
+        ]
 
 
 tooMuchApplyTest : Test
