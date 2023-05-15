@@ -126,8 +126,14 @@ evalExpression env expression =
                         ( "<=", Infix.Left ) ->
                             evalRelationOperator "<=" (<=) (<=) lvalue rvalue
 
+                        ( "<", Infix.Left ) ->
+                            evalRelationOperator "<" (<) (<) lvalue rvalue
+
                         ( ">=", Infix.Left ) ->
                             evalRelationOperator ">=" (>=) (>=) lvalue rvalue
+
+                        ( ">", Infix.Left ) ->
+                            evalRelationOperator ">" (>) (>) lvalue rvalue
 
                         _ ->
                             Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
