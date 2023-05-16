@@ -20,7 +20,7 @@ type Value
     | Triple Value Value Value
     | Record (Dict String Value)
     | Custom QualifiedNameRef (List Value)
-    | PartiallyApplied Env (List Value) (List (Node Pattern)) Expression
+    | PartiallyApplied Env (List Value) (List (Node Pattern)) (Node Expression)
 
 
 type alias Env =
@@ -103,7 +103,7 @@ toExpression value =
             Just
                 (Expression.LambdaExpression
                     { args = patterns
-                    , expression = fakeNode implementation
+                    , expression = implementation
                     }
                 )
 

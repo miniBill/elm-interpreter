@@ -221,7 +221,7 @@ evalExpression env (Node _ expression) =
 
                                     Ok (Just newEnv) ->
                                         case implementation of
-                                            Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name ->
+                                            Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
                                                 let
                                                     fullName : String
                                                     fullName =
@@ -235,7 +235,7 @@ evalExpression env (Node _ expression) =
                                                         f values
 
                                             _ ->
-                                                evalExpression (Env.with newEnv env) (fakeNode implementation)
+                                                evalExpression (Env.with newEnv env) implementation
 
                 _ ->
                     Err <| TypeError "Trying to apply a non-lambda non-variant"
@@ -278,13 +278,13 @@ evalExpression env (Node _ expression) =
                                     PartiallyApplied env
                                         []
                                         (List.repeat argCount (fakeNode AllPattern))
-                                        (Expression.FunctionOrValue moduleName name)
+                                        (fakeNode <| Expression.FunctionOrValue moduleName name)
                                         |> Ok
 
                     _ ->
                         case Dict.get fullName env.values of
                             Just (PartiallyApplied localEnv [] [] implementation) ->
-                                evalExpression (Env.with localEnv env) (fakeNode implementation)
+                                evalExpression (Env.with localEnv env) implementation
 
                             Just value ->
                                 Ok value
@@ -299,7 +299,7 @@ evalExpression env (Node _ expression) =
                                             PartiallyApplied env
                                                 []
                                                 function.arguments
-                                                (Node.value function.expression)
+                                                function.expression
                                                 |> Ok
 
                                     Nothing ->
@@ -413,7 +413,7 @@ evalExpression env (Node _ expression) =
                                     PartiallyApplied env
                                         []
                                         implementation.arguments
-                                        (Node.value implementation.expression)
+                                        implementation.expression
                             in
                             Env.addValue
                                 (Node.value implementation.name)
@@ -448,7 +448,7 @@ evalExpression env (Node _ expression) =
             evalCase env caseExpr
 
         Expression.LambdaExpression lambda ->
-            Ok <| PartiallyApplied env [] lambda.args (Node.value lambda.expression)
+            Ok <| PartiallyApplied env [] lambda.args lambda.expression
 
         Expression.RecordExpr fields ->
             fields
@@ -501,9 +501,10 @@ evalExpression env (Node _ expression) =
                 Env.empty
                 []
                 [ fakeNode (VarPattern "r") ]
-                (Expression.RecordAccess
-                    (fakeNode <| Expression.FunctionOrValue [] "r")
-                    (fakeNode <| String.dropLeft 1 field)
+                (fakeNode <|
+                    Expression.RecordAccess
+                        (fakeNode <| Expression.FunctionOrValue [] "r")
+                        (fakeNode <| String.dropLeft 1 field)
                 )
                 |> Ok
 
@@ -537,10 +538,11 @@ evalOperator opName =
     PartiallyApplied Env.empty
         []
         [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
-        (Expression.OperatorApplication opName
-            Infix.Non
-            (fakeNode <| Expression.FunctionOrValue [] "l")
-            (fakeNode <| Expression.FunctionOrValue [] "r")
+        (fakeNode <|
+            Expression.OperatorApplication opName
+                Infix.Non
+                (fakeNode <| Expression.FunctionOrValue [] "l")
+                (fakeNode <| Expression.FunctionOrValue [] "r")
         )
         |> Ok
 
