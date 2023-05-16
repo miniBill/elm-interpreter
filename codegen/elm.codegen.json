@@ -3,8 +3,11 @@
     "codegen-helpers": {
         "packages": {
             "elm/core": "1.0.5",
-            "stil4m/elm-syntax": "7.2.9"
+            "stil4m/elm-syntax": "7.2.9",
+            "miniBill/elm-fast-dict": "1.1.0"
         },
-        "local": []
+        "local": [
+            "src/"
+        ]
     }
 }

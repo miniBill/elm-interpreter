@@ -1,6 +1,6 @@
 module Eval exposing (Error(..), eval, evalModule)
 
-import Core.Basics
+import Core
 import Elm.Parser
 import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
@@ -75,6 +75,13 @@ evalModule source expression =
 
 buildEnv : File -> Result Error Env
 buildEnv file =
+    let
+        coreEnv : Env
+        coreEnv =
+            { functions = Core.functions
+            , values = Dict.empty
+            }
+    in
     file.declarations
         |> Result.MyExtra.combineFoldl
             (\(Node _ decl) env ->
@@ -101,7 +108,7 @@ buildEnv file =
                     CustomTypeDeclaration _ ->
                         Ok env
             )
-            (Ok Core.Basics.env)
+            (Ok coreEnv)
 
 
 evalExpression : Env -> Expression -> Result EvalError Value
