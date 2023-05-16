@@ -70,7 +70,7 @@ evalModule source expression =
         |> Result.andThen
             (\env ->
                 Result.mapError EvalError <|
-                    evalExpression env expression
+                    evalExpression env (fakeNode expression)
             )
 
 
@@ -112,8 +112,8 @@ buildEnv file =
             (Ok coreEnv)
 
 
-evalExpression : Env -> Expression -> Result EvalError Value
-evalExpression env expression =
+evalExpression : Env -> Node Expression -> Result EvalError Value
+evalExpression env (Node _ expression) =
     case expression of
         Expression.UnitExpr ->
             Ok Value.Unit
@@ -149,14 +149,14 @@ evalExpression env expression =
         Expression.Application [] ->
             Err <| TypeError "Empty application"
 
-        Expression.Application ((Node _ first) :: rest) ->
+        Expression.Application (first :: rest) ->
             case evalExpression env first of
                 Err e ->
                     Err e
 
                 Ok (Value.Custom name customArgs) ->
                     rest
-                        |> Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg)
+                        |> Result.Extra.combineMap (\arg -> evalExpression env arg)
                         |> Result.map (\values -> Value.Custom name (customArgs ++ values))
 
                 Ok (Value.PartiallyApplied localEnv oldArgs patterns implementation) ->
@@ -179,23 +179,24 @@ evalExpression env expression =
                     if oldArgsLength + restLength < patternsLength then
                         -- Still not enough
                         rest
-                            |> Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg)
+                            |> Result.Extra.combineMap (\arg -> evalExpression env arg)
                             |> Result.map (\values -> Value.PartiallyApplied localEnv (oldArgs ++ values) patterns implementation)
 
                     else if oldArgsLength + restLength > patternsLength then
                         -- Too many args, we split
                         evalExpression
                             env
-                            (Expression.Application
-                                (fakeNode
-                                    (Expression.Application (fakeNode first :: used))
-                                    :: leftover
-                                )
+                            (fakeNode <|
+                                Expression.Application
+                                    (fakeNode
+                                        (Expression.Application (first :: used))
+                                        :: leftover
+                                    )
                             )
 
                     else
                         -- Just right, we special case this for TCO
-                        case Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg) rest of
+                        case Result.Extra.combineMap (\arg -> evalExpression env arg) rest of
                             Err e ->
                                 Err e
 
@@ -234,7 +235,7 @@ evalExpression env expression =
                                                         f values
 
                                             _ ->
-                                                evalExpression (Env.with newEnv env) implementation
+                                                evalExpression (Env.with newEnv env) (fakeNode implementation)
 
                 _ ->
                     Err <| TypeError "Trying to apply a non-lambda non-variant"
@@ -283,7 +284,7 @@ evalExpression env expression =
                     _ ->
                         case Dict.get fullName env.values of
                             Just (PartiallyApplied localEnv [] [] implementation) ->
-                                evalExpression (Env.with localEnv env) implementation
+                                evalExpression (Env.with localEnv env) (fakeNode implementation)
 
                             Just value ->
                                 Ok value
@@ -292,7 +293,7 @@ evalExpression env expression =
                                 case Dict.get fullName env.functions of
                                     Just function ->
                                         if List.isEmpty function.arguments then
-                                            evalExpression env (Node.value function.expression)
+                                            evalExpression env function.expression
 
                                         else
                                             PartiallyApplied env
@@ -305,7 +306,7 @@ evalExpression env expression =
                                         Err <|
                                             NameError fullName
 
-        Expression.IfBlock (Node _ cond) (Node _ true) (Node _ false) ->
+        Expression.IfBlock cond true false ->
             case evalExpression env cond of
                 Err e ->
                     Err e
@@ -336,7 +337,7 @@ evalExpression env expression =
         Expression.Floatable f ->
             Ok (Value.Float f)
 
-        Expression.Negation (Node _ child) ->
+        Expression.Negation child ->
             evalExpression env child
                 |> Result.andThen
                     (\value ->
@@ -363,7 +364,7 @@ evalExpression env expression =
                     Ok Value.Unit
 
                 [ c ] ->
-                    evalExpression env (Node.value c)
+                    evalExpression env c
 
                 [ l, r ] ->
                     evalExpression2
@@ -374,14 +375,14 @@ evalExpression env expression =
 
                 [ l, m, r ] ->
                     Result.map3 Value.Triple
-                        (evalExpression env (Node.value l))
-                        (evalExpression env (Node.value m))
-                        (evalExpression env (Node.value r))
+                        (evalExpression env l)
+                        (evalExpression env m)
+                        (evalExpression env r)
 
                 _ :: _ :: _ :: _ :: _ ->
                     Err <| TypeError "Tuples with more than three elements are not supported"
 
-        Expression.ParenthesizedExpression (Node _ child) ->
+        Expression.ParenthesizedExpression child ->
             evalExpression env child
 
         Expression.LetExpression letBlock ->
@@ -420,7 +421,7 @@ evalExpression env expression =
                                 acc
                                 |> Ok
 
-                        Expression.LetDestructuring (Node _ letPattern) (Node _ letExpression) ->
+                        Expression.LetDestructuring (Node _ letPattern) letExpression ->
                             case evalExpression env letExpression of
                                 Err e ->
                                     Err e
@@ -441,7 +442,7 @@ evalExpression env expression =
                     Err e
 
                 Ok ne ->
-                    evalExpression ne (Node.value letBlock.expression)
+                    evalExpression ne letBlock.expression
 
         Expression.CaseExpression caseExpr ->
             evalCase env caseExpr
@@ -452,7 +453,7 @@ evalExpression env expression =
         Expression.RecordExpr fields ->
             fields
                 |> Result.Extra.combineMap
-                    (\(Node _ ( Node _ fieldName, Node _ fieldExpr )) ->
+                    (\(Node _ ( Node _ fieldName, fieldExpr )) ->
                         Result.map
                             (Tuple.pair fieldName)
                             (evalExpression env fieldExpr)
@@ -467,7 +468,7 @@ evalExpression env expression =
         Expression.ListExpr elements ->
             elements
                 |> Result.Extra.combineMap
-                    (\element -> evalExpression env (Node.value element))
+                    (\element -> evalExpression env element)
                 |> Result.map
                     (\values ->
                         List.foldr
@@ -478,7 +479,7 @@ evalExpression env expression =
                             values
                     )
 
-        Expression.RecordAccess (Node _ recordExpr) (Node _ field) ->
+        Expression.RecordAccess recordExpr (Node _ field) ->
             evalExpression env recordExpr
                 |> Result.andThen
                     (\value ->
@@ -507,13 +508,13 @@ evalExpression env expression =
                 |> Ok
 
         Expression.RecordUpdateExpression (Node _ name) setters ->
-            case evalExpression env (Expression.FunctionOrValue [] name) of
+            case evalExpression env (fakeNode <| Expression.FunctionOrValue [] name) of
                 Err e ->
                     Err e
 
                 Ok (Value.Record fields) ->
                     Result.MyExtra.combineFoldl
-                        (\(Node _ ( Node _ fieldName, Node _ fieldExpression )) acc ->
+                        (\(Node _ ( Node _ fieldName, fieldExpression )) acc ->
                             evalExpression env fieldExpression
                                 |> Result.map
                                     (\fieldValue ->
@@ -556,14 +557,14 @@ isVariant name =
 
 evalCase : Env -> Expression.CaseBlock -> Result EvalError Value
 evalCase env { expression, cases } =
-    case evalExpression env (Node.value expression) of
+    case evalExpression env expression of
         Err e ->
             Err e
 
         Ok exprValue ->
             cases
                 |> Result.MyExtra.combineFoldl
-                    (\( Node _ pattern, Node _ result ) acc ->
+                    (\( Node _ pattern, result ) acc ->
                         case acc of
                             Just _ ->
                                 Ok acc
@@ -860,12 +861,12 @@ evalExpression2 :
     -> (Value -> Value -> Result EvalError Value)
     -> Result EvalError Value
 evalExpression2 env l r f =
-    case evalExpression env (Node.value l) of
+    case evalExpression env l of
         Err e ->
             Err e
 
         Ok lValue ->
-            case evalExpression env (Node.value r) of
+            case evalExpression env r of
                 Err e ->
                     Err e
 
