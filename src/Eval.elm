@@ -269,12 +269,16 @@ evalExpression env expression =
                             Nothing ->
                                 Err <| NameError fullName
 
-                            Just ( argCount, _ ) ->
-                                PartiallyApplied env
-                                    []
-                                    (List.repeat argCount (fakeNode AllPattern))
-                                    (Expression.FunctionOrValue moduleName name)
-                                    |> Ok
+                            Just ( argCount, f ) ->
+                                if argCount == 0 then
+                                    f []
+
+                                else
+                                    PartiallyApplied env
+                                        []
+                                        (List.repeat argCount (fakeNode AllPattern))
+                                        (Expression.FunctionOrValue moduleName name)
+                                        |> Ok
 
                     _ ->
                         case Dict.get fullName env.values of
