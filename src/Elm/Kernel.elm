@@ -17,6 +17,20 @@ functions =
     , ( "Elm.Kernel.Basics.ceiling", oneFloat Int ceiling )
     , ( "Elm.Kernel.Basics.cos", oneFloat Float cos )
     , ( "Elm.Kernel.Basics.e", constant Float e )
+    , ( "Elm.Kernel.Basics.fdiv", twoFloats Float (/) )
+    , ( "Elm.Kernel.Basics.floor", oneFloat Int floor )
+    , ( "Elm.Kernel.Basics.idiv", twoInts Int (//) )
+    , ( "Elm.Kernel.Basics.isInfinite", oneFloat Bool isInfinite )
+    , ( "Elm.Kernel.Basics.isNaN", oneFloat Bool isNaN )
+    , ( "Elm.Kernel.Basics.log", oneFloat Float (logBase e) )
+    , ( "Elm.Kernel.Basics.modBy", twoInts Int modBy )
+    , ( "Elm.Kernel.Basics.mul", twoNumbers Int Float (*) (*) )
+    , ( "Elm.Kernel.Basics.not", oneBool Bool not )
+    , ( "Elm.Kernel.Basics.or", twoBools Bool (||) )
+    , ( "Elm.Kernel.Basics.pi", constant Float pi )
+    , ( "Elm.Kernel.Basics.pow", twoNumbers Int Float (^) (^) )
+    , ( "Elm.Kernel.Basics.remainderBy", twoInts Int remainderBy )
+    , ( "Elm.Kernel.Basics.round", oneFloat Int round )
 
     -- Elm.Kernel.Bitwise
     , ( "Elm.Kernel.Bitwise.and", twoInts Int Bitwise.and )
@@ -79,6 +93,19 @@ oneFloat toValue f =
 
             _ ->
                 Err <| TypeError "Expected one Float"
+    )
+
+
+oneBool : (res -> Value) -> (Bool -> res) -> ( Int, List Value -> Result EvalError Value )
+oneBool toValue f =
+    ( 1
+    , \args ->
+        case args of
+            [ Bool n ] ->
+                Ok <| toValue (f n)
+
+            _ ->
+                Err <| TypeError "Expected one Bool"
     )
 
 
