@@ -46,6 +46,7 @@ config =
     ]
         |> List.map
             (\rule ->
-                rule 
+                rule
                     |> Rule.ignoreErrorsForDirectories [ "Gen" ]
+                    |> Rule.ignoreErrorsForDirectories [ "generated" ]
             )
