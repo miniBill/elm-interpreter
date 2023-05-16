@@ -139,15 +139,15 @@ toFile moduleSource =
 
 
 normalModuleToFile : Node ModuleName.ModuleName -> File.File -> ( Maybe (List String), Elm.File )
-normalModuleToFile moduleName file =
+normalModuleToFile (Node _ moduleName) file =
     let
         generatedModuleName : List String
         generatedModuleName =
-            "Core" :: Node.value moduleName
+            "Core" :: moduleName
 
         namesAndDeclarations =
             file.declarations
-                |> List.filterMap declarationToGen
+                |> List.filterMap (declarationToGen moduleName)
 
         names : List String
         names =
@@ -184,8 +184,8 @@ normalModuleToFile moduleName file =
     )
 
 
-declarationToGen : Node Declaration.Declaration -> Maybe ( String, Elm.Declaration )
-declarationToGen (Node _ declaration) =
+declarationToGen : ModuleName.ModuleName -> Node Declaration.Declaration -> Maybe ( String, Elm.Declaration )
+declarationToGen moduleName (Node _ declaration) =
     case declaration of
         Declaration.FunctionDeclaration function ->
             let
@@ -197,7 +197,17 @@ declarationToGen (Node _ declaration) =
                 name =
                     Node.value implementation.name
             in
-            Just ( name, functionImplementationToGen implementation |> Elm.declaration name )
+            Just
+                ( name
+                , functionImplementationToGen
+                    { implementation
+                        | name =
+                            Node
+                                (Node.range implementation.name)
+                                (String.join "." (moduleName ++ [ name ]))
+                    }
+                    |> Elm.declaration name
+                )
 
         _ ->
             Nothing
