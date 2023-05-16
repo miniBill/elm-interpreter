@@ -1,6 +1,7 @@
 module Eval exposing (Error(..), eval, evalModule)
 
 import Core
+import Elm.Kernel
 import Elm.Parser
 import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
@@ -181,7 +182,18 @@ evalExpression env expression =
                             |> Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg)
                             |> Result.map (\values -> Value.PartiallyApplied localEnv (oldArgs ++ values) patterns implementation)
 
-                    else if oldArgsLength + restLength == patternsLength then
+                    else if oldArgsLength + restLength > patternsLength then
+                        -- Too many args, we split
+                        evalExpression
+                            env
+                            (Expression.Application
+                                (fakeNode
+                                    (Expression.Application (fakeNode first :: used))
+                                    :: leftover
+                                )
+                            )
+
+                    else
                         -- Just right, we special case this for TCO
                         case Result.Extra.combineMap (\(Node _ arg) -> evalExpression env arg) rest of
                             Err e ->
@@ -207,18 +219,22 @@ evalExpression env expression =
                                         Err (TypeError "Could not match lambda patterns")
 
                                     Ok (Just newEnv) ->
-                                        evalExpression (Env.with newEnv env) implementation
+                                        case implementation of
+                                            Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name ->
+                                                let
+                                                    fullName : String
+                                                    fullName =
+                                                        String.join "." <| moduleName ++ [ name ]
+                                                in
+                                                case Dict.get fullName Elm.Kernel.functions of
+                                                    Nothing ->
+                                                        Err <| NameError fullName
 
-                    else
-                        -- Too many args, we split
-                        evalExpression
-                            env
-                            (Expression.Application
-                                (fakeNode
-                                    (Expression.Application (fakeNode first :: used))
-                                    :: leftover
-                                )
-                            )
+                                                    Just ( _, f ) ->
+                                                        f values
+
+                                            _ ->
+                                                evalExpression (Env.with newEnv env) implementation
 
                 _ ->
                     Err <| TypeError "Trying to apply a non-lambda non-variant"
@@ -247,29 +263,43 @@ evalExpression env expression =
                         (moduleName ++ [ name ])
                             |> String.join "."
                 in
-                case Dict.get fullName env.values of
-                    Just (PartiallyApplied localEnv [] [] implementation) ->
-                        evalExpression (Env.with localEnv env) implementation
+                case moduleName of
+                    "Elm" :: "Kernel" :: _ ->
+                        case Dict.get fullName Elm.Kernel.functions of
+                            Nothing ->
+                                Err <| NameError fullName
 
-                    Just value ->
-                        Ok value
+                            Just ( argCount, _ ) ->
+                                PartiallyApplied env
+                                    []
+                                    (List.repeat argCount (fakeNode AllPattern))
+                                    (Expression.FunctionOrValue moduleName name)
+                                    |> Ok
 
-                    Nothing ->
-                        case Dict.get fullName env.functions of
-                            Just function ->
-                                if List.isEmpty function.arguments then
-                                    evalExpression env (Node.value function.expression)
+                    _ ->
+                        case Dict.get fullName env.values of
+                            Just (PartiallyApplied localEnv [] [] implementation) ->
+                                evalExpression (Env.with localEnv env) implementation
 
-                                else
-                                    PartiallyApplied env
-                                        []
-                                        function.arguments
-                                        (Node.value function.expression)
-                                        |> Ok
+                            Just value ->
+                                Ok value
 
                             Nothing ->
-                                Err <|
-                                    NameError fullName
+                                case Dict.get fullName env.functions of
+                                    Just function ->
+                                        if List.isEmpty function.arguments then
+                                            evalExpression env (Node.value function.expression)
+
+                                        else
+                                            PartiallyApplied env
+                                                []
+                                                function.arguments
+                                                (Node.value function.expression)
+                                                |> Ok
+
+                                    Nothing ->
+                                        Err <|
+                                            NameError fullName
 
         Expression.IfBlock (Node _ cond) (Node _ true) (Node _ false) ->
             case evalExpression env cond of
