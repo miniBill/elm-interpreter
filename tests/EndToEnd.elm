@@ -22,6 +22,7 @@ suite =
         , mutualRecursionTest
         , tuplesTest
         , negationTest
+        , kernelTest
         ]
 
 
@@ -155,7 +156,20 @@ tuplesTest =
 
 negationTest : Test
 negationTest =
-    evalTest "Negation" "-2" (Int -2)
+    evalTest_ "-2" (Int -2)
+
+
+evalTest_ : String -> Value -> Test
+evalTest_ expr value =
+    evalTest expr expr value
+
+
+kernelTest : Test
+kernelTest =
+    describe "Kernel"
+        [ evalTest_ "String.length \"a\"" (Int 1)
+        , evalTest_ "Basics.e" (Float e)
+        ]
 
 
 evalTest : String -> String -> Value -> Test
