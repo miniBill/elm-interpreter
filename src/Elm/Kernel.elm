@@ -210,6 +210,7 @@ one ( firstSelector, _, firstName ) To ( _, output, _ ) f =
 two : Selector a -> Selector b -> To -> Selector out -> (a -> b -> out) -> ( Int, List Value -> Result EvalError Value )
 two ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) To ( _, output, _ ) f =
     let
+        err : () -> Result EvalError value
         err () =
             if firstName == secondName then
                 Err <| TypeError <| "Expected two " ++ firstName ++ "s"
