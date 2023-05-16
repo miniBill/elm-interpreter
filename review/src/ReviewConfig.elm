@@ -44,3 +44,8 @@ config =
     , NoUnused.Variables.rule
     , Simplify.rule Simplify.defaults
     ]
+        |> List.map
+            (\rule ->
+                rule 
+                    |> Rule.ignoreErrorsForDirectories [ "Gen" ]
+            )
