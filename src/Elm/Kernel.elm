@@ -2,6 +2,7 @@ module Elm.Kernel exposing (functions)
 
 import Bitwise
 import FastDict as Dict exposing (Dict)
+import Maybe.Extra
 import Value exposing (EvalError(..), Value(..))
 
 
@@ -51,6 +52,15 @@ functions =
     -- Elm.Kernel.Char
     , ( "Elm.Kernel.Char.fromCode", one int to char Char.fromCode )
     , ( "Elm.Kernel.Char.toCode", one char to int Char.toCode )
+    , ( "Elm.Kernel.Char.toLocaleLower", one char to char Char.toLocaleLower )
+    , ( "Elm.Kernel.Char.toLocaleUpper", one char to char Char.toLocaleUpper )
+    , ( "Elm.Kernel.Char.toLower", one char to char Char.toLower )
+    , ( "Elm.Kernel.Char.toUpper", one char to char Char.toUpper )
+
+    -- Elm.Kernel.Debug
+    , ( "Elm.Kernel.Debug.log", two string anything to anything Debug.log )
+    , ( "Elm.Kernel.Debug.toString", one anything to string Debug.toString )
+    , ( "Elm.Kernel.Debug.todo", one string to anything Debug.todo )
 
     -- Elm.Kernel.String
     , ( "Elm.Kernel.String.length", one string To int String.length )
@@ -58,6 +68,45 @@ functions =
     , ( "Elm.Kernel.String.toInt", one string To (maybe int) String.toInt )
     , ( "Elm.Kernel.String.toLower", one string to string String.toLower )
     , ( "Elm.Kernel.String.toUpper", one string to string String.toUpper )
+
+    -- , ( "Elm.Kernel.String.all", one string to string String.all )
+    -- , ( "Elm.Kernel.String.any", one string to string String.any )
+    , ( "Elm.Kernel.String.append", two string string to string String.append )
+    , ( "Elm.Kernel.String.cons", two char string to string String.cons )
+    , ( "Elm.Kernel.String.contains", two string string to bool String.contains )
+    , ( "Elm.Kernel.String.endsWith", two string string to bool String.endsWith )
+
+    -- , ( "Elm.Kernel.String.filter", one string to string String.filter )
+    -- , ( "Elm.Kernel.String.foldl", one string to string String.foldl )
+    -- , ( "Elm.Kernel.String.foldr", one string to string String.foldr )
+    , ( "Elm.Kernel.String.fromList", one (list char) to string String.fromList )
+    , ( "Elm.Kernel.String.fromNumber"
+      , one anything to string <|
+            \s ->
+                case s of
+                    Int i ->
+                        String.fromInt i
+
+                    Float f ->
+                        String.fromFloat f
+
+                    _ ->
+                        "TODO"
+      )
+    , ( "Elm.Kernel.String.indexes", two string string to (list int) String.indexes )
+    , ( "Elm.Kernel.String.join", two string (list string) to string String.join )
+    , ( "Elm.Kernel.String.lines", one string to (list string) String.lines )
+
+    -- , ( "Elm.Kernel.String.map", one string to string String.map )
+    , ( "Elm.Kernel.String.reverse", one string to string String.reverse )
+    , ( "Elm.Kernel.String.slice", three int int string to string String.slice )
+    , ( "Elm.Kernel.String.split", two string string to (list string) String.split )
+    , ( "Elm.Kernel.String.startsWith", two string string to bool String.startsWith )
+    , ( "Elm.Kernel.String.trim", one string to string String.trim )
+    , ( "Elm.Kernel.String.trimLeft", one string to string String.trimLeft )
+    , ( "Elm.Kernel.String.trimRight", one string to string String.trimRight )
+    , ( "Elm.Kernel.String.uncons", one string to (maybe (tuple char string)) String.uncons )
+    , ( "Elm.Kernel.String.words", one string to (list string) String.words )
     ]
         |> Dict.fromList
 
@@ -76,6 +125,14 @@ type To
 to : To
 to =
     To
+
+
+anything : Selector Value
+anything =
+    ( Just
+    , identity
+    , "anything"
+    )
 
 
 string : Selector String
@@ -176,6 +233,29 @@ maybe ( selector, toValue, name ) =
     )
 
 
+list : Selector a -> Selector (List a)
+list ( selector, toValue, name ) =
+    ( \value -> value |> Value.toList |> Maybe.andThen (Maybe.Extra.traverse selector)
+    , \value -> value |> List.map toValue |> Value.fromList
+    , "List " ++ name
+    )
+
+
+tuple : Selector a -> Selector b -> Selector ( a, b )
+tuple ( firstSelector, firstToValue, firstName ) ( secondSelector, secondToValue, secondName ) =
+    ( \value ->
+        case value of
+            Tuple first second ->
+                Maybe.map2 Tuple.pair (firstSelector first) (secondSelector second)
+
+            _ ->
+                Nothing
+    , \( first, second ) ->
+        Tuple (firstToValue first) (secondToValue second)
+    , "( " ++ firstName ++ ", " ++ secondName ++ ")"
+    )
+
+
 constant : Selector res -> res -> ( Int, List Value -> Result EvalError Value )
 constant ( _, toValue, _ ) const =
     ( 0
@@ -225,6 +305,40 @@ two ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) To ( _, ou
                 case ( firstSelector firstArg, secondSelector secondArg ) of
                     ( Just first, Just second ) ->
                         Ok <| output <| f first second
+
+                    _ ->
+                        err ()
+
+            _ ->
+                err ()
+    )
+
+
+three :
+    Selector a
+    -> Selector b
+    -> Selector c
+    -> To
+    -> Selector out
+    -> (a -> b -> c -> out)
+    -> ( Int, List Value -> Result EvalError Value )
+three ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) ( thirdSelector, _, thirdName ) To ( _, output, _ ) f =
+    let
+        err : () -> Result EvalError value
+        err () =
+            if firstName == secondName && secondName == thirdName then
+                Err <| TypeError <| "Expected three " ++ firstName ++ "s"
+
+            else
+                Err <| TypeError <| "Expected one " ++ firstName ++ ", one " ++ secondName ++ " and one " ++ thirdName
+    in
+    ( 2
+    , \args ->
+        case args of
+            [ firstArg, secondArg, thirdArg ] ->
+                case ( firstSelector firstArg, secondSelector secondArg, thirdSelector thirdArg ) of
+                    ( Just first, Just second, Just third ) ->
+                        Ok <| output <| f first second third
 
                     _ ->
                         err ()

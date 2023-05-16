@@ -21,18 +21,6 @@ import Unicode
 import Value exposing (EvalError(..), Value(..))
 
 
-{-| Variant names for list
--}
-list :
-    { cons : QualifiedNameRef
-    , nil : QualifiedNameRef
-    }
-list =
-    { cons = { moduleName = [ "List" ], name = "Cons" }
-    , nil = { moduleName = [ "List" ], name = "Nil" }
-    }
-
-
 type Error
     = ParsingError (List DeadEnd)
     | EvalError EvalError
@@ -469,15 +457,7 @@ evalExpression env (Node _ expression) =
             elements
                 |> Result.Extra.combineMap
                     (\element -> evalExpression env element)
-                |> Result.map
-                    (\values ->
-                        List.foldr
-                            (\value acc ->
-                                Value.Custom list.cons [ value, acc ]
-                            )
-                            (Value.Custom list.nil [])
-                            values
-                    )
+                |> Result.map Value.fromList
 
         Expression.RecordAccess recordExpr (Node _ field) ->
             evalExpression env recordExpr

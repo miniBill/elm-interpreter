@@ -1,4 +1,4 @@
-module Value exposing (Env, EvalError(..), Value(..), toString)
+module Value exposing (Env, EvalError(..), Value(..), fromList, toList, toString)
 
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
 import Elm.Syntax.Node exposing (Node)
@@ -137,3 +137,30 @@ toString value =
 
         Nothing ->
             "Could not convert to string :("
+
+
+{-| Variant names for list
+-}
+list :
+    { cons : QualifiedNameRef
+    , nil : QualifiedNameRef
+    }
+list =
+    { cons = { moduleName = [ "List" ], name = "Cons" }
+    , nil = { moduleName = [ "List" ], name = "Nil" }
+    }
+
+
+fromList : List Value -> Value
+fromList values =
+    List.foldr
+        (\value acc ->
+            Custom list.cons [ value, acc ]
+        )
+        (Custom list.nil [])
+        values
+
+
+toList : Value -> Maybe (List Value)
+toList value =
+    Debug.todo "toList"
