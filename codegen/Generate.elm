@@ -15,7 +15,6 @@ import Elm.Syntax.ModuleName as ModuleName
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
 import Gen.CodeGen.Generate as Generate
-import Gen.Debug
 import Gen.Elm.Syntax.Expression
 import Gen.Elm.Syntax.Infix
 import Gen.Elm.Syntax.Node
@@ -362,13 +361,11 @@ expressionToGen expression =
         Expression.RecordAccess child field ->
             Gen.Elm.Syntax.Expression.make_.recordAccess (renode expressionToGen child) (renode Elm.string field)
 
-        Expression.RecordAccessFunction _ ->
-            --Gen.Elm.Syntax.Expression.make_.recordAccessFunction
-            Gen.Debug.todo "recordAccessFunction"
+        Expression.RecordAccessFunction name ->
+            Gen.Elm.Syntax.Expression.make_.recordAccessFunction (Elm.string name)
 
-        Expression.RecordUpdateExpression _ _ ->
-            --Gen.Elm.Syntax.Expression.make_.recordUpdateExpression
-            Gen.Debug.todo "recordUpdateExpression"
+        Expression.RecordUpdateExpression name setters ->
+            Gen.Elm.Syntax.Expression.make_.recordUpdateExpression (renode Elm.string name) (renodeList recordSetterToGen setters)
 
         Expression.GLSLExpression s ->
             Gen.Elm.Syntax.Expression.make_.gLSLExpression (Elm.string s)
