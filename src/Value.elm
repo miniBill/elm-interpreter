@@ -163,4 +163,17 @@ fromList values =
 
 toList : Value -> Maybe (List Value)
 toList value =
-    Debug.todo "toList"
+    case value of
+        Custom variant args ->
+            case ( variant.moduleName, variant.name, args ) of
+                ( [ "List" ], "Nil", [] ) ->
+                    Just []
+
+                ( [ "List" ], "Const", [ head, tail ] ) ->
+                    Maybe.map ((::) head) (toList tail)
+
+                _ ->
+                    Nothing
+
+        _ ->
+            Nothing
