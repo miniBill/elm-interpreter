@@ -1,5 +1,6 @@
 module Elm.Kernel exposing (functions)
 
+import Array exposing (Array)
 import Bitwise
 import FastDict as Dict exposing (Dict)
 import Maybe.Extra
@@ -62,6 +63,9 @@ functions =
     , ( "Elm.Kernel.Debug.toString", one anything to string Debug.toString )
     , ( "Elm.Kernel.Debug.todo", one string to anything Debug.todo )
 
+    -- Elm.Kernel.JsArray
+    , ( "Elm.Kernel.JsArray.appendN", three int (array anything) (array anything) To (array anything) appendN )
+
     -- Elm.Kernel.List
     , ( "Elm.Kernel.List.cons", two anything (list anything) To (list anything) (::) )
     , ( "Elm.Kernel.List.fromArray", one anything To anything identity )
@@ -114,6 +118,18 @@ functions =
     , ( "Elm.Kernel.String.words", one string to (list string) String.words )
     ]
         |> Dict.fromList
+
+
+appendN : Int -> Array Value -> Array Value -> Array Value
+appendN n dest source =
+    let
+        itemsToCopy : Int
+        itemsToCopy =
+            min (Array.length source) (n - Array.length dest)
+    in
+    Array.append
+        dest
+        (Array.slice 0 itemsToCopy source)
 
 
 type alias Selector a =
@@ -240,9 +256,38 @@ maybe ( selector, toValue, name ) =
 
 list : Selector a -> Selector (List a)
 list ( selector, toValue, name ) =
-    ( \value -> value |> Value.toList |> Maybe.andThen (Maybe.Extra.traverse selector)
-    , \value -> value |> List.map toValue |> Value.fromList
+    ( \value ->
+        case value of
+            List l ->
+                Maybe.Extra.traverse selector l
+
+            _ ->
+                Nothing
+    , \value ->
+        value
+            |> List.map toValue
+            |> List
     , "List " ++ name
+    )
+
+
+array : Selector a -> Selector (Array a)
+array ( selector, toValue, name ) =
+    ( \value ->
+        case value of
+            Array l ->
+                l
+                    |> Array.toList
+                    |> Maybe.Extra.traverse selector
+                    |> Maybe.map Array.fromList
+
+            _ ->
+                Nothing
+    , \value ->
+        value
+            |> Array.map toValue
+            |> Array
+    , "Array " ++ name
     )
 
 

@@ -178,24 +178,15 @@ joinTest =
     let
         list : Value
         list =
-            Custom Value.listVariants.cons
+            List
                 [ String "0"
-                , Custom Value.listVariants.cons
-                    [ String "1"
-                    , Custom Value.listVariants.cons
-                        [ String "2"
-                        , Custom Value.listVariants.nil []
-                        ]
-                    ]
+                , String "1"
+                , String "2"
                 ]
     in
     describe "String.join"
         [ evalTest_ """["0","1","2"]"""
             list
-        , test """Value.toList ["0","1","2"]""" <|
-            \_ ->
-                Value.toList list
-                    |> Expect.equal (Just [ String "0", String "1", String "2" ])
         , evalTest_ """String.join "." ["0","1","2"]""" (String "0.1.2")
         ]
 

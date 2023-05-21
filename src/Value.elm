@@ -1,5 +1,6 @@
-module Value exposing (Env, EvalError(..), Value(..), fromList, listVariants, toList, toString)
+module Value exposing (Env, EvalError(..), Value(..), toString)
 
+import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern, QualifiedNameRef)
@@ -21,6 +22,8 @@ type Value
     | Record (Dict String Value)
     | Custom QualifiedNameRef (List Value)
     | PartiallyApplied Env (List Value) (List (Node Pattern)) (Node Expression)
+    | Array (Array Value)
+    | List (List Value)
 
 
 type alias Env =
@@ -97,19 +100,34 @@ toExpression value =
                     )
                 |> Maybe.map (Expression.RecordExpr >> fakeNode)
 
-        Custom name args ->
-            case toList value of
-                Just list ->
-                    list
-                        |> Maybe.Extra.traverse toExpression
-                        |> Maybe.map (Expression.ListExpr >> fakeNode)
+        List list ->
+            list
+                |> Maybe.Extra.traverse toExpression
+                |> Maybe.map (Expression.ListExpr >> fakeNode)
 
-                Nothing ->
-                    (ok (Expression.FunctionOrValue name.moduleName name.name)
-                        :: List.map toExpression args
+        Array array ->
+            array
+                |> Array.toList
+                |> List
+                |> toExpression
+                |> Maybe.map
+                    (\list ->
+                        fakeNode <|
+                            Expression.Application
+                                [ Expression.FunctionOrValue
+                                    [ "Array" ]
+                                    "fromList"
+                                    |> fakeNode
+                                , list
+                                ]
                     )
-                        |> Maybe.Extra.combine
-                        |> Maybe.map (Expression.Application >> fakeNode)
+
+        Custom name args ->
+            (ok (Expression.FunctionOrValue name.moduleName name.name)
+                :: List.map toExpression args
+            )
+                |> Maybe.Extra.combine
+                |> Maybe.map (Expression.Application >> fakeNode)
 
         PartiallyApplied _ [] patterns implementation ->
             ok
@@ -147,43 +165,3 @@ toString value =
 
         Nothing ->
             "Could not convert to string :("
-
-
-{-| Variant names for list
--}
-listVariants :
-    { cons : QualifiedNameRef
-    , nil : QualifiedNameRef
-    }
-listVariants =
-    { cons = { moduleName = [ "List" ], name = "Cons" }
-    , nil = { moduleName = [ "List" ], name = "Nil" }
-    }
-
-
-fromList : List Value -> Value
-fromList values =
-    List.foldr
-        (\value acc ->
-            Custom listVariants.cons [ value, acc ]
-        )
-        (Custom listVariants.nil [])
-        values
-
-
-toList : Value -> Maybe (List Value)
-toList value =
-    case value of
-        Custom variant args ->
-            case ( variant.moduleName, variant.name, args ) of
-                ( [ "List" ], "Nil", [] ) ->
-                    Just []
-
-                ( [ "List" ], "Cons", [ head, tail ] ) ->
-                    Maybe.map ((::) head) (toList tail)
-
-                _ ->
-                    Nothing
-
-        _ ->
-            Nothing

@@ -373,7 +373,7 @@ evalExpression env (Node _ expression) =
             elements
                 |> Result.Extra.combineMap
                     (\element -> evalExpression env element)
-                |> Result.map Value.fromList
+                |> Result.map List
 
         Expression.RecordAccess recordExpr field ->
             evalRecordAccess env recordExpr field
@@ -685,15 +685,15 @@ match pattern value =
         ( NamedPattern _ _, _ ) ->
             noMatch
 
-        ( ListPattern [], Value.Custom _ [] ) ->
+        ( ListPattern [], List [] ) ->
             -- We assume the code typechecks!
             ok Env.empty
 
-        ( ListPattern ((Node _ patternHead) :: patternTail), Value.Custom _ [ listHead, listTail ] ) ->
+        ( ListPattern ((Node _ patternHead) :: patternTail), List (listHead :: listTail) ) ->
             match patternHead listHead
                 |> andThen
                     (\headEnv ->
-                        match (ListPattern patternTail) listTail
+                        match (ListPattern patternTail) (List listTail)
                             |> andThen
                                 (\tailEnv ->
                                     ok
@@ -701,11 +701,11 @@ match pattern value =
                                 )
                     )
 
-        ( UnConsPattern (Node _ patternHead) (Node _ patternTail), Value.Custom _ [ listHead, listTail ] ) ->
+        ( UnConsPattern (Node _ patternHead) (Node _ patternTail), Value.List (listHead :: listTail) ) ->
             match patternHead listHead
                 |> andThen
                     (\headEnv ->
-                        match patternTail listTail
+                        match patternTail (List listTail)
                             |> andThen
                                 (\tailEnv ->
                                     ok
