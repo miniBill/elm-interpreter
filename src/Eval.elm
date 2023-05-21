@@ -386,32 +386,40 @@ evalExpression env (Node _ expression) =
 
 evalOperatorApplication : Env -> String -> Infix.InfixDirection -> Node Expression -> Node Expression -> Result EvalError Value
 evalOperatorApplication env opName infix_ l r =
-    evalExpression2 env l r <|
-        \lvalue rvalue ->
-            case ( opName, infix_ ) of
-                ( "+", Infix.Left ) ->
-                    evalNumberOperator "+" (+) (+) lvalue rvalue
+    let
+        go f =
+            evalExpression2 env l r (f opName)
+    in
+    case ( opName, infix_ ) of
+        ( "+", Infix.Left ) ->
+            go <| evalNumberOperator (+) (+)
 
-                ( "-", Infix.Left ) ->
-                    evalNumberOperator "-" (-) (-) lvalue rvalue
+        ( "-", Infix.Left ) ->
+            go <| evalNumberOperator (-) (-)
 
-                ( "*", Infix.Left ) ->
-                    evalNumberOperator "*" (*) (*) lvalue rvalue
+        ( "*", Infix.Left ) ->
+            go <| evalNumberOperator (*) (*)
 
-                ( "<=", Infix.Left ) ->
-                    evalRelationOperator "<=" (<=) (<=) lvalue rvalue
+        ( "//", Infix.Left ) ->
+            go <| evalIntOperator (//)
 
-                ( "<", Infix.Left ) ->
-                    evalRelationOperator "<" (<) (<) lvalue rvalue
+        ( "/", Infix.Left ) ->
+            go <| evalFloatOperator (/)
 
-                ( ">=", Infix.Left ) ->
-                    evalRelationOperator ">=" (>=) (>=) lvalue rvalue
+        ( "<=", Infix.Left ) ->
+            go <| evalRelationOperator (<=) (<=)
 
-                ( ">", Infix.Left ) ->
-                    evalRelationOperator ">" (>) (>) lvalue rvalue
+        ( "<", Infix.Left ) ->
+            go <| evalRelationOperator (<) (<)
 
-                _ ->
-                    Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
+        ( ">=", Infix.Left ) ->
+            go <| evalRelationOperator (>=) (>=)
+
+        ( ">", Infix.Left ) ->
+            go <| evalRelationOperator (>) (>)
+
+        _ ->
+            Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
 
 
 evalNegation : Env -> Node Expression -> Result EvalError Value
@@ -808,16 +816,49 @@ match pattern value =
 
 
 evalNumberOperator :
-    String
-    -> (Int -> Int -> Int)
+    (Int -> Int -> Int)
     -> (Float -> Float -> Float)
+    -> String
     -> Value
     -> Value
     -> Result EvalError Value
-evalNumberOperator opName opInt opFloat lvalue rvalue =
+evalNumberOperator opInt opFloat opName lvalue rvalue =
     case ( lvalue, rvalue ) of
         ( Value.Int li, Value.Int ri ) ->
             Ok (Value.Int (opInt li ri))
+
+        ( Value.Float lf, Value.Float rf ) ->
+            Ok (Value.Float (opFloat lf rf))
+
+        _ ->
+            operatorTypeError opName lvalue rvalue
+
+
+evalIntOperator :
+    (Int -> Int -> Int)
+    -> String
+    -> Value
+    -> Value
+    -> Result EvalError Value
+evalIntOperator opInt opName lvalue rvalue =
+    case ( lvalue, rvalue ) of
+        ( Value.Int li, Value.Int ri ) ->
+            Ok (Value.Int (opInt li ri))
+
+        _ ->
+            operatorTypeError opName lvalue rvalue
+
+
+evalFloatOperator :
+    (Float -> Float -> Float)
+    -> String
+    -> Value
+    -> Value
+    -> Result EvalError Value
+evalFloatOperator opFloat opName lvalue rvalue =
+    case ( lvalue, rvalue ) of
+        ( Value.Int li, Value.Int ri ) ->
+            Ok (Value.Float (opFloat (toFloat li) (toFloat ri)))
 
         ( Value.Float lf, Value.Float rf ) ->
             Ok (Value.Float (opFloat lf rf))
@@ -837,13 +878,13 @@ operatorTypeError opName lvalue rvalue =
 
 
 evalRelationOperator :
-    String
-    -> (Int -> Int -> Bool)
+    (Int -> Int -> Bool)
     -> (Float -> Float -> Bool)
+    -> String
     -> Value
     -> Value
     -> Result EvalError Value
-evalRelationOperator opName opInt opFloat lvalue rvalue =
+evalRelationOperator opInt opFloat opName lvalue rvalue =
     case ( lvalue, rvalue ) of
         ( Value.Int li, Value.Int ri ) ->
             Ok (Value.Bool (opInt li ri))
