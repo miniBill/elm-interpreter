@@ -11,7 +11,7 @@ import Elm.Syntax.Expression as Expression
 import Elm.Syntax.File as File
 import Elm.Syntax.Infix as Infix
 import Elm.Syntax.Module as Module
-import Elm.Syntax.ModuleName as ModuleName
+import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
 import Gen.CodeGen.Generate as Generate
@@ -20,8 +20,10 @@ import Gen.Elm.Syntax.Infix
 import Gen.Elm.Syntax.ModuleName
 import Gen.Elm.Syntax.Pattern
 import Gen.FastDict
+import Gen.List
 import Gen.Maybe
 import Gen.Syntax
+import Result.Extra
 
 
 main : Program String () ()
@@ -32,75 +34,87 @@ main =
 toFiles : String -> List Elm.File
 toFiles modulesSource =
     let
-        namesAndFiles : List ( Maybe (List String), Elm.File )
-        namesAndFiles =
+        maybeFiles : Result String (List { moduleName : ModuleName, file : Elm.File, hasOperators : Bool })
+        maybeFiles =
             modulesSource
                 |> String.split "---SNIP---"
-                |> List.map toFile
+                |> Result.Extra.combineMap toFile
+                |> Result.map (List.filterMap identity)
+    in
+    case maybeFiles of
+        Err e ->
+            [ Elm.file [ "Core" ]
+                [ Elm.declaration "somethingWentWrong" (Elm.string e) ]
+            ]
 
-        files : List Elm.File
-        files =
-            List.map Tuple.second
-                namesAndFiles
-
-        core : Elm.File
-        core =
-            namesAndFiles
-                |> List.filterMap
-                    (\( maybeName, _ ) ->
-                        Maybe.map
-                            (\name ->
+        Ok files ->
+            let
+                functions : Elm.Declaration
+                functions =
+                    files
+                        |> List.map
+                            (\{ moduleName } ->
                                 Elm.tuple
-                                    (Elm.list <| List.map Elm.string <| List.drop 1 name)
+                                    (Elm.list <| List.map Elm.string <| List.drop 1 moduleName)
                                     (Elm.value
-                                        { importFrom = name
+                                        { importFrom = moduleName
                                         , name = "functions"
                                         , annotation = Nothing
                                         }
                                     )
                             )
-                            maybeName
-                    )
-                |> Gen.FastDict.fromList
-                |> Elm.withType
-                    (Gen.FastDict.annotation_.dict
-                        Gen.Elm.Syntax.ModuleName.annotation_.moduleName
-                        (Gen.FastDict.annotation_.dict
-                            Type.string
-                            Gen.Elm.Syntax.Expression.annotation_.functionImplementation
-                        )
-                    )
-                |> Elm.declaration "functions"
-                |> Elm.expose
-                |> List.singleton
-                |> Elm.file [ "Core" ]
-    in
-    core :: files
+                        |> Gen.FastDict.fromList
+                        |> Elm.withType
+                            (Gen.FastDict.annotation_.dict
+                                Gen.Elm.Syntax.ModuleName.annotation_.moduleName
+                                (Gen.FastDict.annotation_.dict
+                                    Type.string
+                                    Gen.Elm.Syntax.Expression.annotation_.functionImplementation
+                                )
+                            )
+                        |> Elm.declaration "functions"
+                        |> Elm.expose
+
+                operators : Elm.Declaration
+                operators =
+                    files
+                        |> List.filter .hasOperators
+                        |> List.map
+                            (\{ moduleName } ->
+                                Elm.value
+                                    { importFrom = moduleName
+                                    , name = "operators"
+                                    , annotation = Nothing
+                                    }
+                            )
+                        |> Elm.list
+                        |> Gen.List.call_.concat
+                        |> Gen.FastDict.call_.fromList
+                        |> Elm.withType
+                            (Gen.FastDict.annotation_.dict
+                                Type.string
+                                Gen.Elm.Syntax.Pattern.annotation_.qualifiedNameRef
+                            )
+                        |> Elm.declaration "operators"
+                        |> Elm.expose
+
+                core : Elm.File
+                core =
+                    [ functions, operators ]
+                        |> Elm.file [ "Core" ]
+            in
+            core :: List.map .file files
 
 
-toFile : String -> ( Maybe (List String), Elm.File )
+toFile : String -> Result String (Maybe { moduleName : ModuleName, file : Elm.File, hasOperators : Bool })
 toFile moduleSource =
     case Elm.Parser.parse moduleSource of
         Err _ ->
-            let
-                firstLine : String
-                firstLine =
-                    moduleSource
-                        |> String.split "\n"
-                        |> List.head
-                        |> Maybe.withDefault ""
-
-                moduleName : String
-                moduleName =
-                    firstLine
-                        |> String.split " "
-                        |> List.drop 1
-                        |> List.head
-                        |> Maybe.withDefault "???"
-            in
-            ( Nothing
-            , Elm.file [ "Core", moduleName ] [ Elm.declaration "somethingWentWrong" <| Elm.string firstLine ]
-            )
+            moduleSource
+                |> String.split "\n"
+                |> List.head
+                |> Maybe.withDefault ""
+                |> Err
 
         Ok rawFile ->
             let
@@ -111,35 +125,26 @@ toFile moduleSource =
                         rawFile
             in
             case Node.value file.moduleDefinition of
-                Module.EffectModule { moduleName } ->
-                    ( Nothing
-                    , Elm.file ("Core" :: Node.value moduleName)
-                        [ Elm.expose <|
-                            Elm.declaration "unsupported" <|
-                                Elm.string "Effect modules are not supported"
-                        ]
-                    )
+                Module.EffectModule _ ->
+                    -- Effect modules are not supported
+                    Ok Nothing
 
-                Module.PortModule { moduleName } ->
-                    ( Nothing
-                    , Elm.file ("Core" :: Node.value moduleName)
-                        [ Elm.expose <|
-                            Elm.declaration "unsupported" <|
-                                Elm.string "Port modules are not supported"
-                        ]
-                    )
+                Module.PortModule _ ->
+                    -- Port modules are not supported
+                    Ok Nothing
 
                 Module.NormalModule { moduleName } ->
-                    normalModuleToFile moduleName file
+                    Ok <| Just <| normalModuleToFile moduleName file
 
 
-normalModuleToFile : Node ModuleName.ModuleName -> File.File -> ( Maybe (List String), Elm.File )
+normalModuleToFile : Node ModuleName -> File.File -> { moduleName : ModuleName, file : Elm.File, hasOperators : Bool }
 normalModuleToFile (Node _ moduleName) file =
     let
-        generatedModuleName : List String
+        generatedModuleName : ModuleName
         generatedModuleName =
             "Core" :: moduleName
 
+        namesAndDeclarations : List ( String, Elm.Declaration )
         namesAndDeclarations =
             file.declarations
                 |> List.filterMap (declarationToGen moduleName)
@@ -171,14 +176,62 @@ normalModuleToFile (Node _ moduleName) file =
                 |> Gen.FastDict.fromList
                 |> Elm.declaration "functions"
                 |> Elm.expose
+
+        operators : List Elm.Expression
+        operators =
+            List.filterMap
+                (\(Node _ declaration) ->
+                    case declaration of
+                        Declaration.InfixDeclaration { operator, function } ->
+                            let
+                                functionName =
+                                    Node.value function
+                            in
+                            case List.reverse <| List.map Elm.string <| String.split "." functionName of
+                                name :: reverseModule ->
+                                    Just
+                                        (Elm.tuple
+                                            (Elm.string <| Node.value operator)
+                                            (Gen.Elm.Syntax.Pattern.make_.qualifiedNameRef
+                                                { moduleName = Elm.list <| List.reverse reverseModule
+                                                , name = name
+                                                }
+                                            )
+                                        )
+
+                                [] ->
+                                    Nothing
+
+                        _ ->
+                            Nothing
+                )
+                file.declarations
+
+        result : Elm.File
+        result =
+            if List.isEmpty operators then
+                (functions :: declarations)
+                    |> Elm.file generatedModuleName
+
+            else
+                let
+                    operatorsDeclaration : Elm.Declaration
+                    operatorsDeclaration =
+                        operators
+                            |> Elm.list
+                            |> Elm.declaration "operators"
+                            |> Elm.expose
+                in
+                (functions :: operatorsDeclaration :: declarations)
+                    |> Elm.file generatedModuleName
     in
-    ( Just generatedModuleName
-    , (functions :: declarations)
-        |> Elm.file generatedModuleName
-    )
+    { moduleName = generatedModuleName
+    , file = result
+    , hasOperators = not (List.isEmpty operators)
+    }
 
 
-declarationToGen : ModuleName.ModuleName -> Node Declaration.Declaration -> Maybe ( String, Elm.Declaration )
+declarationToGen : ModuleName -> Node Declaration.Declaration -> Maybe ( String, Elm.Declaration )
 declarationToGen moduleName (Node _ declaration) =
     case declaration of
         Declaration.FunctionDeclaration function ->
