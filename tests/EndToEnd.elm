@@ -146,6 +146,24 @@ main =
             fib1 (n - 1) + fib1 (n - 2)
 in
 fib1 7""" (Int 13)
+        , evalTest "[let] Constant using a function" """let
+    a = foo 0
+    foo x = x
+in
+a
+""" (Int 0)
+        , evalTest "[let] Constant using a constant before it" """let
+    a = 0
+    b = a
+in
+b
+""" (Int 0)
+        , evalTest "[let] Constant using a constant after it" """let
+    a = b
+    b = 0
+in
+b
+""" (Int 0)
         ]
 
 

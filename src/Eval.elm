@@ -5,7 +5,7 @@ import Elm.Kernel
 import Elm.Parser
 import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
-import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
+import Elm.Syntax.Expression as Expression exposing (Expression, Function)
 import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Infix as Infix
 import Elm.Syntax.Module exposing (Module(..))
@@ -185,7 +185,7 @@ evalExpression env (Node _ expression) =
                                     maybeNewEnvValues : Result EvalError (Maybe EnvValues)
                                     maybeNewEnvValues =
                                         match
-                                            (ListPattern patterns)
+                                            (fakeNode <| ListPattern patterns)
                                             (List (oldArgs ++ values))
                                 in
                                 case maybeNewEnvValues of
@@ -217,7 +217,7 @@ evalExpression env (Node _ expression) =
 
                                             _ ->
                                                 evalExpression
-                                                    (localEnv |> Env.with newEnvValues)
+                                                    (localEnv () |> Env.with newEnvValues)
                                                     implementation
 
                 Ok other ->
@@ -261,7 +261,7 @@ evalExpression env (Node _ expression) =
                     _ ->
                         case Dict.get name env.values of
                             Just (PartiallyApplied localEnv [] [] implementation) ->
-                                evalExpression localEnv implementation
+                                evalExpression (localEnv ()) implementation
 
                             Just value ->
                                 Ok value
@@ -282,7 +282,7 @@ evalExpression env (Node _ expression) =
                                                     evalExpression { env | currentModule = fixedModuleName } function.expression
 
                                                 else
-                                                    PartiallyApplied { env | currentModule = fixedModuleName }
+                                                    PartiallyApplied (\_ -> { env | currentModule = fixedModuleName })
                                                         []
                                                         function.arguments
                                                         function.expression
@@ -376,7 +376,7 @@ evalExpression env (Node _ expression) =
             evalCase env caseExpr
 
         Expression.LambdaExpression lambda ->
-            Ok <| PartiallyApplied env [] lambda.args lambda.expression
+            Ok <| PartiallyApplied (\_ -> env) [] lambda.args lambda.expression
 
         Expression.RecordExpr fields ->
             fields
@@ -431,7 +431,7 @@ evalKernelFunction moduleName name =
                         f []
 
                     else
-                        PartiallyApplied (Env.empty [])
+                        PartiallyApplied (\_ -> Env.empty [])
                             []
                             (List.repeat argCount (fakeNode AllPattern))
                             (fakeNode <| Expression.FunctionOrValue moduleName name)
@@ -501,50 +501,106 @@ evalNegation env child =
 
 evalLetBlock : Env -> Expression.LetBlock -> Result EvalError Env
 evalLetBlock env letBlock =
-    Result.MyExtra.combineFoldl (evalLetDeclaration env) (Ok env) letBlock.declarations
-
-
-evalLetDeclaration :
-    Env
-    -> Node Expression.LetDeclaration
-    -> Env
-    -> Result EvalError Env
-evalLetDeclaration env (Node _ letDeclaration) acc =
-    case letDeclaration of
-        Expression.LetFunction function ->
-            Ok <| evalLetFunction env function.declaration acc
-
-        Expression.LetDestructuring (Node _ letPattern) letExpression ->
-            case evalExpression env letExpression of
-                Err e ->
-                    Err e
-
-                Ok letValue ->
-                    case match letPattern letValue of
-                        Err e ->
-                            Err e
-
-                        Ok Nothing ->
-                            Err (TypeError "Could not match pattern inside let")
-
-                        Ok (Just patternEnv) ->
-                            Ok (Env.with patternEnv acc)
-
-
-evalLetFunction : Env -> Node FunctionImplementation -> Env -> Env
-evalLetFunction env (Node _ implementation) acc =
     let
-        functionVal : Value
-        functionVal =
-            PartiallyApplied env
-                []
-                implementation.arguments
-                implementation.expression
+        -- case evalExpression env letExpression of
+        --     Err e ->
+        --         Err e
+        --     Ok letValue ->
+        --         case match letPattern letValue of
+        --             Err e ->
+        --                 Err e
+        --             Ok Nothing ->
+        --                 Err (TypeError "Could not match pattern inside let")
+        --             Ok (Just patternEnv) ->
+        --                 Ok (Env.with patternEnv acc)
+        evalLetFunction : Function -> Env -> Env
+        evalLetFunction function acc =
+            let
+                (Node _ implementation) =
+                    function.declaration
+
+                functionVal : Value
+                functionVal =
+                    PartiallyApplied knot
+                        []
+                        implementation.arguments
+                        implementation.expression
+            in
+            Env.addValue
+                (Node.value implementation.name)
+                functionVal
+                acc
+
+        withFunctions : () -> Env
+        withFunctions () =
+            List.foldl
+                (\(Node _ letDeclaration) acc ->
+                    case letDeclaration of
+                        Expression.LetFunction function ->
+                            evalLetFunction function acc
+
+                        Expression.LetDestructuring _ _ ->
+                            acc
+                )
+                env
+                letBlock.declarations
+
+        letPatterns : List ( Node Pattern, Node Expression )
+        letPatterns =
+            List.filterMap
+                (\(Node _ letDeclaration) ->
+                    case letDeclaration of
+                        Expression.LetDestructuring letPattern letExpression ->
+                            Just ( letPattern, letExpression )
+
+                        Expression.LetFunction _ ->
+                            Nothing
+                )
+                letBlock.declarations
+
+        knot : () -> Env
+        knot () =
+            let
+                knotHelperRound : List ( Node Pattern, Node Expression ) -> Env -> Env
+                knotHelperRound remaining acc =
+                    knotHelper remaining [] False acc
+
+                -- TODO: use topological sort to avoid retries
+                knotHelper : List ( Node Pattern, Node Expression ) -> List ( Node Pattern, Node Expression ) -> Bool -> Env -> Env
+                knotHelper remaining later loop acc =
+                    case remaining of
+                        [] ->
+                            if List.isEmpty later || not loop then
+                                acc
+
+                            else
+                                knotHelperRound later acc
+
+                        (( letPattern, letExpression ) as remaningHead) :: remainingQueue ->
+                            case evalExpression acc letExpression of
+                                Err (NameError _) ->
+                                    knotHelper remainingQueue (remaningHead :: later) loop acc
+
+                                Err _ ->
+                                    -- TODO: handle error
+                                    knotHelper remainingQueue later True acc
+
+                                Ok letValue ->
+                                    case match letPattern letValue of
+                                        Err _ ->
+                                            -- TODO: handle error
+                                            knotHelper remainingQueue later True acc
+
+                                        Ok Nothing ->
+                                            -- TODO: handle error
+                                            knotHelper remainingQueue later True acc
+
+                                        Ok (Just newEnvValues) ->
+                                            knotHelper remainingQueue later True (Env.with newEnvValues acc)
+            in
+            knotHelperRound letPatterns (withFunctions ())
     in
-    Env.addValue
-        (Node.value implementation.name)
-        functionVal
-        acc
+    Ok <| knot ()
 
 
 evalRecordAccess : Env -> Node Expression -> Node String -> Result EvalError Value
@@ -569,7 +625,7 @@ evalRecordAccess env recordExpr (Node _ field) =
 evalRecordAccessFunction : String -> Value
 evalRecordAccessFunction field =
     PartiallyApplied
-        (Env.empty [])
+        (\_ -> Env.empty [])
         []
         [ fakeNode (VarPattern "r") ]
         (fakeNode <|
@@ -604,7 +660,7 @@ evalRecordUpdate env (Node _ name) setters =
 
 evalOperator : String -> Value
 evalOperator opName =
-    PartiallyApplied (Env.empty [])
+    PartiallyApplied (\_ -> Env.empty [])
         []
         [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
         (fakeNode <|
@@ -634,7 +690,7 @@ evalCase env { expression, cases } =
         Ok exprValue ->
             cases
                 |> Result.MyExtra.combineFoldl
-                    (\( Node _ pattern, result ) acc ->
+                    (\( pattern, result ) acc ->
                         case acc of
                             Just _ ->
                                 Ok acc
@@ -663,8 +719,8 @@ evalCase env { expression, cases } =
                     )
 
 
-match : Pattern -> Value -> Result EvalError (Maybe EnvValues)
-match pattern value =
+match : Node Pattern -> Value -> Result EvalError (Maybe EnvValues)
+match (Node _ pattern) value =
     let
         ok : a -> Result error (Maybe a)
         ok val =
@@ -701,7 +757,7 @@ match pattern value =
             ok Dict.empty
 
         ( ParenthesizedPattern subPattern, _ ) ->
-            match (Node.value subPattern) value
+            match subPattern value
 
         ( NamedPattern namePattern argsPatterns, Value.Custom variant args ) ->
             -- Two names from different modules can never have the same type
@@ -717,7 +773,7 @@ match pattern value =
                             ( [], [] ) ->
                                 ok envValues
 
-                            ( (Node _ patternHead) :: patternTail, argHead :: argTail ) ->
+                            ( patternHead :: patternTail, argHead :: argTail ) ->
                                 match patternHead argHead
                                     |> andThen
                                         (\newEnvValues ->
@@ -739,11 +795,11 @@ match pattern value =
             -- We assume the code typechecks!
             ok Dict.empty
 
-        ( ListPattern ((Node _ patternHead) :: patternTail), List (listHead :: listTail) ) ->
+        ( ListPattern (patternHead :: patternTail), List (listHead :: listTail) ) ->
             match patternHead listHead
                 |> andThen
                     (\headEnv ->
-                        match (ListPattern patternTail) (List listTail)
+                        match (fakeNode <| ListPattern patternTail) (List listTail)
                             |> andThen
                                 (\tailEnv ->
                                     ok
@@ -751,7 +807,7 @@ match pattern value =
                                 )
                     )
 
-        ( UnConsPattern (Node _ patternHead) (Node _ patternTail), Value.List (listHead :: listTail) ) ->
+        ( UnConsPattern patternHead patternTail, Value.List (listHead :: listTail) ) ->
             match patternHead listHead
                 |> andThen
                     (\headEnv ->
@@ -822,7 +878,7 @@ match pattern value =
         ( FloatPattern _, _ ) ->
             noMatch
 
-        ( TuplePattern [ Node _ lpattern, Node _ rpattern ], Value.Tuple lvalue rvalue ) ->
+        ( TuplePattern [ lpattern, rpattern ], Value.Tuple lvalue rvalue ) ->
             match lpattern lvalue
                 |> andThen
                     (\lenv ->
@@ -833,7 +889,7 @@ match pattern value =
                                 )
                     )
 
-        ( TuplePattern [ Node _ lpattern, Node _ mpattern, Node _ rpattern ], Value.Triple lvalue mvalue rvalue ) ->
+        ( TuplePattern [ lpattern, mpattern, rpattern ], Value.Triple lvalue mvalue rvalue ) ->
             match lpattern lvalue
                 |> andThen
                     (\lenv ->
@@ -851,7 +907,7 @@ match pattern value =
         ( TuplePattern _, _ ) ->
             noMatch
 
-        ( AsPattern (Node _ childPattern) (Node _ asName), _ ) ->
+        ( AsPattern childPattern (Node _ asName), _ ) ->
             match childPattern value
                 |> andThen
                     (\env -> ok <| Dict.insert asName value env)
