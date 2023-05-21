@@ -17,10 +17,9 @@ import Elm.Syntax.Pattern as Pattern
 import Gen.CodeGen.Generate as Generate
 import Gen.Elm.Syntax.Expression
 import Gen.Elm.Syntax.Infix
-import Gen.Elm.Syntax.Node
+import Gen.Elm.Syntax.ModuleName
 import Gen.Elm.Syntax.Pattern
 import Gen.FastDict
-import Gen.List
 import Gen.Maybe
 import Gen.Syntax
 
@@ -51,28 +50,25 @@ toFiles modulesSource =
                     (\( maybeName, _ ) ->
                         Maybe.map
                             (\name ->
-                                Elm.value
-                                    { importFrom = name
-                                    , name = "functions"
-                                    , annotation = Nothing
-                                    }
+                                Elm.tuple
+                                    (Elm.list <| List.map Elm.string <| List.drop 1 name)
+                                    (Elm.value
+                                        { importFrom = name
+                                        , name = "functions"
+                                        , annotation = Nothing
+                                        }
+                                    )
                             )
                             maybeName
                     )
-                |> Elm.list
-                |> Gen.List.call_.concat
-                |> Gen.List.call_.map
-                    (Elm.fn ( "fun", Nothing ) <|
-                        \fun ->
-                            Elm.tuple
-                                (Gen.Elm.Syntax.Node.value (fun |> Elm.get "name"))
-                                fun
-                    )
-                |> Gen.FastDict.call_.fromList
+                |> Gen.FastDict.fromList
                 |> Elm.withType
                     (Gen.FastDict.annotation_.dict
-                        Type.string
-                        Gen.Elm.Syntax.Expression.annotation_.functionImplementation
+                        Gen.Elm.Syntax.ModuleName.annotation_.moduleName
+                        (Gen.FastDict.annotation_.dict
+                            Type.string
+                            Gen.Elm.Syntax.Expression.annotation_.functionImplementation
+                        )
                     )
                 |> Elm.declaration "functions"
                 |> Elm.expose
@@ -161,19 +157,18 @@ normalModuleToFile (Node _ moduleName) file =
             names
                 |> List.map
                     (\name ->
-                        Elm.value
-                            { importFrom = []
-                            , name = name
-                            , annotation =
-                                Just
-                                    Gen.Elm.Syntax.Expression.annotation_.functionImplementation
-                            }
+                        Elm.tuple
+                            (Elm.string name)
+                            (Elm.value
+                                { importFrom = []
+                                , name = name
+                                , annotation =
+                                    Just
+                                        Gen.Elm.Syntax.Expression.annotation_.functionImplementation
+                                }
+                            )
                     )
-                |> Elm.list
-                |> Elm.withType
-                    (Type.list
-                        Gen.Elm.Syntax.Expression.annotation_.functionImplementation
-                    )
+                |> Gen.FastDict.fromList
                 |> Elm.declaration "functions"
                 |> Elm.expose
     in

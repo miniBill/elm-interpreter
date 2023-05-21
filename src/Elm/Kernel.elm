@@ -2,121 +2,144 @@ module Elm.Kernel exposing (functions)
 
 import Array exposing (Array)
 import Bitwise
+import Elm.Syntax.ModuleName exposing (ModuleName)
 import FastDict as Dict exposing (Dict)
 import Maybe.Extra
 import Value exposing (EvalError(..), Value(..))
 
 
-functions : Dict String ( Int, List Value -> Result EvalError Value )
+functions : Dict ModuleName (Dict String ( Int, List Value -> Result EvalError Value ))
 functions =
     [ -- Elm.Kernel.Basics
-      ( "Elm.Kernel.Basics.acos", one float to float acos )
-    , ( "Elm.Kernel.Basics.add", twoNumbers (+) (+) )
-    , ( "Elm.Kernel.Basics.and", two bool bool to bool (&&) )
-    , ( "Elm.Kernel.Basics.asin", one float to float asin )
-    , ( "Elm.Kernel.Basics.atan", one float to float atan )
-    , ( "Elm.Kernel.Basics.atan2", two float float to float atan2 )
-    , ( "Elm.Kernel.Basics.ceiling", one float to int ceiling )
-    , ( "Elm.Kernel.Basics.cos", one float to float cos )
-    , ( "Elm.Kernel.Basics.e", constant float e )
-    , ( "Elm.Kernel.Basics.fdiv", two float float to float (/) )
-    , ( "Elm.Kernel.Basics.floor", one float to int floor )
-    , ( "Elm.Kernel.Basics.idiv", two int int to int (//) )
-    , ( "Elm.Kernel.Basics.isInfinite", one float to bool isInfinite )
-    , ( "Elm.Kernel.Basics.isNaN", one float to bool isNaN )
-    , ( "Elm.Kernel.Basics.log", one float to float (logBase e) )
-    , ( "Elm.Kernel.Basics.modBy", two int int to int modBy )
-    , ( "Elm.Kernel.Basics.mul", twoNumbers (*) (*) )
-    , ( "Elm.Kernel.Basics.not", one bool To bool not )
-    , ( "Elm.Kernel.Basics.or", two bool bool to bool (||) )
-    , ( "Elm.Kernel.Basics.pi", constant float pi )
-    , ( "Elm.Kernel.Basics.pow", twoNumbers (^) (^) )
-    , ( "Elm.Kernel.Basics.remainderBy", two int int to int remainderBy )
-    , ( "Elm.Kernel.Basics.round", one float to int round )
-    , ( "Elm.Kernel.Basics.sin", one float to float sin )
-    , ( "Elm.Kernel.Basics.sqrt", one float to float sqrt )
-    , ( "Elm.Kernel.Basics.sub", twoNumbers (-) (-) )
-    , ( "Elm.Kernel.Basics.tan", one float to float tan )
-    , ( "Elm.Kernel.Basics.toFloat", one int To float toFloat )
-    , ( "Elm.Kernel.Basics.truncate", one float to int truncate )
-    , ( "Elm.Kernel.Basics.xor", two bool bool to bool xor )
+      ( [ "Elm", "Kernel", "Basics" ]
+      , [ ( "acos", one float to float acos )
+        , ( "add", twoNumbers (+) (+) )
+        , ( "and", two bool bool to bool (&&) )
+        , ( "asin", one float to float asin )
+        , ( "atan", one float to float atan )
+        , ( "atan2", two float float to float atan2 )
+        , ( "ceiling", one float to int ceiling )
+        , ( "cos", one float to float cos )
+        , ( "e", constant float e )
+        , ( "fdiv", two float float to float (/) )
+        , ( "floor", one float to int floor )
+        , ( "idiv", two int int to int (//) )
+        , ( "isInfinite", one float to bool isInfinite )
+        , ( "isNaN", one float to bool isNaN )
+        , ( "log", one float to float (logBase e) )
+        , ( "modBy", two int int to int modBy )
+        , ( "mul", twoNumbers (*) (*) )
+        , ( "not", one bool To bool not )
+        , ( "or", two bool bool to bool (||) )
+        , ( "pi", constant float pi )
+        , ( "pow", twoNumbers (^) (^) )
+        , ( "remainderBy", two int int to int remainderBy )
+        , ( "round", one float to int round )
+        , ( "sin", one float to float sin )
+        , ( "sqrt", one float to float sqrt )
+        , ( "sub", twoNumbers (-) (-) )
+        , ( "tan", one float to float tan )
+        , ( "toFloat", one int To float toFloat )
+        , ( "truncate", one float to int truncate )
+        , ( "xor", two bool bool to bool xor )
+        ]
+      )
 
     -- Elm.Kernel.Bitwise
-    , ( "Elm.Kernel.Bitwise.and", two int int to int Bitwise.and )
-    , ( "Elm.Kernel.Bitwise.complement", one int to int Bitwise.complement )
-    , ( "Elm.Kernel.Bitwise.or", two int int to int Bitwise.or )
-    , ( "Elm.Kernel.Bitwise.shiftLeftBy", two int int to int Bitwise.shiftLeftBy )
-    , ( "Elm.Kernel.Bitwise.shiftRightBy", two int int to int Bitwise.shiftRightBy )
-    , ( "Elm.Kernel.Bitwise.shiftRightZfBy", two int int to int Bitwise.shiftRightZfBy )
-    , ( "Elm.Kernel.Bitwise.xor", two int int to int Bitwise.xor )
+    , ( [ "Elm", "Kernel", "Bitwise" ]
+      , [ ( "and", two int int to int Bitwise.and )
+        , ( "complement", one int to int Bitwise.complement )
+        , ( "or", two int int to int Bitwise.or )
+        , ( "shiftLeftBy", two int int to int Bitwise.shiftLeftBy )
+        , ( "shiftRightBy", two int int to int Bitwise.shiftRightBy )
+        , ( "shiftRightZfBy", two int int to int Bitwise.shiftRightZfBy )
+        , ( "xor", two int int to int Bitwise.xor )
+        ]
+      )
 
     -- Elm.Kernel.Char
-    , ( "Elm.Kernel.Char.fromCode", one int to char Char.fromCode )
-    , ( "Elm.Kernel.Char.toCode", one char to int Char.toCode )
-    , ( "Elm.Kernel.Char.toLocaleLower", one char to char Char.toLocaleLower )
-    , ( "Elm.Kernel.Char.toLocaleUpper", one char to char Char.toLocaleUpper )
-    , ( "Elm.Kernel.Char.toLower", one char to char Char.toLower )
-    , ( "Elm.Kernel.Char.toUpper", one char to char Char.toUpper )
+    , ( [ "Elm", "Kernel", "Char" ]
+      , [ ( "fromCode", one int to char Char.fromCode )
+        , ( "toCode", one char to int Char.toCode )
+        , ( "toLocaleLower", one char to char Char.toLocaleLower )
+        , ( "toLocaleUpper", one char to char Char.toLocaleUpper )
+        , ( "toLower", one char to char Char.toLower )
+        , ( "toUpper", one char to char Char.toUpper )
+        ]
+      )
 
     -- Elm.Kernel.Debug
-    , ( "Elm.Kernel.Debug.log", two string anything to anything Debug.log )
-    , ( "Elm.Kernel.Debug.toString", one anything to string Debug.toString )
-    , ( "Elm.Kernel.Debug.todo", one string to anything Debug.todo )
+    , ( [ "Elm", "Kernel", "Debug" ]
+      , [ ( "log", two string anything to anything Debug.log )
+        , ( "toString", one anything to string Debug.toString )
+        , ( "todo", one string to anything Debug.todo )
+        ]
+      )
 
     -- Elm.Kernel.JsArray
-    , ( "Elm.Kernel.JsArray.appendN", three int (array anything) (array anything) To (array anything) appendN )
+    , ( [ "Elm", "Kernel", "JsArray" ]
+      , [ ( "appendN", three int (array anything) (array anything) To (array anything) appendN )
+        ]
+      )
 
     -- Elm.Kernel.List
-    , ( "Elm.Kernel.List.cons", two anything (list anything) To (list anything) (::) )
-    , ( "Elm.Kernel.List.fromArray", one anything To anything identity )
-    , ( "Elm.Kernel.List.toArray", one anything To anything identity )
+    , ( [ "Elm", "Kernel", "List" ]
+      , [ ( "cons", two anything (list anything) To (list anything) (::) )
+        , ( "fromArray", one anything To anything identity )
+        , ( "toArray", one anything To anything identity )
+        ]
+      )
 
     -- Elm.Kernel.String
-    , ( "Elm.Kernel.String.length", one string To int String.length )
-    , ( "Elm.Kernel.String.toFloat", one string To (maybe float) String.toFloat )
-    , ( "Elm.Kernel.String.toInt", one string To (maybe int) String.toInt )
-    , ( "Elm.Kernel.String.toLower", one string to string String.toLower )
-    , ( "Elm.Kernel.String.toUpper", one string to string String.toUpper )
+    , ( [ "Elm", "Kernel", "String" ]
+      , [ ( "length", one string To int String.length )
+        , ( "toFloat", one string To (maybe float) String.toFloat )
+        , ( "toInt", one string To (maybe int) String.toInt )
+        , ( "toLower", one string to string String.toLower )
+        , ( "toUpper", one string to string String.toUpper )
 
-    -- , ( "Elm.Kernel.String.all", one string to string String.all )
-    -- , ( "Elm.Kernel.String.any", one string to string String.any )
-    , ( "Elm.Kernel.String.append", two string string to string String.append )
-    , ( "Elm.Kernel.String.cons", two char string to string String.cons )
-    , ( "Elm.Kernel.String.contains", two string string to bool String.contains )
-    , ( "Elm.Kernel.String.endsWith", two string string to bool String.endsWith )
+        -- , ( "all", one string to string String.all )
+        -- , ( "any", one string to string String.any )
+        , ( "append", two string string to string String.append )
+        , ( "cons", two char string to string String.cons )
+        , ( "contains", two string string to bool String.contains )
+        , ( "endsWith", two string string to bool String.endsWith )
 
-    -- , ( "Elm.Kernel.String.filter", one string to string String.filter )
-    -- , ( "Elm.Kernel.String.foldl", one string to string String.foldl )
-    -- , ( "Elm.Kernel.String.foldr", one string to string String.foldr )
-    , ( "Elm.Kernel.String.fromList", one (list char) to string String.fromList )
-    , ( "Elm.Kernel.String.fromNumber"
-      , one anything to string <|
-            \s ->
-                case s of
-                    Int i ->
-                        String.fromInt i
+        -- , ( "filter", one string to string String.filter )
+        -- , ( "foldl", one string to string String.foldl )
+        -- , ( "foldr", one string to string String.foldr )
+        , ( "fromList", one (list char) to string String.fromList )
+        , ( "fromNumber"
+          , one anything to string <|
+                \s ->
+                    case s of
+                        Int i ->
+                            String.fromInt i
 
-                    Float f ->
-                        String.fromFloat f
+                        Float f ->
+                            String.fromFloat f
 
-                    _ ->
-                        "TODO"
+                        _ ->
+                            "TODO"
+          )
+        , ( "indexes", two string string to (list int) String.indexes )
+        , ( "join", two string (list string) to string String.join )
+        , ( "lines", one string to (list string) String.lines )
+
+        -- , ( "map", one string to string String.map )
+        , ( "reverse", one string to string String.reverse )
+        , ( "slice", three int int string to string String.slice )
+        , ( "split", two string string to (list string) String.split )
+        , ( "startsWith", two string string to bool String.startsWith )
+        , ( "trim", one string to string String.trim )
+        , ( "trimLeft", one string to string String.trimLeft )
+        , ( "trimRight", one string to string String.trimRight )
+        , ( "uncons", one string to (maybe (tuple char string)) String.uncons )
+        , ( "words", one string to (list string) String.words )
+        ]
       )
-    , ( "Elm.Kernel.String.indexes", two string string to (list int) String.indexes )
-    , ( "Elm.Kernel.String.join", two string (list string) to string String.join )
-    , ( "Elm.Kernel.String.lines", one string to (list string) String.lines )
-
-    -- , ( "Elm.Kernel.String.map", one string to string String.map )
-    , ( "Elm.Kernel.String.reverse", one string to string String.reverse )
-    , ( "Elm.Kernel.String.slice", three int int string to string String.slice )
-    , ( "Elm.Kernel.String.split", two string string to (list string) String.split )
-    , ( "Elm.Kernel.String.startsWith", two string string to bool String.startsWith )
-    , ( "Elm.Kernel.String.trim", one string to string String.trim )
-    , ( "Elm.Kernel.String.trimLeft", one string to string String.trimLeft )
-    , ( "Elm.Kernel.String.trimRight", one string to string String.trimRight )
-    , ( "Elm.Kernel.String.uncons", one string to (maybe (tuple char string)) String.uncons )
-    , ( "Elm.Kernel.String.words", one string to (list string) String.words )
     ]
+        |> List.map (\( moduleName, moduleFunctions ) -> ( moduleName, Dict.fromList moduleFunctions ))
         |> Dict.fromList
 
 

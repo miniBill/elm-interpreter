@@ -1,7 +1,8 @@
-module Value exposing (Env, EvalError(..), Value(..), toString)
+module Value exposing (Env, EnvValues, EvalError(..), Value(..), toString)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
+import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern, QualifiedNameRef)
 import Elm.Writer
@@ -27,9 +28,14 @@ type Value
 
 
 type alias Env =
-    { functions : Dict String FunctionImplementation
-    , values : Dict String Value
+    { currentModule : ModuleName
+    , functions : Dict ModuleName (Dict String FunctionImplementation)
+    , values : EnvValues
     }
+
+
+type alias EnvValues =
+    Dict String Value
 
 
 type EvalError
@@ -41,6 +47,7 @@ type EvalError
 toExpression : Value -> Maybe (Node Expression)
 toExpression value =
     let
+        ok : a -> Maybe (Node a)
         ok e =
             Just (fakeNode e)
     in

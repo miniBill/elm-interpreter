@@ -8,9 +8,11 @@ import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
 import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Infix as Infix
+import Elm.Syntax.Module exposing (Module(..))
+import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
-import Env exposing (Env)
+import Env
 import FastDict as Dict
 import List.Extra
 import Parser exposing (DeadEnd)
@@ -18,7 +20,7 @@ import Result.Extra
 import Result.MyExtra
 import Syntax exposing (fakeNode)
 import Unicode
-import Value exposing (EvalError(..), Value(..))
+import Value exposing (Env, EnvValues, EvalError(..), Value(..))
 
 
 type Error
@@ -54,7 +56,7 @@ evalModule source expression =
                 in
                 Elm.Processing.process context rawFile
             )
-        |> Result.andThen buildEnv
+        |> Result.andThen buildInitialEnv
         |> Result.andThen
             (\env ->
                 Result.mapError EvalError <|
@@ -62,41 +64,56 @@ evalModule source expression =
             )
 
 
-buildEnv : File -> Result Error Env
-buildEnv file =
+buildInitialEnv : File -> Result Error Env
+buildInitialEnv file =
     let
+        moduleName : ModuleName
+        moduleName =
+            case Node.value file.moduleDefinition of
+                NormalModule normal ->
+                    Node.value normal.moduleName
+
+                PortModule port_ ->
+                    Node.value port_.moduleName
+
+                EffectModule effect ->
+                    Node.value effect.moduleName
+
         coreEnv : Env
         coreEnv =
-            { functions = Core.functions
+            { currentModule = moduleName
+            , functions = Core.functions
             , values = Dict.empty
             }
+
+        addDeclaration : Node Declaration -> Env -> Result Error Env
+        addDeclaration (Node _ decl) env =
+            case decl of
+                FunctionDeclaration function ->
+                    let
+                        (Node _ implementation) =
+                            function.declaration
+                    in
+                    Ok (Env.addFunction moduleName implementation env)
+
+                PortDeclaration _ ->
+                    Err (EvalError <| Unsupported "Port declaration")
+
+                InfixDeclaration _ ->
+                    Err (EvalError <| Unsupported "Infix declaration")
+
+                Destructuring _ _ ->
+                    Err (EvalError <| Unsupported "Top level destructuring")
+
+                AliasDeclaration _ ->
+                    Ok env
+
+                CustomTypeDeclaration _ ->
+                    Ok env
     in
     file.declarations
         |> Result.MyExtra.combineFoldl
-            (\(Node _ decl) env ->
-                case decl of
-                    FunctionDeclaration function ->
-                        let
-                            (Node _ implementation) =
-                                function.declaration
-                        in
-                        Ok (Env.addFunction implementation env)
-
-                    PortDeclaration _ ->
-                        Err (EvalError <| Unsupported "Port declaration")
-
-                    InfixDeclaration _ ->
-                        Err (EvalError <| Unsupported "Infix declaration")
-
-                    Destructuring _ _ ->
-                        Err (EvalError <| Unsupported "Top level destructuring")
-
-                    AliasDeclaration _ ->
-                        Ok env
-
-                    CustomTypeDeclaration _ ->
-                        Ok env
-            )
+            addDeclaration
             (Ok coreEnv)
 
 
@@ -165,24 +182,20 @@ evalExpression env (Node _ expression) =
 
                             Ok values ->
                                 let
-                                    fakeName : QualifiedNameRef
-                                    fakeName =
-                                        { moduleName = [], name = "..." }
-
-                                    maybeNewEnv : Result EvalError (Maybe Env)
-                                    maybeNewEnv =
+                                    maybeNewEnvValues : Result EvalError (Maybe EnvValues)
+                                    maybeNewEnvValues =
                                         match
-                                            (NamedPattern fakeName patterns)
-                                            (Custom fakeName (oldArgs ++ values))
+                                            (ListPattern patterns)
+                                            (List (oldArgs ++ values))
                                 in
-                                case maybeNewEnv of
+                                case maybeNewEnvValues of
                                     Err e ->
                                         Err e
 
                                     Ok Nothing ->
                                         Err (TypeError "Could not match lambda patterns")
 
-                                    Ok (Just newEnv) ->
+                                    Ok (Just newEnvValues) ->
                                         case implementation of
                                             Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
                                                 let
@@ -190,15 +203,22 @@ evalExpression env (Node _ expression) =
                                                     fullName =
                                                         String.join "." <| moduleName ++ [ name ]
                                                 in
-                                                case Dict.get fullName Elm.Kernel.functions of
+                                                case Dict.get moduleName Elm.Kernel.functions of
                                                     Nothing ->
                                                         Err <| NameError fullName
 
-                                                    Just ( _, f ) ->
-                                                        f values
+                                                    Just kernelModule ->
+                                                        case Dict.get name kernelModule of
+                                                            Nothing ->
+                                                                Err <| NameError fullName
+
+                                                            Just ( _, f ) ->
+                                                                f values
 
                                             _ ->
-                                                evalExpression (Env.with newEnv env) implementation
+                                                evalExpression
+                                                    (localEnv |> Env.with newEnvValues)
+                                                    implementation
 
                 Ok other ->
                     Err <|
@@ -208,6 +228,15 @@ evalExpression env (Node _ expression) =
                                 ++ ", which is a non-lambda non-variant"
 
         Expression.FunctionOrValue moduleName name ->
+            let
+                fixedModuleName : ModuleName
+                fixedModuleName =
+                    if List.isEmpty moduleName then
+                        env.currentModule
+
+                    else
+                        moduleName
+            in
             if isVariant name then
                 case ( moduleName, name ) of
                     ( [], "True" ) ->
@@ -220,58 +249,53 @@ evalExpression env (Node _ expression) =
                         let
                             qualifiedNameRef : QualifiedNameRef
                             qualifiedNameRef =
-                                { moduleName = moduleName, name = name }
+                                { moduleName = fixedModuleName, name = name }
                         in
                         Ok (Value.Custom qualifiedNameRef [])
 
             else
-                let
-                    fullName : String
-                    fullName =
-                        (moduleName ++ [ name ])
-                            |> String.join "."
-                in
-                case moduleName of
+                case fixedModuleName of
                     "Elm" :: "Kernel" :: _ ->
-                        case Dict.get fullName Elm.Kernel.functions of
-                            Nothing ->
-                                Err <| NameError fullName
-
-                            Just ( argCount, f ) ->
-                                if argCount == 0 then
-                                    f []
-
-                                else
-                                    PartiallyApplied env
-                                        []
-                                        (List.repeat argCount (fakeNode AllPattern))
-                                        (fakeNode <| Expression.FunctionOrValue moduleName name)
-                                        |> Ok
+                        evalKernelFunction fixedModuleName name
 
                     _ ->
-                        case Dict.get fullName env.values of
+                        case Dict.get name env.values of
                             Just (PartiallyApplied localEnv [] [] implementation) ->
-                                evalExpression (Env.with localEnv env) implementation
+                                evalExpression localEnv implementation
 
                             Just value ->
                                 Ok value
 
                             Nothing ->
-                                case Dict.get fullName env.functions of
-                                    Just function ->
-                                        if List.isEmpty function.arguments then
-                                            evalExpression env function.expression
+                                let
+                                    err : String -> Result EvalError value
+                                    err missingName =
+                                        missingName
+                                            |> NameError
+                                            |> Err
+                                in
+                                case Dict.get fixedModuleName env.functions of
+                                    Just module_ ->
+                                        case Dict.get name module_ of
+                                            Just function ->
+                                                if List.isEmpty function.arguments then
+                                                    evalExpression { env | currentModule = fixedModuleName } function.expression
 
-                                        else
-                                            PartiallyApplied env
-                                                []
-                                                function.arguments
-                                                function.expression
-                                                |> Ok
+                                                else
+                                                    PartiallyApplied { env | currentModule = fixedModuleName }
+                                                        []
+                                                        function.arguments
+                                                        function.expression
+                                                        |> Ok
+
+                                            Nothing ->
+                                                err
+                                                    ((fixedModuleName ++ [ name ])
+                                                        |> String.join "."
+                                                    )
 
                                     Nothing ->
-                                        Err <|
-                                            NameError fullName
+                                        err (String.join "." fixedModuleName)
 
         Expression.IfBlock cond true false ->
             case evalExpression env cond of
@@ -386,6 +410,32 @@ evalExpression env (Node _ expression) =
 
         Expression.GLSLExpression _ ->
             Err <| Unsupported "GLSL not supported"
+
+
+evalKernelFunction : ModuleName -> String -> Result EvalError Value
+evalKernelFunction moduleName name =
+    case Dict.get moduleName Elm.Kernel.functions of
+        Nothing ->
+            Err <| NameError (String.join "." moduleName)
+
+        Just kernelModule ->
+            case Dict.get name kernelModule of
+                Nothing ->
+                    (moduleName ++ [ name ])
+                        |> String.join "."
+                        |> NameError
+                        |> Err
+
+                Just ( argCount, f ) ->
+                    if argCount == 0 then
+                        f []
+
+                    else
+                        PartiallyApplied (Env.empty [])
+                            []
+                            (List.repeat argCount (fakeNode AllPattern))
+                            (fakeNode <| Expression.FunctionOrValue moduleName name)
+                            |> Ok
 
 
 evalOperatorApplication : Env -> String -> Node Expression -> Node Expression -> Result EvalError Value
@@ -519,7 +569,7 @@ evalRecordAccess env recordExpr (Node _ field) =
 evalRecordAccessFunction : String -> Value
 evalRecordAccessFunction field =
     PartiallyApplied
-        Env.empty
+        (Env.empty [])
         []
         [ fakeNode (VarPattern "r") ]
         (fakeNode <|
@@ -554,7 +604,7 @@ evalRecordUpdate env (Node _ name) setters =
 
 evalOperator : String -> Value
 evalOperator opName =
-    PartiallyApplied Env.empty
+    PartiallyApplied (Env.empty [])
         []
         [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
         (fakeNode <|
@@ -613,7 +663,7 @@ evalCase env { expression, cases } =
                     )
 
 
-match : Pattern -> Value -> Result EvalError (Maybe Env)
+match : Pattern -> Value -> Result EvalError (Maybe EnvValues)
 match pattern value =
     let
         ok : a -> Result error (Maybe a)
@@ -642,13 +692,13 @@ match pattern value =
     in
     case ( pattern, value ) of
         ( UnitPattern, Value.Unit ) ->
-            ok Env.empty
+            ok Dict.empty
 
         ( UnitPattern, _ ) ->
             noMatch
 
         ( AllPattern, _ ) ->
-            ok Env.empty
+            ok Dict.empty
 
         ( ParenthesizedPattern subPattern, _ ) ->
             match (Node.value subPattern) value
@@ -659,25 +709,25 @@ match pattern value =
             if namePattern.name == variant.name then
                 let
                     matchNamedPatternHelper :
-                        Env
+                        EnvValues
                         -> ( List (Node Pattern), List Value )
-                        -> Result EvalError (Maybe Env)
-                    matchNamedPatternHelper env queue =
+                        -> Result EvalError (Maybe EnvValues)
+                    matchNamedPatternHelper envValues queue =
                         case queue of
                             ( [], [] ) ->
-                                ok env
+                                ok envValues
 
                             ( (Node _ patternHead) :: patternTail, argHead :: argTail ) ->
                                 match patternHead argHead
                                     |> andThen
-                                        (\newEnv ->
-                                            matchNamedPatternHelper (Env.with newEnv env) ( patternTail, argTail )
+                                        (\newEnvValues ->
+                                            matchNamedPatternHelper (Dict.union newEnvValues envValues) ( patternTail, argTail )
                                         )
 
                             _ ->
                                 typeError "Mismatched number of arguments to variant"
                 in
-                matchNamedPatternHelper Env.empty ( argsPatterns, args )
+                matchNamedPatternHelper Dict.empty ( argsPatterns, args )
 
             else
                 noMatch
@@ -687,7 +737,7 @@ match pattern value =
 
         ( ListPattern [], List [] ) ->
             -- We assume the code typechecks!
-            ok Env.empty
+            ok Dict.empty
 
         ( ListPattern ((Node _ patternHead) :: patternTail), List (listHead :: listTail) ) ->
             match patternHead listHead
@@ -697,7 +747,7 @@ match pattern value =
                             |> andThen
                                 (\tailEnv ->
                                     ok
-                                        (Env.with tailEnv headEnv)
+                                        (Dict.union tailEnv headEnv)
                                 )
                     )
 
@@ -709,7 +759,7 @@ match pattern value =
                             |> andThen
                                 (\tailEnv ->
                                     ok
-                                        (Env.with tailEnv headEnv)
+                                        (Dict.union tailEnv headEnv)
                                 )
                     )
 
@@ -717,14 +767,14 @@ match pattern value =
             noMatch
 
         ( VarPattern name, _ ) ->
-            ok <| Env.addValue name value Env.empty
+            ok <| Dict.insert name value Dict.empty
 
         ( ListPattern _, _ ) ->
             noMatch
 
         ( CharPattern c, Value.Char d ) ->
             if c == d then
-                ok Env.empty
+                ok Dict.empty
 
             else
                 noMatch
@@ -734,7 +784,7 @@ match pattern value =
 
         ( StringPattern c, Value.String d ) ->
             if c == d then
-                ok Env.empty
+                ok Dict.empty
 
             else
                 noMatch
@@ -744,7 +794,7 @@ match pattern value =
 
         ( IntPattern c, Value.Int d ) ->
             if c == d then
-                ok Env.empty
+                ok Dict.empty
 
             else
                 noMatch
@@ -754,7 +804,7 @@ match pattern value =
 
         ( HexPattern c, Value.Int d ) ->
             if c == d then
-                ok Env.empty
+                ok Dict.empty
 
             else
                 noMatch
@@ -764,7 +814,7 @@ match pattern value =
 
         ( FloatPattern c, Value.Float d ) ->
             if c == d then
-                ok Env.empty
+                ok Dict.empty
 
             else
                 noMatch
@@ -779,7 +829,7 @@ match pattern value =
                         match rpattern rvalue
                             |> andThen
                                 (\renv ->
-                                    ok <| Env.with renv lenv
+                                    ok <| Dict.union renv lenv
                                 )
                     )
 
@@ -793,7 +843,7 @@ match pattern value =
                                     match rpattern rvalue
                                         |> andThen
                                             (\renv ->
-                                                ok <| Env.with renv <| Env.with menv lenv
+                                                ok <| Dict.union renv <| Dict.union menv lenv
                                             )
                                 )
                     )
@@ -804,7 +854,7 @@ match pattern value =
         ( AsPattern (Node _ childPattern) (Node _ asName), _ ) ->
             match childPattern value
                 |> andThen
-                    (\env -> ok <| Env.addValue asName value env)
+                    (\env -> ok <| Dict.insert asName value env)
 
         ( RecordPattern fields, Value.Record fieldValues ) ->
             List.foldl
@@ -816,10 +866,10 @@ match pattern value =
                                     Err <| TypeError <| "Field " ++ fieldName ++ " not found in record"
 
                                 Just fieldValue ->
-                                    ok <| Env.addValue fieldName fieldValue acc
+                                    ok <| Dict.insert fieldName fieldValue acc
                         )
                 )
-                (ok Env.empty)
+                (ok Dict.empty)
                 fields
 
         ( RecordPattern _, _ ) ->

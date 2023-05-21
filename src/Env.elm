@@ -1,38 +1,43 @@
-module Env exposing (Env, addFunction, addValue, empty, with)
+module Env exposing (addFunction, addValue, empty, with)
 
 import Elm.Syntax.Expression exposing (FunctionImplementation)
+import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node
 import FastDict as Dict
-import Value exposing (Value)
-
-
-type alias Env =
-    Value.Env
+import Value exposing (Env, EnvValues, Value)
 
 
 addValue : String -> Value -> Env -> Env
 addValue name value env =
-    { functions = env.functions
-    , values = Dict.insert name value env.values
+    { env
+        | values = Dict.insert name value env.values
     }
 
 
-addFunction : FunctionImplementation -> Env -> Env
-addFunction function env =
-    { functions = Dict.insert (Node.value function.name) function env.functions
-    , values = env.values
+addFunction : ModuleName -> FunctionImplementation -> Env -> Env
+addFunction moduleName function env =
+    { env
+        | functions =
+            Dict.insert
+                moduleName
+                (Dict.insert (Node.value function.name)
+                    function
+                    (Maybe.withDefault Dict.empty
+                        (Dict.get moduleName env.functions)
+                    )
+                )
+                env.functions
     }
 
 
-with : Env -> Env -> Env
-with new old =
-    { functions = Dict.union new.functions old.functions
-    , values = Dict.union new.values old.values
-    }
+with : EnvValues -> Env -> Env
+with newValues old =
+    { old | values = Dict.union newValues old.values }
 
 
-empty : Env
-empty =
-    { functions = Dict.empty
+empty : ModuleName -> Env
+empty moduleName =
+    { currentModule = moduleName
+    , functions = Dict.empty
     , values = Dict.empty
     }

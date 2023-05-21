@@ -24,6 +24,7 @@ suite =
         , negationTest
         , kernelTest
         , joinTest
+        , modulesTest
         ]
 
 
@@ -107,7 +108,7 @@ tooMuchApplyTest : Test
 tooMuchApplyTest =
     evalTest "Too much apply"
         "(\\a -> Foo a) 0 1 2"
-        (Custom { moduleName = [], name = "Foo" } [ Int 0, Int 1, Int 2 ])
+        (Custom { moduleName = [ "Main" ], name = "Foo" } [ Int 0, Int 1, Int 2 ])
 
 
 mutualRecursionTest : Test
@@ -189,6 +190,11 @@ joinTest =
             list
         , evalTest_ """String.join "." ["0","1","2"]""" (String "0.1.2")
         ]
+
+
+modulesTest : Test
+modulesTest =
+    evalTest_ "List.sum [ 1, 2, 3 ]" (Int 6)
 
 
 evalTest : String -> String -> Value -> Test

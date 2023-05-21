@@ -3,6 +3,7 @@ module KernelTests exposing (suite)
 import Core
 import Elm.Kernel
 import Elm.Syntax.Expression exposing (Case, CaseBlock, Expression(..), Function, FunctionImplementation, Lambda, LetBlock, LetDeclaration(..), RecordSetter)
+import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Expect
 import FastDict as Dict
@@ -17,11 +18,12 @@ suite =
         |> describe "Check that all Kernel functions have been defined"
 
 
-kernelFunctions : List ( String, List String )
+kernelFunctions : List ( ( ModuleName, String ), List String )
 kernelFunctions =
     Core.functions
         |> Dict.values
         |> Rope.fromList
+        |> Rope.concatMap (\module_ -> Dict.values module_ |> Rope.fromList)
         |> Rope.concatMap
             (\function ->
                 let
@@ -43,12 +45,12 @@ kernelFunctions =
         |> Dict.toList
 
 
-visitFunctionImplementation : FunctionImplementation -> Rope String
+visitFunctionImplementation : FunctionImplementation -> Rope ( ModuleName, String )
 visitFunctionImplementation { expression } =
     visitExpression expression
 
 
-visitExpression : Node Expression -> Rope String
+visitExpression : Node Expression -> Rope ( ModuleName, String )
 visitExpression (Node _ expression) =
     case expression of
         Application children ->
@@ -69,7 +71,7 @@ visitExpression (Node _ expression) =
             Rope.empty
 
         FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name ->
-            Rope.fromList [ String.join "." (moduleName ++ [ name ]) ]
+            Rope.singleton ( moduleName, name )
 
         IfBlock cond true false ->
             Rope.fromList [ cond, true, false ]
@@ -115,17 +117,17 @@ visitExpression (Node _ expression) =
             Rope.empty
 
 
-visitLambda : Lambda -> Rope String
+visitLambda : Lambda -> Rope ( ModuleName, String )
 visitLambda { expression } =
     visitExpression expression
 
 
-visitRecordSetter : Node RecordSetter -> Rope String
+visitRecordSetter : Node RecordSetter -> Rope ( ModuleName, String )
 visitRecordSetter (Node _ ( _, expression )) =
     visitExpression expression
 
 
-visitCaseBlock : CaseBlock -> Rope String
+visitCaseBlock : CaseBlock -> Rope ( ModuleName, String )
 visitCaseBlock { expression, cases } =
     cases
         |> Rope.fromList
@@ -133,12 +135,12 @@ visitCaseBlock { expression, cases } =
         |> Rope.appendTo (visitExpression expression)
 
 
-visitCase : Case -> Rope String
+visitCase : Case -> Rope ( ModuleName, String )
 visitCase ( _, expression ) =
     visitExpression expression
 
 
-visitLetBlock : LetBlock -> Rope String
+visitLetBlock : LetBlock -> Rope ( ModuleName, String )
 visitLetBlock { declarations, expression } =
     declarations
         |> Rope.fromList
@@ -146,7 +148,7 @@ visitLetBlock { declarations, expression } =
         |> Rope.appendTo (visitExpression expression)
 
 
-visitDeclaration : Node LetDeclaration -> Rope String
+visitDeclaration : Node LetDeclaration -> Rope ( ModuleName, String )
 visitDeclaration (Node _ letDeclaration) =
     case letDeclaration of
         LetFunction function ->
@@ -156,21 +158,35 @@ visitDeclaration (Node _ letDeclaration) =
             visitExpression child
 
 
-visitFunction : Function -> Rope String
+visitFunction : Function -> Rope ( ModuleName, String )
 visitFunction { declaration } =
     visitFunctionImplementation (Node.value declaration)
 
 
-testDefined : ( String, List String ) -> Test
-testDefined ( name, requiredBy ) =
-    test name <|
-        \_ ->
-            if Dict.member name Elm.Kernel.functions then
-                Expect.pass
+testDefined : ( ( ModuleName, String ), List String ) -> Test
+testDefined ( ( moduleName, name ), requiredBy ) =
+    let
+        fullName : String
+        fullName =
+            String.join "." (moduleName ++ [ name ])
 
-            else
-                Expect.fail
-                    (name
-                        ++ " is not defined, but it's requried by "
-                        ++ String.join ", " requiredBy
-                    )
+        error : Expect.Expectation
+        error =
+            Expect.fail
+                (fullName
+                    ++ " is not defined, but it's requried by "
+                    ++ String.join ", " requiredBy
+                )
+    in
+    test fullName <|
+        \_ ->
+            case Dict.get moduleName Elm.Kernel.functions of
+                Just kernelModule ->
+                    if Dict.member name kernelModule then
+                        Expect.pass
+
+                    else
+                        error
+
+                Nothing ->
+                    error
