@@ -107,32 +107,7 @@ evalExpression env (Node _ expression) =
             Ok Value.Unit
 
         Expression.OperatorApplication opName infix_ l r ->
-            evalExpression2 env l r <|
-                \lvalue rvalue ->
-                    case ( opName, infix_ ) of
-                        ( "+", Infix.Left ) ->
-                            evalNumberOperator "+" (+) (+) lvalue rvalue
-
-                        ( "-", Infix.Left ) ->
-                            evalNumberOperator "-" (-) (-) lvalue rvalue
-
-                        ( "*", Infix.Left ) ->
-                            evalNumberOperator "*" (*) (*) lvalue rvalue
-
-                        ( "<=", Infix.Left ) ->
-                            evalRelationOperator "<=" (<=) (<=) lvalue rvalue
-
-                        ( "<", Infix.Left ) ->
-                            evalRelationOperator "<" (<) (<) lvalue rvalue
-
-                        ( ">=", Infix.Left ) ->
-                            evalRelationOperator ">=" (>=) (>=) lvalue rvalue
-
-                        ( ">", Infix.Left ) ->
-                            evalRelationOperator ">" (>) (>) lvalue rvalue
-
-                        _ ->
-                            Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
+            evalOperatorApplication env opName infix_ l r
 
         Expression.Application [] ->
             Err <| TypeError "Empty application"
@@ -311,10 +286,10 @@ evalExpression env (Node _ expression) =
                             Err <| TypeError "ifThenElse condition was not a boolean"
 
         Expression.PrefixOperator opName ->
-            evalOperator opName
+            Ok (evalOperator opName)
 
         Expression.Operator opName ->
-            evalOperator opName
+            Ok (evalOperator opName)
 
         Expression.Integer i ->
             Ok (Value.Int i)
@@ -326,19 +301,7 @@ evalExpression env (Node _ expression) =
             Ok (Value.Float f)
 
         Expression.Negation child ->
-            evalExpression env child
-                |> Result.andThen
-                    (\value ->
-                        case value of
-                            Value.Int i ->
-                                Ok <| Value.Int -i
-
-                            Value.Float f ->
-                                Ok <| Value.Float -f
-
-                            _ ->
-                                Err <| TypeError "Trying to negate a non-number"
-                    )
+            evalNegation env child
 
         Expression.Literal string ->
             Ok (Value.String string)
@@ -412,13 +375,59 @@ evalExpression env (Node _ expression) =
             evalRecordAccess env recordExpr field
 
         Expression.RecordAccessFunction field ->
-            evalRecordAccessFunction field
+            Ok <| evalRecordAccessFunction field
 
         Expression.RecordUpdateExpression name setters ->
             evalRecordUpdate env name setters
 
         Expression.GLSLExpression _ ->
             Err <| Unsupported "GLSL not supported"
+
+
+evalOperatorApplication : Env -> String -> Infix.InfixDirection -> Node Expression -> Node Expression -> Result EvalError Value
+evalOperatorApplication env opName infix_ l r =
+    evalExpression2 env l r <|
+        \lvalue rvalue ->
+            case ( opName, infix_ ) of
+                ( "+", Infix.Left ) ->
+                    evalNumberOperator "+" (+) (+) lvalue rvalue
+
+                ( "-", Infix.Left ) ->
+                    evalNumberOperator "-" (-) (-) lvalue rvalue
+
+                ( "*", Infix.Left ) ->
+                    evalNumberOperator "*" (*) (*) lvalue rvalue
+
+                ( "<=", Infix.Left ) ->
+                    evalRelationOperator "<=" (<=) (<=) lvalue rvalue
+
+                ( "<", Infix.Left ) ->
+                    evalRelationOperator "<" (<) (<) lvalue rvalue
+
+                ( ">=", Infix.Left ) ->
+                    evalRelationOperator ">=" (>=) (>=) lvalue rvalue
+
+                ( ">", Infix.Left ) ->
+                    evalRelationOperator ">" (>) (>) lvalue rvalue
+
+                _ ->
+                    Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
+
+
+evalNegation : Env -> Node Expression -> Result EvalError Value
+evalNegation env child =
+    case evalExpression env child of
+        Err e ->
+            Err e
+
+        Ok (Value.Int i) ->
+            Ok <| Value.Int -i
+
+        Ok (Value.Float f) ->
+            Ok <| Value.Float -f
+
+        _ ->
+            Err <| TypeError "Trying to negate a non-number"
 
 
 evalLetBlock : Env -> Expression.LetBlock -> Result EvalError Env
@@ -434,23 +443,7 @@ evalLetDeclaration :
 evalLetDeclaration env (Node _ letDeclaration) acc =
     case letDeclaration of
         Expression.LetFunction function ->
-            let
-                implementation : FunctionImplementation
-                implementation =
-                    Node.value function.declaration
-
-                functionVal : Value
-                functionVal =
-                    PartiallyApplied env
-                        []
-                        implementation.arguments
-                        implementation.expression
-            in
-            Env.addValue
-                (Node.value implementation.name)
-                functionVal
-                acc
-                |> Ok
+            Ok <| evalLetFunction env function.declaration acc
 
         Expression.LetDestructuring (Node _ letPattern) letExpression ->
             case evalExpression env letExpression of
@@ -467,6 +460,22 @@ evalLetDeclaration env (Node _ letDeclaration) acc =
 
                         Ok (Just patternEnv) ->
                             Ok (Env.with patternEnv acc)
+
+
+evalLetFunction : Env -> Node FunctionImplementation -> Env -> Env
+evalLetFunction env (Node _ implementation) acc =
+    let
+        functionVal : Value
+        functionVal =
+            PartiallyApplied env
+                []
+                implementation.arguments
+                implementation.expression
+    in
+    Env.addValue
+        (Node.value implementation.name)
+        functionVal
+        acc
 
 
 evalRecordAccess : Env -> Node Expression -> Node String -> Result EvalError Value
@@ -488,7 +497,7 @@ evalRecordAccess env recordExpr (Node _ field) =
             )
 
 
-evalRecordAccessFunction : String -> Result EvalError Value
+evalRecordAccessFunction : String -> Value
 evalRecordAccessFunction field =
     PartiallyApplied
         Env.empty
@@ -499,7 +508,6 @@ evalRecordAccessFunction field =
                 (fakeNode <| Expression.FunctionOrValue [] "r")
                 (fakeNode <| String.dropLeft 1 field)
         )
-        |> Ok
 
 
 evalRecordUpdate : Env -> Node String -> List (Node Expression.RecordSetter) -> Result EvalError Value
@@ -525,7 +533,7 @@ evalRecordUpdate env (Node _ name) setters =
             Err <| TypeError "Trying to update fields on a value which is not a record"
 
 
-evalOperator : String -> Result EvalError Value
+evalOperator : String -> Value
 evalOperator opName =
     PartiallyApplied Env.empty
         []
@@ -536,7 +544,6 @@ evalOperator opName =
                 (fakeNode <| Expression.FunctionOrValue [] "l")
                 (fakeNode <| Expression.FunctionOrValue [] "r")
         )
-        |> Ok
 
 
 isVariant : String -> Bool
