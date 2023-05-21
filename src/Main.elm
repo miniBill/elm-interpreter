@@ -1,7 +1,7 @@
 module Main exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, column, fill, padding, spacing, text, width)
+import Element exposing (Element, column, fill, padding, paragraph, spacing, text, width)
 import Element.Border as Border
 import Element.Input as Input
 import Elm.Syntax.Expression as Expression
@@ -71,7 +71,7 @@ innerView model =
                 else
                     text "Eval"
             }
-        , text model.output
+        , paragraph [] [ text model.output ]
         ]
 
 
