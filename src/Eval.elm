@@ -106,8 +106,8 @@ evalExpression env (Node _ expression) =
         Expression.UnitExpr ->
             Ok Value.Unit
 
-        Expression.OperatorApplication opName infix_ l r ->
-            evalOperatorApplication env opName infix_ l r
+        Expression.OperatorApplication opName _ l r ->
+            evalOperatorApplication env opName l r
 
         Expression.Application [] ->
             Err <| TypeError "Empty application"
@@ -200,8 +200,12 @@ evalExpression env (Node _ expression) =
                                             _ ->
                                                 evalExpression (Env.with newEnv env) implementation
 
-                _ ->
-                    Err <| TypeError "Trying to apply a non-lambda non-variant"
+                Ok other ->
+                    Err <|
+                        TypeError <|
+                            "Trying to apply "
+                                ++ Value.toString other
+                                ++ ", which is a non-lambda non-variant"
 
         Expression.FunctionOrValue moduleName name ->
             if isVariant name then
@@ -384,8 +388,8 @@ evalExpression env (Node _ expression) =
             Err <| Unsupported "GLSL not supported"
 
 
-evalOperatorApplication : Env -> String -> Infix.InfixDirection -> Node Expression -> Node Expression -> Result EvalError Value
-evalOperatorApplication env opName infix_ l r =
+evalOperatorApplication : Env -> String -> Node Expression -> Node Expression -> Result EvalError Value
+evalOperatorApplication env opName l r =
     let
         go : (String -> Value -> Value -> Result EvalError Value) -> Result EvalError Value
         go f =
