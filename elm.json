@@ -2,8 +2,7 @@
     "type": "application",
     "source-directories": [
         "src",
-        "generated",
-        "../elm-rope/src"
+        "generated"
     ],
     "elm-version": "0.19.1",
     "dependencies": {
@@ -31,7 +30,8 @@
     },
     "test-dependencies": {
         "direct": {
-            "elm-explorations/test": "2.1.1"
+            "elm-explorations/test": "2.1.1",
+            "miniBill/elm-rope": "1.0.0"
         },
         "indirect": {
             "elm/bytes": "1.0.8",

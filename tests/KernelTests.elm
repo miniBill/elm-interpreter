@@ -113,7 +113,7 @@ visitCaseBlock { expression, cases } =
     cases
         |> Rope.fromList
         |> Rope.concatMap visitCase
-        |> Rope.append (visitExpression expression)
+        |> Rope.appendTo (visitExpression expression)
 
 
 visitCase : Case -> Rope String
@@ -126,7 +126,7 @@ visitLetBlock { declarations, expression } =
     declarations
         |> Rope.fromList
         |> Rope.concatMap visitDeclaration
-        |> Rope.append (visitExpression expression)
+        |> Rope.appendTo (visitExpression expression)
 
 
 visitDeclaration : Node LetDeclaration -> Rope String
