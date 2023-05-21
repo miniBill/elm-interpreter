@@ -1,6 +1,7 @@
 module Eval exposing (Error(..), eval, evalModule)
 
 import Core
+import Core.Basics
 import Elm.Kernel
 import Elm.Parser
 import Elm.Processing
@@ -254,9 +255,9 @@ evalExpression env (Node _ expression) =
                         Ok (Value.Custom qualifiedNameRef [])
 
             else
-                case fixedModuleName of
+                case moduleName of
                     "Elm" :: "Kernel" :: _ ->
-                        evalKernelFunction fixedModuleName name
+                        evalKernelFunction moduleName name
 
                     _ ->
                         case Dict.get name env.values of
@@ -268,34 +269,42 @@ evalExpression env (Node _ expression) =
 
                             Nothing ->
                                 let
-                                    err : String -> Result EvalError value
-                                    err missingName =
-                                        missingName
-                                            |> NameError
-                                            |> Err
+                                    maybeFunction : Maybe Expression.FunctionImplementation
+                                    maybeFunction =
+                                        let
+                                            fromModule : Maybe Expression.FunctionImplementation
+                                            fromModule =
+                                                Dict.get fixedModuleName env.functions
+                                                    |> Maybe.andThen (Dict.get name)
+                                        in
+                                        if List.isEmpty moduleName then
+                                            case fromModule of
+                                                Just function ->
+                                                    Just function
+
+                                                Nothing ->
+                                                    Dict.get name Core.Basics.functions
+
+                                        else
+                                            fromModule
                                 in
-                                case Dict.get fixedModuleName env.functions of
-                                    Just module_ ->
-                                        case Dict.get name module_ of
-                                            Just function ->
-                                                if List.isEmpty function.arguments then
-                                                    evalExpression { env | currentModule = fixedModuleName } function.expression
+                                case maybeFunction of
+                                    Just function ->
+                                        if List.isEmpty function.arguments then
+                                            evalExpression { env | currentModule = fixedModuleName } function.expression
 
-                                                else
-                                                    PartiallyApplied (\_ -> { env | currentModule = fixedModuleName })
-                                                        []
-                                                        function.arguments
-                                                        function.expression
-                                                        |> Ok
-
-                                            Nothing ->
-                                                err
-                                                    ((fixedModuleName ++ [ name ])
-                                                        |> String.join "."
-                                                    )
+                                        else
+                                            PartiallyApplied (\_ -> { env | currentModule = fixedModuleName })
+                                                []
+                                                function.arguments
+                                                function.expression
+                                                |> Ok
 
                                     Nothing ->
-                                        err (String.join "." fixedModuleName)
+                                        (fixedModuleName ++ [ name ])
+                                            |> String.join "."
+                                            |> NameError
+                                            |> Err
 
         Expression.IfBlock cond true false ->
             case evalExpression env cond of
