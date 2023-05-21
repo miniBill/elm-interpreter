@@ -23,6 +23,7 @@ suite =
         , tuplesTest
         , negationTest
         , kernelTest
+        , joinTest
         ]
 
 
@@ -169,6 +170,33 @@ kernelTest =
     describe "Kernel"
         [ evalTest_ "String.length \"a\"" (Int 1)
         , evalTest_ "Basics.e" (Float e)
+        ]
+
+
+joinTest : Test
+joinTest =
+    let
+        list : Value
+        list =
+            Custom Value.list.cons
+                [ String "0"
+                , Custom Value.list.cons
+                    [ String "1"
+                    , Custom Value.list.cons
+                        [ String "2"
+                        , Custom Value.list.nil []
+                        ]
+                    ]
+                ]
+    in
+    describe "String.join"
+        [ evalTest_ """["0","1","2"]"""
+            list
+        , test """Value.toList ["0","1","2"]""" <|
+            \_ ->
+                Value.toList list
+                    |> Expect.equal (Just [ String "0", String "1", String "2" ])
+        , evalTest_ """String.join "." ["0","1","2"]""" (String "0.1.2")
         ]
 
 

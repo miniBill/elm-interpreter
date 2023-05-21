@@ -1,4 +1,4 @@
-module Value exposing (Env, EvalError(..), Value(..), fromList, toList, toString)
+module Value exposing (Env, EvalError(..), Value(..), fromList, list, toList, toString)
 
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
 import Elm.Syntax.Node exposing (Node)
@@ -169,7 +169,7 @@ toList value =
                 ( [ "List" ], "Nil", [] ) ->
                     Just []
 
-                ( [ "List" ], "Const", [ head, tail ] ) ->
+                ( [ "List" ], "Cons", [ head, tail ] ) ->
                     Maybe.map ((::) head) (toList tail)
 
                 _ ->

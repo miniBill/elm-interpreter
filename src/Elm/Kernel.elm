@@ -281,6 +281,11 @@ one :
     -> (a -> out)
     -> ( Int, List Value -> Result EvalError Value )
 one ( firstSelector, _, firstName ) To ( _, output, _ ) f =
+    let
+        err : String -> Result EvalError value
+        err got =
+            Err <| TypeError <| "Expected one " ++ firstName ++ ", got " ++ got
+    in
     ( 1
     , \args ->
         case args of
@@ -290,10 +295,13 @@ one ( firstSelector, _, firstName ) To ( _, output, _ ) f =
                         Ok <| output <| f s
 
                     Nothing ->
-                        Err <| TypeError <| "Expected one " ++ firstName
+                        err <| Value.toString arg
+
+            [] ->
+                err "zero"
 
             _ ->
-                Err <| TypeError <| "Expected one " ++ firstName
+                err "more"
     )
 
 
@@ -306,27 +314,35 @@ two :
     -> ( Int, List Value -> Result EvalError Value )
 two ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) To ( _, output, _ ) f =
     let
-        err : () -> Result EvalError value
-        err () =
+        err : String -> Result EvalError value
+        err got =
             if firstName == secondName then
-                Err <| TypeError <| "Expected two " ++ firstName ++ "s"
+                Err <| TypeError <| "Expected two " ++ firstName ++ "s, got " ++ got
 
             else
-                Err <| TypeError <| "Expected one " ++ firstName ++ " and one " ++ secondName
+                Err <| TypeError <| "Expected one " ++ firstName ++ " and one " ++ secondName ++ ", got " ++ got
     in
     ( 2
     , \args ->
         case args of
             [ firstArg, secondArg ] ->
-                case ( firstSelector firstArg, secondSelector secondArg ) of
-                    ( Just first, Just second ) ->
-                        Ok <| output <| f first second
+                case firstSelector firstArg of
+                    Nothing ->
+                        Err <| TypeError <| "Expected the first argument to be " ++ firstName ++ ", got " ++ Value.toString firstArg
 
-                    _ ->
-                        err ()
+                    Just first ->
+                        case secondSelector secondArg of
+                            Nothing ->
+                                Err <| TypeError <| "Expected the second argument to be " ++ secondName ++ ", got " ++ Value.toString secondArg
+
+                            Just second ->
+                                Ok <| output <| f first second
+
+            [] ->
+                err "zero"
 
             _ ->
-                err ()
+                err "more"
     )
 
 
@@ -340,13 +356,13 @@ three :
     -> ( Int, List Value -> Result EvalError Value )
 three ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) ( thirdSelector, _, thirdName ) To ( _, output, _ ) f =
     let
-        err : () -> Result EvalError value
-        err () =
+        err : String -> Result EvalError value
+        err got =
             if firstName == secondName && secondName == thirdName then
-                Err <| TypeError <| "Expected three " ++ firstName ++ "s"
+                Err <| TypeError <| "Expected three " ++ firstName ++ "s, got " ++ got
 
             else
-                Err <| TypeError <| "Expected one " ++ firstName ++ ", one " ++ secondName ++ " and one " ++ thirdName
+                Err <| TypeError <| "Expected one " ++ firstName ++ ", one " ++ secondName ++ " and one " ++ thirdName ++ ", got " ++ got
     in
     ( 2
     , \args ->
@@ -357,10 +373,13 @@ three ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) ( thirdS
                         Ok <| output <| f first second third
 
                     _ ->
-                        err ()
+                        err (String.join ", " (List.map Value.toString args))
+
+            [] ->
+                err "zero"
 
             _ ->
-                err ()
+                err (String.join ", " (List.map Value.toString args))
     )
 
 
