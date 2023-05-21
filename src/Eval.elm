@@ -387,36 +387,43 @@ evalExpression env (Node _ expression) =
 evalOperatorApplication : Env -> String -> Infix.InfixDirection -> Node Expression -> Node Expression -> Result EvalError Value
 evalOperatorApplication env opName infix_ l r =
     let
+        go : (String -> Value -> Value -> Result EvalError Value) -> Result EvalError Value
         go f =
             evalExpression2 env l r (f opName)
     in
-    case ( opName, infix_ ) of
-        ( "+", Infix.Left ) ->
+    case opName of
+        "+" ->
             go <| evalNumberOperator (+) (+)
 
-        ( "-", Infix.Left ) ->
+        "-" ->
             go <| evalNumberOperator (-) (-)
 
-        ( "*", Infix.Left ) ->
+        "*" ->
             go <| evalNumberOperator (*) (*)
 
-        ( "//", Infix.Left ) ->
+        "//" ->
             go <| evalIntOperator (//)
 
-        ( "/", Infix.Left ) ->
+        "/" ->
             go <| evalFloatOperator (/)
 
-        ( "<=", Infix.Left ) ->
+        "<=" ->
             go <| evalRelationOperator (<=) (<=)
 
-        ( "<", Infix.Left ) ->
+        "<" ->
             go <| evalRelationOperator (<) (<)
 
-        ( ">=", Infix.Left ) ->
+        ">=" ->
             go <| evalRelationOperator (>=) (>=)
 
-        ( ">", Infix.Left ) ->
+        ">" ->
             go <| evalRelationOperator (>) (>)
+
+        "|>" ->
+            evalExpression env (fakeNode <| Expression.Application [ r, l ])
+
+        "<|" ->
+            evalExpression env (fakeNode <| Expression.Application [ l, r ])
 
         _ ->
             Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
