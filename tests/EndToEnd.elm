@@ -4,6 +4,7 @@ import Elm.Syntax.Expression as Expression
 import Eval
 import Expect
 import Test exposing (Test, describe, test)
+import Utils exposing (evalTest, evalTest_)
 import Value exposing (Value(..))
 
 
@@ -179,11 +180,6 @@ negationTest =
     evalTest_ "-2" (Int -2)
 
 
-evalTest_ : String -> Value -> Test
-evalTest_ expr value =
-    evalTest expr expr value
-
-
 kernelTest : Test
 kernelTest =
     describe "Kernel"
@@ -213,14 +209,6 @@ joinTest =
 modulesTest : Test
 modulesTest =
     evalTest_ "List.sum [ 1, 2, 3 ]" (Int 6)
-
-
-evalTest : String -> String -> Value -> Test
-evalTest name expression result =
-    test name <|
-        \_ ->
-            Eval.eval expression
-                |> Expect.equal (Ok result)
 
 
 evalTestModule : String -> String -> Value -> Test
