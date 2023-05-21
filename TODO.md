@@ -1,3 +1,2 @@
-- Mutually recursive let definitions
 - Finish implementing kernel functions
 - Finish implementing operators
