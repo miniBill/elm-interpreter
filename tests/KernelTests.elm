@@ -7,7 +7,6 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Expect
 import FastDict as Dict
 import Rope exposing (Rope)
-import Set
 import Test exposing (Test, describe, test)
 
 
@@ -18,15 +17,30 @@ suite =
         |> describe "Check that all Kernel functions have been defined"
 
 
-kernelFunctions : List String
+kernelFunctions : List ( String, List String )
 kernelFunctions =
     Core.functions
         |> Dict.values
         |> Rope.fromList
-        |> Rope.concatMap visitFunctionImplementation
+        |> Rope.concatMap
+            (\function ->
+                let
+                    (Node _ name) =
+                        function.name
+                in
+                visitFunctionImplementation function
+                    |> Rope.map (\required -> ( required, name ))
+            )
         |> Rope.toList
-        |> Set.fromList
-        |> Set.toList
+        |> List.foldl
+            (\( required, by ) acc ->
+                Dict.insert
+                    required
+                    (by :: Maybe.withDefault [] (Dict.get required acc))
+                    acc
+            )
+            Dict.empty
+        |> Dict.toList
 
 
 visitFunctionImplementation : FunctionImplementation -> Rope String
@@ -49,6 +63,9 @@ visitExpression (Node _ expression) =
             Rope.empty
 
         FunctionOrValue ("Elm" :: "Kernel" :: "Platform" :: _) _ ->
+            Rope.empty
+
+        FunctionOrValue ("Elm" :: "Kernel" :: "Process" :: _) _ ->
             Rope.empty
 
         FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name ->
@@ -144,12 +161,16 @@ visitFunction { declaration } =
     visitFunctionImplementation (Node.value declaration)
 
 
-testDefined : String -> Test
-testDefined name =
+testDefined : ( String, List String ) -> Test
+testDefined ( name, requiredBy ) =
     test name <|
         \_ ->
             if Dict.member name Elm.Kernel.functions then
                 Expect.pass
 
             else
-                Expect.fail (name ++ " is not defined")
+                Expect.fail
+                    (name
+                        ++ " is not defined, but it's requried by "
+                        ++ String.join ", " requiredBy
+                    )

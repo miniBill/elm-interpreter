@@ -62,6 +62,11 @@ functions =
     , ( "Elm.Kernel.Debug.toString", one anything to string Debug.toString )
     , ( "Elm.Kernel.Debug.todo", one string to anything Debug.todo )
 
+    -- Elm.Kernel.List
+    , ( "Elm.Kernel.List.cons", two anything (list anything) To (list anything) (::) )
+    , ( "Elm.Kernel.List.fromArray", one anything To anything identity )
+    , ( "Elm.Kernel.List.toArray", one anything To anything identity )
+
     -- Elm.Kernel.String
     , ( "Elm.Kernel.String.length", one string To int String.length )
     , ( "Elm.Kernel.String.toFloat", one string To (maybe float) String.toFloat )
@@ -269,7 +274,12 @@ constant ( _, toValue, _ ) const =
     )
 
 
-one : Selector a -> To -> Selector out -> (a -> out) -> ( Int, List Value -> Result EvalError Value )
+one :
+    Selector a
+    -> To
+    -> Selector out
+    -> (a -> out)
+    -> ( Int, List Value -> Result EvalError Value )
 one ( firstSelector, _, firstName ) To ( _, output, _ ) f =
     ( 1
     , \args ->
@@ -287,7 +297,13 @@ one ( firstSelector, _, firstName ) To ( _, output, _ ) f =
     )
 
 
-two : Selector a -> Selector b -> To -> Selector out -> (a -> b -> out) -> ( Int, List Value -> Result EvalError Value )
+two :
+    Selector a
+    -> Selector b
+    -> To
+    -> Selector out
+    -> (a -> b -> out)
+    -> ( Int, List Value -> Result EvalError Value )
 two ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) To ( _, output, _ ) f =
     let
         err : () -> Result EvalError value
