@@ -606,7 +606,7 @@ evalCase env { expression, cases } =
                     (\result ->
                         case result of
                             Nothing ->
-                                Err <| TypeError "Missing case branch"
+                                Err <| TypeError <| "Missing case branch for " ++ Value.toString exprValue
 
                             Just res ->
                                 Ok res
