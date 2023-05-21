@@ -374,63 +374,12 @@ evalExpression env (Node _ expression) =
             evalExpression env child
 
         Expression.LetExpression letBlock ->
-            let
-                newEnv : Result EvalError Env
-                newEnv =
-                    Result.MyExtra.combineFoldl
-                        (\(Node _ letDeclaration) ->
-                            addDeclaration letDeclaration
-                        )
-                        (Ok env)
-                        letBlock.declarations
-
-                addDeclaration :
-                    Expression.LetDeclaration
-                    -> Env
-                    -> Result EvalError Env
-                addDeclaration letDeclaration acc =
-                    case letDeclaration of
-                        Expression.LetFunction function ->
-                            let
-                                implementation : FunctionImplementation
-                                implementation =
-                                    Node.value function.declaration
-
-                                functionVal : Value
-                                functionVal =
-                                    PartiallyApplied env
-                                        []
-                                        implementation.arguments
-                                        implementation.expression
-                            in
-                            Env.addValue
-                                (Node.value implementation.name)
-                                functionVal
-                                acc
-                                |> Ok
-
-                        Expression.LetDestructuring (Node _ letPattern) letExpression ->
-                            case evalExpression env letExpression of
-                                Err e ->
-                                    Err e
-
-                                Ok letValue ->
-                                    case match letPattern letValue of
-                                        Err e ->
-                                            Err e
-
-                                        Ok Nothing ->
-                                            Err (TypeError "Could not match pattern inside let")
-
-                                        Ok (Just patternEnv) ->
-                                            Ok (Env.with patternEnv acc)
-            in
-            case newEnv of
+            case evalLetBlock env letBlock of
                 Err e ->
                     Err e
 
-                Ok ne ->
-                    evalExpression ne letBlock.expression
+                Ok newEnv ->
+                    evalExpression newEnv letBlock.expression
 
         Expression.CaseExpression caseExpr ->
             evalCase env caseExpr
@@ -459,58 +408,121 @@ evalExpression env (Node _ expression) =
                     (\element -> evalExpression env element)
                 |> Result.map Value.fromList
 
-        Expression.RecordAccess recordExpr (Node _ field) ->
-            evalExpression env recordExpr
-                |> Result.andThen
-                    (\value ->
-                        case value of
-                            Value.Record fields ->
-                                case Dict.get field fields of
-                                    Just fieldValue ->
-                                        Ok fieldValue
-
-                                    Nothing ->
-                                        Err <| TypeError <| "Field " ++ field ++ " not found [record access]"
-
-                            _ ->
-                                Err <| TypeError "Trying to access a field on a non-record value"
-                    )
+        Expression.RecordAccess recordExpr field ->
+            evalRecordAccess env recordExpr field
 
         Expression.RecordAccessFunction field ->
-            PartiallyApplied
-                Env.empty
-                []
-                [ fakeNode (VarPattern "r") ]
-                (fakeNode <|
-                    Expression.RecordAccess
-                        (fakeNode <| Expression.FunctionOrValue [] "r")
-                        (fakeNode <| String.dropLeft 1 field)
-                )
-                |> Ok
+            evalRecordAccessFunction field
 
-        Expression.RecordUpdateExpression (Node _ name) setters ->
-            case evalExpression env (fakeNode <| Expression.FunctionOrValue [] name) of
-                Err e ->
-                    Err e
-
-                Ok (Value.Record fields) ->
-                    Result.MyExtra.combineFoldl
-                        (\(Node _ ( Node _ fieldName, fieldExpression )) acc ->
-                            evalExpression env fieldExpression
-                                |> Result.map
-                                    (\fieldValue ->
-                                        Dict.insert fieldName fieldValue acc
-                                    )
-                        )
-                        (Ok fields)
-                        setters
-                        |> Result.map Value.Record
-
-                Ok _ ->
-                    Err <| TypeError "Trying to update fields on a value which is not a record"
+        Expression.RecordUpdateExpression name setters ->
+            evalRecordUpdate env name setters
 
         Expression.GLSLExpression _ ->
             Err <| Unsupported "GLSL not supported"
+
+
+evalLetBlock : Env -> Expression.LetBlock -> Result EvalError Env
+evalLetBlock env letBlock =
+    Result.MyExtra.combineFoldl (evalLetDeclaration env) (Ok env) letBlock.declarations
+
+
+evalLetDeclaration :
+    Env
+    -> Node Expression.LetDeclaration
+    -> Env
+    -> Result EvalError Env
+evalLetDeclaration env (Node _ letDeclaration) acc =
+    case letDeclaration of
+        Expression.LetFunction function ->
+            let
+                implementation : FunctionImplementation
+                implementation =
+                    Node.value function.declaration
+
+                functionVal : Value
+                functionVal =
+                    PartiallyApplied env
+                        []
+                        implementation.arguments
+                        implementation.expression
+            in
+            Env.addValue
+                (Node.value implementation.name)
+                functionVal
+                acc
+                |> Ok
+
+        Expression.LetDestructuring (Node _ letPattern) letExpression ->
+            case evalExpression env letExpression of
+                Err e ->
+                    Err e
+
+                Ok letValue ->
+                    case match letPattern letValue of
+                        Err e ->
+                            Err e
+
+                        Ok Nothing ->
+                            Err (TypeError "Could not match pattern inside let")
+
+                        Ok (Just patternEnv) ->
+                            Ok (Env.with patternEnv acc)
+
+
+evalRecordAccess : Env -> Node Expression -> Node String -> Result EvalError Value
+evalRecordAccess env recordExpr (Node _ field) =
+    evalExpression env recordExpr
+        |> Result.andThen
+            (\value ->
+                case value of
+                    Value.Record fields ->
+                        case Dict.get field fields of
+                            Just fieldValue ->
+                                Ok fieldValue
+
+                            Nothing ->
+                                Err <| TypeError <| "Field " ++ field ++ " not found [record access]"
+
+                    _ ->
+                        Err <| TypeError "Trying to access a field on a non-record value"
+            )
+
+
+evalRecordAccessFunction : String -> Result EvalError Value
+evalRecordAccessFunction field =
+    PartiallyApplied
+        Env.empty
+        []
+        [ fakeNode (VarPattern "r") ]
+        (fakeNode <|
+            Expression.RecordAccess
+                (fakeNode <| Expression.FunctionOrValue [] "r")
+                (fakeNode <| String.dropLeft 1 field)
+        )
+        |> Ok
+
+
+evalRecordUpdate : Env -> Node String -> List (Node Expression.RecordSetter) -> Result EvalError Value
+evalRecordUpdate env (Node _ name) setters =
+    case evalExpression env (fakeNode <| Expression.FunctionOrValue [] name) of
+        Err e ->
+            Err e
+
+        Ok (Value.Record fields) ->
+            Result.MyExtra.combineFoldl
+                (\(Node _ ( Node _ fieldName, fieldExpression )) acc ->
+                    evalExpression env fieldExpression
+                        |> Result.map
+                            (\fieldValue ->
+                                Dict.insert fieldName fieldValue acc
+                            )
+                )
+                (Ok fields)
+                setters
+                |> Result.map Value.Record
+
+        Ok _ ->
+            Err <| TypeError "Trying to update fields on a value which is not a record"
 
 
 evalOperator : String -> Result EvalError Value
