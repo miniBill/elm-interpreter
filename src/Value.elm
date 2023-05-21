@@ -1,4 +1,4 @@
-module Value exposing (Env, EvalError(..), Value(..), fromList, list, toList, toString)
+module Value exposing (Env, EvalError(..), Value(..), fromList, listVariants, toList, toString)
 
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
 import Elm.Syntax.Node exposing (Node)
@@ -35,34 +35,39 @@ type EvalError
     | NameError String
 
 
-toExpression : Value -> Maybe Expression
+toExpression : Value -> Maybe (Node Expression)
 toExpression value =
+    let
+        ok e =
+            Just (fakeNode e)
+    in
     case value of
         String s ->
-            Just (Expression.Literal s)
+            ok (Expression.Literal s)
 
         Int i ->
-            Just (Expression.Integer i)
+            ok (Expression.Integer i)
 
         Float f ->
-            Just (Expression.Floatable f)
+            ok (Expression.Floatable f)
 
         Char c ->
-            Just (Expression.CharLiteral c)
+            ok (Expression.CharLiteral c)
 
         Bool b ->
-            Just (Expression.FunctionOrValue [] (boolToString b))
+            ok (Expression.FunctionOrValue [] (boolToString b))
 
         Unit ->
-            Just Expression.UnitExpr
+            ok Expression.UnitExpr
 
         Tuple l r ->
             Maybe.map2
                 (\le re ->
-                    Expression.TupledExpression
-                        [ fakeNode le
-                        , fakeNode re
-                        ]
+                    fakeNode <|
+                        Expression.TupledExpression
+                            [ le
+                            , re
+                            ]
                 )
                 (toExpression l)
                 (toExpression r)
@@ -70,11 +75,12 @@ toExpression value =
         Triple l m r ->
             Maybe.map3
                 (\le me re ->
-                    Expression.TupledExpression
-                        [ fakeNode le
-                        , fakeNode me
-                        , fakeNode re
-                        ]
+                    fakeNode <|
+                        Expression.TupledExpression
+                            [ le
+                            , me
+                            , re
+                            ]
                 )
                 (toExpression l)
                 (toExpression m)
@@ -86,21 +92,27 @@ toExpression value =
                 |> Maybe.Extra.traverse
                     (\( fieldName, fieldValue ) ->
                         Maybe.map
-                            (\expr -> fakeNode ( fakeNode fieldName, fakeNode expr ))
+                            (\expr -> fakeNode ( fakeNode fieldName, expr ))
                             (toExpression fieldValue)
                     )
-                |> Maybe.map Expression.RecordExpr
+                |> Maybe.map (Expression.RecordExpr >> fakeNode)
 
         Custom name args ->
-            (Just (Expression.FunctionOrValue name.moduleName name.name) :: List.map toExpression args)
-                |> Maybe.Extra.combine
-                |> Maybe.map
-                    (List.map fakeNode
-                        >> Expression.Application
+            case toList value of
+                Just list ->
+                    list
+                        |> Maybe.Extra.traverse toExpression
+                        |> Maybe.map (Expression.ListExpr >> fakeNode)
+
+                Nothing ->
+                    (ok (Expression.FunctionOrValue name.moduleName name.name)
+                        :: List.map toExpression args
                     )
+                        |> Maybe.Extra.combine
+                        |> Maybe.map (Expression.Application >> fakeNode)
 
         PartiallyApplied _ [] patterns implementation ->
-            Just
+            ok
                 (Expression.LambdaExpression
                     { args = patterns
                     , expression = implementation
@@ -110,8 +122,7 @@ toExpression value =
         PartiallyApplied localEnv args patterns implementation ->
             Maybe.map2
                 (\lambda argExprs ->
-                    Expression.Application <|
-                        List.map fakeNode (lambda :: argExprs)
+                    fakeNode <| Expression.Application (lambda :: argExprs)
                 )
                 (toExpression (PartiallyApplied localEnv [] patterns implementation))
                 (Maybe.Extra.traverse toExpression args)
@@ -131,7 +142,6 @@ toString value =
     case toExpression value of
         Just e ->
             e
-                |> fakeNode
                 |> Elm.Writer.writeExpression
                 |> Elm.Writer.write
 
@@ -141,11 +151,11 @@ toString value =
 
 {-| Variant names for list
 -}
-list :
+listVariants :
     { cons : QualifiedNameRef
     , nil : QualifiedNameRef
     }
-list =
+listVariants =
     { cons = { moduleName = [ "List" ], name = "Cons" }
     , nil = { moduleName = [ "List" ], name = "Nil" }
     }
@@ -155,9 +165,9 @@ fromList : List Value -> Value
 fromList values =
     List.foldr
         (\value acc ->
-            Custom list.cons [ value, acc ]
+            Custom listVariants.cons [ value, acc ]
         )
-        (Custom list.nil [])
+        (Custom listVariants.nil [])
         values
 
 

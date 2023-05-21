@@ -178,13 +178,13 @@ joinTest =
     let
         list : Value
         list =
-            Custom Value.list.cons
+            Custom Value.listVariants.cons
                 [ String "0"
-                , Custom Value.list.cons
+                , Custom Value.listVariants.cons
                     [ String "1"
-                    , Custom Value.list.cons
+                    , Custom Value.listVariants.cons
                         [ String "2"
-                        , Custom Value.list.nil []
+                        , Custom Value.listVariants.nil []
                         ]
                     ]
                 ]
