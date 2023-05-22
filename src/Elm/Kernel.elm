@@ -109,19 +109,7 @@ functions =
         -- , ( "foldl", one string to string String.foldl )
         -- , ( "foldr", one string to string String.foldr )
         , ( "fromList", one (list char) to string String.fromList )
-        , ( "fromNumber"
-          , one anything to string <|
-                \s ->
-                    case s of
-                        Int i ->
-                            String.fromInt i
-
-                        Float f ->
-                            String.fromFloat f
-
-                        _ ->
-                            "TODO"
-          )
+        , ( "fromNumber", oneWithError anything to string fromNumber )
         , ( "indexes", two string string to (list int) String.indexes )
         , ( "join", two string (list string) to string String.join )
         , ( "lines", one string to (list string) String.lines )
@@ -140,10 +128,12 @@ functions =
       )
     , -- Elm.Kernel.Utils
       ( [ "Elm", "Kernel", "Utils" ]
-      , [ ( "gt", comparison [ GT ] )
-        , ( "lt", comparison [ LT ] )
-        , ( "le", comparison [ LT, EQ ] )
+      , [ ( "append", twoWithError anything anything to anything append )
         , ( "ge", comparison [ GT, EQ ] )
+        , ( "gt", comparison [ GT ] )
+        , ( "le", comparison [ LT, EQ ] )
+        , ( "lt", comparison [ LT ] )
+        , ( "compare", twoWithError anything anything to order compare )
         ]
       )
     ]
@@ -179,6 +169,14 @@ anything =
     )
 
 
+order : Selector Order
+order =
+    ( Value.toOrder
+    , Value.fromOrder
+    , "Order"
+    )
+
+
 string : Selector String
 string =
     ( \value ->
@@ -199,6 +197,10 @@ float =
         case value of
             Float s ->
                 Just s
+
+            Int i ->
+                -- Stuff like "2 / 3" is parsed as (Int 2) / (Int 3)
+                Just (toFloat i)
 
             _ ->
                 Nothing
@@ -348,7 +350,17 @@ one :
     -> Selector out
     -> (a -> out)
     -> ( Int, List Value -> Result EvalError Value )
-one ( firstSelector, _, firstName ) To ( _, output, _ ) f =
+one firstSelector To output f =
+    oneWithError firstSelector To output (\v -> Ok (f v))
+
+
+oneWithError :
+    Selector a
+    -> To
+    -> Selector out
+    -> (a -> Result EvalError out)
+    -> ( Int, List Value -> Result EvalError Value )
+oneWithError ( firstSelector, _, firstName ) To ( _, output, _ ) f =
     let
         err : String -> Result EvalError value
         err got =
@@ -360,7 +372,7 @@ one ( firstSelector, _, firstName ) To ( _, output, _ ) f =
             [ arg ] ->
                 case firstSelector arg of
                     Just s ->
-                        Ok <| output <| f s
+                        Result.map output <| f s
 
                     Nothing ->
                         err <| Value.toString arg
@@ -380,7 +392,18 @@ two :
     -> Selector out
     -> (a -> b -> out)
     -> ( Int, List Value -> Result EvalError Value )
-two ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) To ( _, output, _ ) f =
+two firstSelector secondSelector To output f =
+    twoWithError firstSelector secondSelector To output (\l r -> Ok (f l r))
+
+
+twoWithError :
+    Selector a
+    -> Selector b
+    -> To
+    -> Selector out
+    -> (a -> b -> Result EvalError out)
+    -> ( Int, List Value -> Result EvalError Value )
+twoWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) To ( _, output, _ ) f =
     let
         err : String -> Result EvalError value
         err got =
@@ -404,7 +427,7 @@ two ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) To ( _, ou
                                 Err <| TypeError <| "Expected the second argument to be " ++ secondName ++ ", got " ++ Value.toString secondArg
 
                             Just second ->
-                                Ok <| output <| f first second
+                                Result.map output <| f first second
 
             [] ->
                 err "zero"
@@ -476,7 +499,7 @@ comparison orders =
     , \args ->
         case args of
             [ l, r ] ->
-                Result.map (\order -> Bool (List.member order orders)) <| compare l r
+                Result.map (\result -> Bool (List.member result orders)) <| compare l r
 
             _ ->
                 Err <| TypeError "Comparison needs exactly two arguments"
@@ -496,6 +519,32 @@ compare l r =
 
 
 --
+
+
+append : Value -> Value -> Result EvalError Value
+append l r =
+    case ( l, r ) of
+        ( String ls, String rs ) ->
+            Ok <| String (ls ++ rs)
+
+        ( List ll, List rl ) ->
+            Ok <| List (ll ++ rl)
+
+        _ ->
+            Err <| TypeError <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
+
+
+fromNumber : Value -> Result EvalError String
+fromNumber s =
+    case s of
+        Int i ->
+            Ok <| String.fromInt i
+
+        Float f ->
+            Ok <| String.fromFloat f
+
+        _ ->
+            Err <| TypeError <| "Cannot convert " ++ Value.toString s ++ " to a number"
 
 
 appendN : Int -> Array Value -> Array Value -> Array Value

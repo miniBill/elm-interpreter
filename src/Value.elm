@@ -1,4 +1,4 @@
-module Value exposing (Env, EnvValues, EvalError(..), Value(..), toString)
+module Value exposing (Env, EnvValues, EvalError(..), Value(..), fromOrder, toOrder, toString)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
@@ -172,3 +172,37 @@ toString value =
 
         Nothing ->
             "Could not convert to string :("
+
+
+fromOrder : Order -> Value
+fromOrder order =
+    case order of
+        LT ->
+            Custom { moduleName = [ "Basics" ], name = "LT" } []
+
+        EQ ->
+            Custom { moduleName = [ "Basics" ], name = "EQ" } []
+
+        GT ->
+            Custom { moduleName = [ "Basics" ], name = "GT" } []
+
+
+toOrder : Value -> Maybe Order
+toOrder value =
+    case value of
+        Custom { moduleName, name } [] ->
+            case ( moduleName, name ) of
+                ( [ "Basics" ], "LT" ) ->
+                    Just LT
+
+                ( [ "Basics" ], "EQ" ) ->
+                    Just EQ
+
+                ( [ "Basics" ], "GT" ) ->
+                    Just GT
+
+                _ ->
+                    Nothing
+
+        _ ->
+            Nothing
