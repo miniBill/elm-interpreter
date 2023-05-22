@@ -123,6 +123,34 @@ evalExpression env (Node _ expression) =
         Expression.UnitExpr ->
             Ok Value.Unit
 
+        Expression.OperatorApplication "||" _ l r ->
+            case evalExpression env l of
+                Ok (Bool True) ->
+                    Ok (Bool True)
+
+                Ok (Bool False) ->
+                    evalExpression env r
+
+                Err e ->
+                    Err e
+
+                Ok v ->
+                    Err <| TypeError <| "|| applied to non-Bool " ++ Value.toString v
+
+        Expression.OperatorApplication "&&" _ l r ->
+            case evalExpression env l of
+                Ok (Bool False) ->
+                    Ok (Bool False)
+
+                Ok (Bool True) ->
+                    evalExpression env r
+
+                Err e ->
+                    Err e
+
+                Ok v ->
+                    Err <| TypeError <| "&& applied to non-Bool " ++ Value.toString v
+
         Expression.OperatorApplication opName _ l r ->
             evalExpression env
                 (fakeNode <|
