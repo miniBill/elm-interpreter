@@ -476,17 +476,6 @@ evalNegation env child =
 evalLetBlock : Env -> Expression.LetBlock -> Result EvalError Env
 evalLetBlock env letBlock =
     let
-        -- case evalExpression env letExpression of
-        --     Err e ->
-        --         Err e
-        --     Ok letValue ->
-        --         case match letPattern letValue of
-        --             Err e ->
-        --                 Err e
-        --             Ok Nothing ->
-        --                 Err (TypeError "Could not match pattern inside let")
-        --             Ok (Just patternEnv) ->
-        --                 Ok (Env.with patternEnv acc)
         evalLetFunction : Function -> Env -> Env
         evalLetFunction function acc =
             let
@@ -495,7 +484,8 @@ evalLetBlock env letBlock =
 
                 functionVal : Value
                 functionVal =
-                    PartiallyApplied knot
+                    -- The error is irrelevant, it will fail earlier
+                    PartiallyApplied (\_ -> knot () |> Result.withDefault (withFunctions ()))
                         []
                         implementation.arguments
                         implementation.expression
@@ -532,20 +522,23 @@ evalLetBlock env letBlock =
                 )
                 letBlock.declarations
 
-        knot : () -> Env
+        knot : () -> Result EvalError Env
         knot () =
             let
-                knotHelperRound : List ( Node Pattern, Node Expression ) -> Env -> Env
+                knotHelperRound : List ( Node Pattern, Node Expression ) -> Env -> Result EvalError Env
                 knotHelperRound remaining acc =
                     knotHelper remaining [] False acc
 
-                -- TODO: use topological sort to avoid retries
-                knotHelper : List ( Node Pattern, Node Expression ) -> List ( Node Pattern, Node Expression ) -> Bool -> Env -> Env
+                -- TODO: use topological sort to avoid retries and get better errors
+                knotHelper : List ( Node Pattern, Node Expression ) -> List ( Node Pattern, Node Expression ) -> Bool -> Env -> Result EvalError Env
                 knotHelper remaining later loop acc =
                     case remaining of
                         [] ->
-                            if List.isEmpty later || not loop then
-                                acc
+                            if List.isEmpty later then
+                                Ok acc
+
+                            else if not loop then
+                                Err <| TypeError "Loop detected evaluating values in a loop block"
 
                             else
                                 knotHelperRound later acc
@@ -555,26 +548,23 @@ evalLetBlock env letBlock =
                                 Err (NameError _) ->
                                     knotHelper remainingQueue (remaningHead :: later) loop acc
 
-                                Err _ ->
-                                    -- TODO: handle error
-                                    knotHelper remainingQueue later True acc
+                                Err e ->
+                                    Err e
 
                                 Ok letValue ->
                                     case match letPattern letValue of
-                                        Err _ ->
-                                            -- TODO: handle error
-                                            knotHelper remainingQueue later True acc
+                                        Err e ->
+                                            Err e
 
                                         Ok Nothing ->
-                                            -- TODO: handle error
-                                            knotHelper remainingQueue later True acc
+                                            Err <| TypeError "Match failed in let block"
 
                                         Ok (Just newEnvValues) ->
                                             knotHelper remainingQueue later True (Env.with newEnvValues acc)
             in
             knotHelperRound letPatterns (withFunctions ())
     in
-    Ok <| knot ()
+    knot ()
 
 
 evalRecordAccess : Env -> Node Expression -> Node String -> Result EvalError Value

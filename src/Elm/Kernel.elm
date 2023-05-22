@@ -4,6 +4,7 @@ import Array exposing (Array)
 import Bitwise
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import FastDict as Dict exposing (Dict)
+import List.Extra
 import Maybe.Extra
 import Value exposing (EvalError(..), Value(..))
 
@@ -80,6 +81,7 @@ functions =
     , ( [ "Elm", "Kernel", "JsArray" ]
       , [ ( "appendN", three int (array anything) (array anything) to (array anything) appendN )
         , ( "length", one (array anything) to int Array.length )
+        , ( "initializeFromList", two int (list anything) to (tuple (array anything) (list anything)) initializeFromList )
         ]
       )
 
@@ -628,3 +630,12 @@ appendN n dest source =
     Array.append
         dest
         (Array.slice 0 itemsToCopy source)
+
+
+initializeFromList : Int -> List Value -> ( Array Value, List Value )
+initializeFromList n values =
+    let
+        ( before, after ) =
+            List.Extra.splitAt n values
+    in
+    ( Array.fromList before, after )
