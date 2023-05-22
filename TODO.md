@@ -1,2 +1,3 @@
 - Finish implementing kernel functions
 - Finish implementing operators
+- Import aliases

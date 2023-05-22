@@ -241,6 +241,10 @@ evalExpression env (Node _ expression) =
                     if List.isEmpty moduleName then
                         env.currentModule
 
+                    else if moduleName == [ "JsArray" ] then
+                        -- TODO: Generic import aliases
+                        [ "Elm", "JsArray" ]
+
                     else
                         moduleName
             in
