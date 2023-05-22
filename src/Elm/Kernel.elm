@@ -71,7 +71,7 @@ functions =
     -- Elm.Kernel.Debug
     , ( [ "Elm", "Kernel", "Debug" ]
       , [ ( "log", two string anything to anything Debug.log )
-        , ( "toString", one anything to string Debug.toString )
+        , ( "toString", one anything to string Value.toString )
         , ( "todo", one string to anything Debug.todo )
         ]
       )
@@ -138,21 +138,19 @@ functions =
         , ( "words", one string to (list string) String.words )
         ]
       )
+    , -- Elm.Kernel.Utils
+      ( [ "Elm", "Kernel", "Utils" ]
+      , [ ( "gt", comparison [ GT ] )
+        , ( "lt", comparison [ LT ] )
+        ]
+      )
     ]
         |> List.map (\( moduleName, moduleFunctions ) -> ( moduleName, Dict.fromList moduleFunctions ))
         |> Dict.fromList
 
 
-appendN : Int -> Array Value -> Array Value -> Array Value
-appendN n dest source =
-    let
-        itemsToCopy : Int
-        itemsToCopy =
-            min (Array.length source) (n - Array.length dest)
-    in
-    Array.append
-        dest
-        (Array.slice 0 itemsToCopy source)
+
+-- Selectors
 
 
 type alias Selector a =
@@ -468,3 +466,43 @@ twoNumbers fInt fFloat =
             _ ->
                 Err <| TypeError "Expected two numbers"
     )
+
+
+comparison : List Order -> ( Int, List Value -> Result EvalError Value )
+comparison orders =
+    ( 2
+    , \args ->
+        case args of
+            [ l, r ] ->
+                Result.map (\order -> Bool (List.member order orders)) <| compare l r
+
+            _ ->
+                Err <| TypeError "Comparison needs exactly two arguments"
+    )
+
+
+compare : Value -> Value -> Result EvalError Order
+compare l r =
+    case ( l, r ) of
+        -- TODO: Implement all cases
+        ( Int li, Int ri ) ->
+            Ok <| Basics.compare li ri
+
+        _ ->
+            Err <| TypeError <| "Comparison not yet implemented for " ++ Value.toString l ++ " and " ++ Value.toString r
+
+
+
+--
+
+
+appendN : Int -> Array Value -> Array Value -> Array Value
+appendN n dest source =
+    let
+        itemsToCopy : Int
+        itemsToCopy =
+            min (Array.length source) (n - Array.length dest)
+    in
+    Array.append
+        dest
+        (Array.slice 0 itemsToCopy source)

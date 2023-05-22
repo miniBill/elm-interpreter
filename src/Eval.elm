@@ -8,7 +8,6 @@ import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Expression as Expression exposing (Expression, Function)
 import Elm.Syntax.File exposing (File)
-import Elm.Syntax.Infix as Infix
 import Elm.Syntax.Module exposing (Module(..))
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
@@ -125,7 +124,14 @@ evalExpression env (Node _ expression) =
             Ok Value.Unit
 
         Expression.OperatorApplication opName _ l r ->
-            evalOperatorApplication env opName l r
+            evalExpression env
+                (fakeNode <|
+                    Expression.Application
+                        [ fakeNode <| Expression.Operator opName
+                        , l
+                        , r
+                        ]
+                )
 
         Expression.Application [] ->
             Err <| TypeError "Empty application"
@@ -323,10 +329,10 @@ evalExpression env (Node _ expression) =
                             Err <| TypeError "ifThenElse condition was not a boolean"
 
         Expression.PrefixOperator opName ->
-            Ok (evalOperator opName)
+            evalOperator opName
 
         Expression.Operator opName ->
-            Ok (evalOperator opName)
+            evalOperator opName
 
         Expression.Integer i ->
             Ok (Value.Int i)
@@ -445,51 +451,6 @@ evalKernelFunction moduleName name =
                             (List.repeat argCount (fakeNode AllPattern))
                             (fakeNode <| Expression.FunctionOrValue moduleName name)
                             |> Ok
-
-
-evalOperatorApplication : Env -> String -> Node Expression -> Node Expression -> Result EvalError Value
-evalOperatorApplication env opName l r =
-    let
-        go : (String -> Value -> Value -> Result EvalError Value) -> Result EvalError Value
-        go f =
-            evalExpression2 env l r (f opName)
-    in
-    case opName of
-        "+" ->
-            go <| evalNumberOperator (+) (+)
-
-        "-" ->
-            go <| evalNumberOperator (-) (-)
-
-        "*" ->
-            go <| evalNumberOperator (*) (*)
-
-        "//" ->
-            go <| evalIntOperator (//)
-
-        "/" ->
-            go <| evalFloatOperator (/)
-
-        "<=" ->
-            go <| evalRelationOperator (<=) (<=)
-
-        "<" ->
-            go <| evalRelationOperator (<) (<)
-
-        ">=" ->
-            go <| evalRelationOperator (>=) (>=)
-
-        ">" ->
-            go <| evalRelationOperator (>) (>)
-
-        "|>" ->
-            evalExpression env (fakeNode <| Expression.Application [ r, l ])
-
-        "<|" ->
-            evalExpression env (fakeNode <| Expression.Application [ l, r ])
-
-        _ ->
-            Err <| Unsupported <| "branch 'OperatorApplication \"" ++ opName ++ "\" _ _ _' not implemented"
 
 
 evalNegation : Env -> Node Expression -> Result EvalError Value
@@ -667,17 +628,24 @@ evalRecordUpdate env (Node _ name) setters =
             Err <| TypeError "Trying to update fields on a value which is not a record"
 
 
-evalOperator : String -> Value
+evalOperator : String -> Result EvalError Value
 evalOperator opName =
-    PartiallyApplied (\_ -> Env.empty [])
-        []
-        [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
-        (fakeNode <|
-            Expression.OperatorApplication opName
-                Infix.Non
-                (fakeNode <| Expression.FunctionOrValue [] "l")
-                (fakeNode <| Expression.FunctionOrValue [] "r")
-        )
+    case Dict.get opName Core.operators of
+        Nothing ->
+            Err <| NameError opName
+
+        Just kernelFunction ->
+            PartiallyApplied (\_ -> Env.empty [])
+                []
+                [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
+                (fakeNode <|
+                    Expression.Application
+                        [ fakeNode <| Expression.FunctionOrValue kernelFunction.moduleName kernelFunction.name
+                        , fakeNode <| Expression.FunctionOrValue [] "l"
+                        , fakeNode <| Expression.FunctionOrValue [] "r"
+                        ]
+                )
+                |> Ok
 
 
 isVariant : String -> Bool
@@ -941,93 +909,12 @@ match (Node _ pattern) value =
             noMatch
 
 
-evalNumberOperator :
-    (Int -> Int -> Int)
-    -> (Float -> Float -> Float)
-    -> String
-    -> Value
-    -> Value
-    -> Result EvalError Value
-evalNumberOperator opInt opFloat opName lvalue rvalue =
-    case ( lvalue, rvalue ) of
-        ( Value.Int li, Value.Int ri ) ->
-            Ok (Value.Int (opInt li ri))
-
-        ( Value.Float lf, Value.Float rf ) ->
-            Ok (Value.Float (opFloat lf rf))
-
-        _ ->
-            operatorTypeError opName lvalue rvalue
-
-
-evalIntOperator :
-    (Int -> Int -> Int)
-    -> String
-    -> Value
-    -> Value
-    -> Result EvalError Value
-evalIntOperator opInt opName lvalue rvalue =
-    case ( lvalue, rvalue ) of
-        ( Value.Int li, Value.Int ri ) ->
-            Ok (Value.Int (opInt li ri))
-
-        _ ->
-            operatorTypeError opName lvalue rvalue
-
-
-evalFloatOperator :
-    (Float -> Float -> Float)
-    -> String
-    -> Value
-    -> Value
-    -> Result EvalError Value
-evalFloatOperator opFloat opName lvalue rvalue =
-    case ( lvalue, rvalue ) of
-        ( Value.Int li, Value.Int ri ) ->
-            Ok (Value.Float (opFloat (toFloat li) (toFloat ri)))
-
-        ( Value.Float lf, Value.Float rf ) ->
-            Ok (Value.Float (opFloat lf rf))
-
-        _ ->
-            operatorTypeError opName lvalue rvalue
-
-
-operatorTypeError : String -> Value -> Value -> Result EvalError v
-operatorTypeError opName lvalue rvalue =
-    let
-        message : String
-        message =
-            "Cannot apply operator " ++ opName ++ " to values " ++ Value.toString lvalue ++ " and " ++ Value.toString rvalue
-    in
-    Err (TypeError message)
-
-
-evalRelationOperator :
-    (Int -> Int -> Bool)
-    -> (Float -> Float -> Bool)
-    -> String
-    -> Value
-    -> Value
-    -> Result EvalError Value
-evalRelationOperator opInt opFloat opName lvalue rvalue =
-    case ( lvalue, rvalue ) of
-        ( Value.Int li, Value.Int ri ) ->
-            Ok (Value.Bool (opInt li ri))
-
-        ( Value.Float lf, Value.Float rf ) ->
-            Ok (Value.Bool (opFloat lf rf))
-
-        _ ->
-            operatorTypeError opName lvalue rvalue
-
-
 evalExpression2 :
     Env
     -> Node Expression
     -> Node Expression
-    -> (Value -> Value -> Result EvalError Value)
-    -> Result EvalError Value
+    -> (Value -> Value -> Result EvalError value)
+    -> Result EvalError value
 evalExpression2 env l r f =
     case evalExpression env l of
         Err e ->
