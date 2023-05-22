@@ -1,5 +1,6 @@
 module CoreTests.Basics exposing (suite)
 
+import Array
 import Test exposing (Test, describe)
 import Utils exposing (evalTest, evalTest_)
 import Value exposing (Value(..))
@@ -28,9 +29,9 @@ suite =
                 , evalTest_ "compare \"A\" \"B\"" <| Value.fromOrder (compare "A" "B")
                 , evalTest_ "compare 'f' 'f'" <| Value.fromOrder (compare 'f' 'f')
                 , evalTest_ "compare (1, 2, 3) (0, 1, 2)" <| Value.fromOrder (compare ( 1, 2, 3 ) ( 0, 1, 2 ))
+                , evalTest_ "compare ['a'] ['b']" <| Value.fromOrder (compare [ 'a' ] [ 'b' ])
+                , evalTest "array equality" "Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1" <| Bool <| Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1
 
-                -- , evalTest "compare ['a'] ['b']" <| \() -> Expect.equal LT (compare [ 'a' ] [ 'b' ])
-                -- , evalTest "array equality" <| \() -> Expect.equal (Array.fromList [ 1, 1, 1, 1 ]) (Array.repeat 4 1)
                 -- , evalTest "set equality" <| \() -> Expect.equal (Set.fromList [ 1, 2 ]) (Set.fromList [ 2, 1 ])
                 -- , evalTest "dict equality" <| \() -> Expect.equal (Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ]) (Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ])
                 -- , evalTest "char equality" <| \() -> Expect.notEqual '0' '饑'

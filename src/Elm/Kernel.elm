@@ -29,7 +29,7 @@ functions =
         , ( "log", one float to float (logBase e) )
         , ( "modBy", two int int to int modBy )
         , ( "mul", twoNumbers (*) (*) )
-        , ( "not", one bool To bool not )
+        , ( "not", one bool to bool not )
         , ( "or", two bool bool to bool (||) )
         , ( "pi", constant float pi )
         , ( "pow", twoNumbers (^) (^) )
@@ -39,7 +39,7 @@ functions =
         , ( "sqrt", one float to float sqrt )
         , ( "sub", twoNumbers (-) (-) )
         , ( "tan", one float to float tan )
-        , ( "toFloat", one int To float toFloat )
+        , ( "toFloat", one int to float toFloat )
         , ( "truncate", one float to int truncate )
         , ( "xor", two bool bool to bool xor )
         ]
@@ -78,23 +78,24 @@ functions =
 
     -- Elm.Kernel.JsArray
     , ( [ "Elm", "Kernel", "JsArray" ]
-      , [ ( "appendN", three int (array anything) (array anything) To (array anything) appendN )
+      , [ ( "appendN", three int (array anything) (array anything) to (array anything) appendN )
+        , ( "length", one (array anything) to int Array.length )
         ]
       )
 
     -- Elm.Kernel.List
     , ( [ "Elm", "Kernel", "List" ]
-      , [ ( "cons", two anything (list anything) To (list anything) (::) )
-        , ( "fromArray", one anything To anything identity )
-        , ( "toArray", one anything To anything identity )
+      , [ ( "cons", two anything (list anything) to (list anything) (::) )
+        , ( "fromArray", one anything to anything identity )
+        , ( "toArray", one anything to anything identity )
         ]
       )
 
     -- Elm.Kernel.String
     , ( [ "Elm", "Kernel", "String" ]
-      , [ ( "length", one string To int String.length )
-        , ( "toFloat", one string To (maybe float) String.toFloat )
-        , ( "toInt", one string To (maybe int) String.toInt )
+      , [ ( "length", one string to int String.length )
+        , ( "toFloat", one string to (maybe float) String.toFloat )
+        , ( "toInt", one string to (maybe int) String.toInt )
         , ( "toLower", one string to string String.toLower )
         , ( "toUpper", one string to string String.toUpper )
 
@@ -561,6 +562,26 @@ compare l r =
                                         else
                                             compare lc rc
                                     )
+                    )
+
+        ( List [], List (_ :: _) ) ->
+            Ok LT
+
+        ( List (_ :: _), List [] ) ->
+            Ok GT
+
+        ( List [], List [] ) ->
+            Ok EQ
+
+        ( List (lh :: lt), List (rh :: rt) ) ->
+            compare lh rh
+                |> Result.andThen
+                    (\h ->
+                        if h /= EQ then
+                            Ok h
+
+                        else
+                            compare (List lt) (List rt)
                     )
 
         _ ->
