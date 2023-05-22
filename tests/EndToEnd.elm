@@ -91,7 +91,7 @@ closureTest =
         [ evalTest "Simple"
             "let a = 3 in let closed x = a + x in closed 2"
             (Int 5)
-        , Test.skip <| evalTest "Recursive" """let
+        , evalTest "Recursive" """let
     closure =
         let
             odd x =
