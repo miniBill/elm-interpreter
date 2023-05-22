@@ -170,23 +170,22 @@ testDefined ( ( moduleName, name ), requiredBy ) =
         fullName =
             String.join "." (moduleName ++ [ name ])
 
-        error : Expect.Expectation
+        error : Test
         error =
-            Expect.fail
+            Test.todo
                 (fullName
                     ++ " is not defined, but it's requried by "
                     ++ String.join ", " requiredBy
                 )
     in
-    test fullName <|
-        \_ ->
-            case Dict.get moduleName Elm.Kernel.functions of
-                Just kernelModule ->
-                    if Dict.member name kernelModule then
-                        Expect.pass
+    case Dict.get moduleName Elm.Kernel.functions of
+        Just kernelModule ->
+            if Dict.member name kernelModule then
+                test fullName <|
+                    \_ -> Expect.pass
 
-                    else
-                        error
+            else
+                error
 
-                Nothing ->
-                    error
+        Nothing ->
+            error
