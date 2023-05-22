@@ -142,6 +142,8 @@ functions =
       ( [ "Elm", "Kernel", "Utils" ]
       , [ ( "gt", comparison [ GT ] )
         , ( "lt", comparison [ LT ] )
+        , ( "le", comparison [ LT, EQ ] )
+        , ( "ge", comparison [ GT, EQ ] )
         ]
       )
     ]
