@@ -508,10 +508,60 @@ comparison orders =
 
 compare : Value -> Value -> Result EvalError Order
 compare l r =
+    let
+        inner : comparable -> comparable -> Result EvalError Order
+        inner lv rv =
+            Ok <| Basics.compare lv rv
+    in
     case ( l, r ) of
         -- TODO: Implement all cases
-        ( Int li, Int ri ) ->
-            Ok <| Basics.compare li ri
+        ( Int lv, Int rv ) ->
+            inner lv rv
+
+        ( Float lv, Float rv ) ->
+            inner lv rv
+
+        ( Int lv, Float rv ) ->
+            inner (toFloat lv) rv
+
+        ( Float lv, Int rv ) ->
+            inner lv (toFloat rv)
+
+        ( String lv, String rv ) ->
+            inner lv rv
+
+        ( Char lv, Char rv ) ->
+            inner lv rv
+
+        ( Tuple la lb, Tuple ra rb ) ->
+            compare la ra
+                |> Result.andThen
+                    (\a ->
+                        if a /= EQ then
+                            Ok a
+
+                        else
+                            compare lb rb
+                    )
+
+        ( Triple la lb lc, Triple ra rb rc ) ->
+            compare la ra
+                |> Result.andThen
+                    (\a ->
+                        if a /= EQ then
+                            Ok a
+
+                        else
+                            compare lb rb
+                                |> Result.andThen
+                                    (\b ->
+                                        if b /= EQ then
+                                            Ok b
+
+                                        else
+                                            compare lc rc
+                                    )
+                    )
 
         _ ->
             Err <| TypeError <| "Comparison not yet implemented for " ++ Value.toString l ++ " and " ++ Value.toString r
