@@ -164,6 +164,7 @@ boolToString b =
 
 toString : Value -> String
 toString value =
+    -- TODO: This is inefficient and subtly different from Debug.toString
     case toExpression value of
         Just e ->
             e

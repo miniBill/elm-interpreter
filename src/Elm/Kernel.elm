@@ -469,7 +469,7 @@ twoWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) T
                 err "zero"
 
             _ ->
-                err "more"
+                err (String.join ", " <| List.map Value.toString args)
     )
 
 
@@ -520,6 +520,12 @@ twoNumbers fInt fFloat =
         case args of
             [ Int li, Int ri ] ->
                 Ok <| Int (fInt li ri)
+
+            [ Int li, Float rf ] ->
+                Ok <| Float (fFloat (toFloat li) rf)
+
+            [ Float lf, Int ri ] ->
+                Ok <| Float (fFloat lf (toFloat ri))
 
             [ Float lf, Float rf ] ->
                 Ok <| Float (fFloat lf rf)

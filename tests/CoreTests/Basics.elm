@@ -1,6 +1,8 @@
 module CoreTests.Basics exposing (suite)
 
 import Array
+import Dict
+import Set
 import Test exposing (Test, describe)
 import Utils exposing (evalTest, evalTest_)
 import Value exposing (Value(..))
@@ -31,111 +33,78 @@ suite =
                 , evalTest_ "compare (1, 2, 3) (0, 1, 2)" <| Value.fromOrder (compare ( 1, 2, 3 ) ( 0, 1, 2 ))
                 , evalTest_ "compare ['a'] ['b']" <| Value.fromOrder (compare [ 'a' ] [ 'b' ])
                 , Test.skip <| evalTest "array equality" "Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1" <| Bool <| Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1
-
-                -- , evalTest "set equality" <| \() -> Expect.equal (Set.fromList [ 1, 2 ]) (Set.fromList [ 2, 1 ])
-                -- , evalTest "dict equality" <| \() -> Expect.equal (Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ]) (Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ])
-                -- , evalTest "char equality" <| \() -> Expect.notEqual '0' '饑'
+                , Test.skip <| evalTest "set equality" "Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]" <| Bool <| Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]
+                , Test.skip <| evalTest "dict equality" "Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]" <| Bool <| Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]
+                , evalTest "char equality" "'0' == '饑'" <| Bool <| '0' == '饑'
                 ]
 
         toStringTests : Test
         toStringTests =
-            describe "toString Tests"
+            describe "Debug.toString Tests"
                 [ evalTest "toString Int" "Debug.toString 42" <| String <| Debug.toString 42
                 , evalTest "toString Float" "Debug.toString 42.52" <| String <| Debug.toString 42.52
                 , evalTest "toString Char" "Debug.toString 'c'" <| String <| Debug.toString 'c'
-
-                -- , evalTest "toString Char single quote" <| \() -> Expect.equal "'\\''" (toString '\'')
-                -- , evalTest "toString Char double quote" <| \() -> Expect.equal "'\"'" (toString '"')
-                -- , evalTest "toString String single quote" <| \() -> Expect.equal "\"not 'escaped'\"" (toString "not 'escaped'")
-                -- , evalTest "toString String double quote" <| \() -> Expect.equal "\"are \\\"escaped\\\"\"" (toString "are \"escaped\"")
-                -- , evalTest "toString record" <| \() -> Expect.equal "{ field = [0] }" (toString { field = [ 0 ] })
+                , evalTest "toString Char single quote" "Debug.toString '\\''" <| String <| Debug.toString '\''
+                , evalTest "toString Char double quote" "Debug.toString '\"'" <| String <| Debug.toString '"'
+                , evalTest "toString String single quote" """Debug.toString "not 'escaped'" """ <| String <| Debug.toString "not 'escaped'"
+                , Test.skip <| evalTest "toString record" "Debug.toString { field = [ 0 ] }" <| String <| Debug.toString { field = [ 0 ] }
                 ]
 
         trigTests : Test
         trigTests =
             describe "Trigonometry Tests"
-                [ evalTest_ "radians 0" (Float <| radians 0)
-                , evalTest "radians positive" "radians 5" (Float <| radians 5)
-                , evalTest "radians negative" "radians -5" (Float <| radians -5)
-
-                -- , evalTest "degrees 0" <| \() -> Expect.equal 0 (degrees 0)
-                -- , evalTest "degrees 90" <| \() -> Expect.lessThan 0.01 (abs (1.57 - degrees 90))
-                -- -- This should test to enough precision to know if anything's breaking
-                -- , evalTest "degrees -145" <| \() -> Expect.lessThan 0.01 (abs (-2.53 - degrees -145))
-                -- -- This should test to enough precision to know if anything's breaking
-                -- , evalTest "turns 0" <| \() -> Expect.equal 0 (turns 0)
-                -- , evalTest "turns 8" <| \() -> Expect.lessThan 0.01 (abs (50.26 - turns 8))
-                -- -- This should test to enough precision to know if anything's breaking
-                -- , evalTest "turns -133" <| \() -> Expect.lessThan 0.01 (abs (-835.66 - turns -133))
-                -- -- This should test to enough precision to know if anything's breaking
-                -- , evalTest "fromPolar (0, 0)" <| \() -> Expect.equal ( 0, 0 ) (fromPolar ( 0, 0 ))
-                -- , evalTest "fromPolar (1, 0)" <| \() -> Expect.equal ( 1, 0 ) (fromPolar ( 1, 0 ))
-                -- , evalTest "fromPolar (0, 1)" <| \() -> Expect.equal ( 0, 0 ) (fromPolar ( 0, 1 ))
-                -- , evalTest "fromPolar (1, 1)" <|
-                --     \() ->
-                --         Expect.equal True
-                --             (let
-                --                 ( x, y ) =
-                --                     fromPolar ( 1, 1 )
-                --              in
-                --              0.54 - x < 0.01 && 0.84 - y < 0.01
-                --             )
-                -- , evalTest "toPolar (0, 0)" <| \() -> Expect.equal ( 0, 0 ) (toPolar ( 0, 0 ))
-                -- , evalTest "toPolar (1, 0)" <| \() -> Expect.equal ( 1, 0 ) (toPolar ( 1, 0 ))
-                -- , evalTest "toPolar (0, 1)" <|
-                --     \() ->
-                --         Expect.equal True
-                --             (let
-                --                 ( r, theta ) =
-                --                     toPolar ( 0, 1 )
-                --              in
-                --              r == 1 && abs (1.57 - theta) < 0.01
-                --             )
-                -- , evalTest "toPolar (1, 1)" <|
-                --     \() ->
-                --         Expect.equal True
-                --             (let
-                --                 ( r, theta ) =
-                --                     toPolar ( 1, 1 )
-                --              in
-                --              abs (1.41 - r) < 0.01 && abs (0.78 - theta) < 0.01
-                --             )
-                -- , evalTest "cos" <| \() -> Expect.equal 1 (cos 0)
-                -- , evalTest "sin" <| \() -> Expect.equal 0 (sin 0)
-                -- , evalTest "tan" <| \() -> Expect.lessThan 0.01 (abs (12.67 - tan 17.2))
-                -- , evalTest "acos" <| \() -> Expect.lessThan 0.01 (abs (3.14 - acos -1))
-                -- , evalTest "asin" <| \() -> Expect.lessThan 0.01 (abs (0.3 - asin 0.3))
-                -- , evalTest "atan" <| \() -> Expect.lessThan 0.01 (abs (1.57 - atan 4567.8))
-                -- , evalTest "atan2" <| \() -> Expect.lessThan 0.01 (abs (1.55 - atan2 36 0.65))
-                -- , evalTest "pi" <| \() -> Expect.lessThan 0.01 (abs (3.14 - pi))
+                [ evalTest_ "radians 0" <| Float <| radians 0
+                , evalTest_ "radians 5" <| Float <| radians 5
+                , evalTest_ "radians -5" <| Float <| radians -5
+                , evalTest_ "degrees 0" <| Float <| degrees 0
+                , evalTest_ "degrees 90" <| Float <| degrees 90
+                , evalTest_ "degrees -145" <| Float <| degrees -145
+                , evalTest_ "turns 0" <| Float <| turns 0
+                , evalTest_ "turns 8" <| Float <| turns 8
+                , evalTest_ "turns -133" <| Float <| turns -133
+                , evalTest_ "fromPolar (0, 0)" <| floatTuple <| fromPolar ( 0, 0 )
+                , evalTest_ "fromPolar (1, 0)" <| floatTuple <| fromPolar ( 1, 0 )
+                , evalTest_ "fromPolar (0, 1)" <| floatTuple <| fromPolar ( 0, 1 )
+                , evalTest_ "fromPolar (1, 1)" <| floatTuple <| fromPolar ( 1, 1 )
+                , evalTest_ "toPolar (0, 0)" <| floatTuple <| toPolar ( 0, 0 )
+                , evalTest_ "toPolar (1, 0)" <| floatTuple <| toPolar ( 1, 0 )
+                , evalTest_ "toPolar (0, 1)" <| floatTuple <| toPolar ( 0, 1 )
+                , evalTest_ "toPolar (1, 1)" <| floatTuple <| toPolar ( 1, 1 )
+                , evalTest_ "cos 0" <| Float <| cos 0
+                , evalTest_ "sin 0" <| Float <| sin 0
+                , evalTest_ "tan 17.2" <| Float <| tan 17.2
+                , evalTest_ "acos -1" <| Float <| acos -1
+                , evalTest_ "asin 0.3" <| Float <| asin 0.3
+                , evalTest_ "atan 4567.8" <| Float <| atan 4567.8
+                , evalTest_ "atan2 36 0.65" <| Float <| atan2 36 0.65
+                , evalTest_ "pi" <| Float pi
                 ]
 
         basicMathTests : Test
         basicMathTests =
             describe "Basic Math Tests"
                 [ evalTest "add float" "155.6 + 3.4" <| Float <| 155.6 + 3.4
-
-                -- , evalTest "add int" <| \() -> Expect.equal 17 (round 10 + round 7)
-                -- , evalTest "subtract float" <| \() -> Expect.within (Absolute 0.00000001) -6.3 (1 - 7.3)
-                -- , evalTest "subtract int" <| \() -> Expect.equal 1130 (round 9432 - round 8302)
-                -- , evalTest "multiply float" <| \() -> Expect.within (Relative 0.00000001) 432 (96 * 4.5)
-                -- , evalTest "multiply int" <| \() -> Expect.equal 90 (round 10 * round 9)
-                -- , evalTest "divide float" <| \() -> Expect.within (Relative 0.00000001) 13.175 (527 / 40)
-                -- , evalTest "divide int" <| \() -> Expect.equal 23 (70 // 3)
-                -- , evalTest "7 |> remainderBy 2" <| \() -> Expect.equal 1 (7 |> remainderBy 2)
-                -- , evalTest "-1 |> remainderBy 4" <| \() -> Expect.equal -1 (-1 |> remainderBy 4)
-                -- , evalTest "modBy 2 7" <| \() -> Expect.equal 1 (modBy 2 7)
-                -- , evalTest "modBy 4 -1" <| \() -> Expect.equal 3 (modBy 4 -1)
-                -- , evalTest "3^2" <| \() -> Expect.equal 9 (3 ^ 2)
-                -- , evalTest "sqrt" <| \() -> Expect.equal 9 (sqrt 81)
-                -- , evalTest "negate 42" <| \() -> Expect.equal -42 (negate 42)
-                -- , evalTest "negate -42" <| \() -> Expect.equal 42 (negate -42)
-                -- , evalTest "negate 0" <| \() -> Expect.equal 0 (negate 0)
-                -- , evalTest "abs -25" <| \() -> Expect.equal 25 (abs -25)
-                -- , evalTest "abs 76" <| \() -> Expect.equal 76 (abs 76)
-                -- , evalTest "logBase 10 100" <| \() -> Expect.equal 2 (logBase 10 100)
-                -- , evalTest "logBase 2 256" <| \() -> Expect.equal 8 (logBase 2 256)
-                -- , evalTest "e" <| \() -> Expect.lessThan 0.01 (abs (2.72 - e))
+                , evalTest "add int" "round 10 + round 7" <| Int <| (round 10 + round 7)
+                , evalTest "subtract float" "1 - 7.3" <| Float <| 1 - 7.3
+                , evalTest "subtract int" "round 9432 - round 8302" <| Int <| round 9432 - round 8302
+                , evalTest "multiply float" "96 * 4.5" <| Float <| 96 * 4.5
+                , evalTest "multiply int" "round 10 * round 9" <| Int <| round 10 * round 9
+                , evalTest "divide float" "527 / 40" <| Float <| 527 / 40
+                , evalTest "divide int" "70 // 3" <| Int <| 70 // 3
+                , Test.skip <| evalTest_ "7 |> remainderBy 2" <| Int <| (7 |> remainderBy 2)
+                , Test.skip <| evalTest_ "-1 |> remainderBy 4" <| Int <| (-1 |> remainderBy 4)
+                , evalTest_ "modBy 2 7" <| Int <| modBy 2 7
+                , evalTest_ "modBy 4 -1" <| Int <| modBy 4 -1
+                , evalTest_ "3 ^ 2" <| Float <| 3 ^ 2
+                , evalTest_ "sqrt 81" <| Float <| sqrt 81
+                , evalTest_ "negate 42" <| Float <| negate 42
+                , evalTest_ "negate -42" <| Float <| negate -42
+                , evalTest_ "negate 0" <| Float <| negate 0
+                , evalTest_ "abs -25" <| Float <| abs -25
+                , evalTest_ "abs 76" <| Float <| abs 76
+                , evalTest_ "logBase 10 100" <| Float <| logBase 10 100
+                , evalTest_ "logBase 2 256" <| Float <| logBase 2 256
+                , evalTest_ "e" <| Float e
                 ]
 
         booleanTests : Test
@@ -225,3 +194,8 @@ suite =
         , miscTests
         , higherOrderTests
         ]
+
+
+floatTuple : ( Float, Float ) -> Value
+floatTuple ( l, r ) =
+    Tuple (Float l) (Float r)
