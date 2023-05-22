@@ -80,8 +80,9 @@ functions =
     -- Elm.Kernel.JsArray
     , ( [ "Elm", "Kernel", "JsArray" ]
       , [ ( "appendN", three int (array anything) (array anything) to (array anything) appendN )
-        , ( "length", one (array anything) to int Array.length )
+        , ( "empty", zero to (array anything) Array.empty )
         , ( "initializeFromList", two int (list anything) to (tuple (array anything) (list anything)) initializeFromList )
+        , ( "length", one (array anything) to int Array.length )
         ]
       )
 
@@ -136,6 +137,7 @@ functions =
         , ( "gt", comparison [ GT ] )
         , ( "le", comparison [ LT, EQ ] )
         , ( "lt", comparison [ LT ] )
+        , ( "equal", comparison [ EQ ] )
         , ( "compare", twoWithError anything anything to order compare )
         ]
       )
@@ -344,6 +346,37 @@ constant ( _, toValue, _ ) const =
 
             _ ->
                 Err <| TypeError <| "Didn't expect any args"
+    )
+
+
+zero :
+    To
+    -> Selector out
+    -> out
+    -> ( Int, List Value -> Result EvalError Value )
+zero To output f =
+    zeroWithError To output (Ok f)
+
+
+zeroWithError :
+    To
+    -> Selector out
+    -> Result EvalError out
+    -> ( Int, List Value -> Result EvalError Value )
+zeroWithError To ( _, output, _ ) f =
+    let
+        err : String -> Result EvalError value
+        err got =
+            Err <| TypeError <| "Expected zero args, got " ++ got
+    in
+    ( 0
+    , \args ->
+        case args of
+            [] ->
+                Result.map output f
+
+            _ ->
+                err "more"
     )
 
 
