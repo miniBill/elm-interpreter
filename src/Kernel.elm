@@ -8,6 +8,8 @@ import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern
 import FastDict as Dict exposing (Dict)
 import Kernel.Array
+import Kernel.String
+import Kernel.Utils
 import Maybe.Extra
 import Value exposing (Env, EvalResult, Value(..), typeError)
 
@@ -124,7 +126,7 @@ functions evalFunction =
         -- , ( "foldl", one string to string String.foldl )
         -- , ( "foldr", one string to string String.foldr )
         , ( "fromList", one (list char) to string String.fromList )
-        , ( "fromNumber", oneWithError anything to string fromNumber )
+        , ( "fromNumber", oneWithError anything to string Kernel.String.fromNumber )
         , ( "indexes", two string string to (list int) String.indexes )
         , ( "join", two string (list string) to string String.join )
         , ( "lines", one string to (list string) String.lines )
@@ -141,7 +143,7 @@ functions evalFunction =
       )
     , -- Elm.Kernel.Utils
       ( [ "Elm", "Kernel", "Utils" ]
-      , [ ( "append", twoWithError anything anything to anything append )
+      , [ ( "append", twoWithError anything anything to anything Kernel.Utils.append )
         , ( "ge", comparison [ GT, EQ ] )
         , ( "gt", comparison [ GT ] )
         , ( "le", comparison [ LT, EQ ] )
@@ -706,33 +708,3 @@ compare env l r =
 
         _ ->
             typeError env <| "Comparison not yet implemented for " ++ Value.toString l ++ " and " ++ Value.toString r
-
-
-
---
-
-
-append : Env -> Value -> Value -> EvalResult Value
-append env l r =
-    case ( l, r ) of
-        ( String ls, String rs ) ->
-            Ok <| String (ls ++ rs)
-
-        ( List ll, List rl ) ->
-            Ok <| List (ll ++ rl)
-
-        _ ->
-            typeError env <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
-
-
-fromNumber : Env -> Value -> EvalResult String
-fromNumber env s =
-    case s of
-        Int i ->
-            Ok <| String.fromInt i
-
-        Float f ->
-            Ok <| String.fromFloat f
-
-        _ ->
-            typeError env <| "Cannot convert " ++ Value.toString s ++ " to a number"
