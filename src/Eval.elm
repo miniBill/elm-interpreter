@@ -2,7 +2,6 @@ module Eval exposing (Error(..), eval, evalModule)
 
 import Core
 import Core.Basics
-import Elm.Kernel
 import Elm.Parser
 import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
@@ -14,6 +13,7 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Env
 import FastDict as Dict
+import Kernel
 import List.Extra
 import Parser exposing (DeadEnd)
 import Result.Extra
@@ -238,7 +238,7 @@ evalExpression env (Node _ expression) =
                                                     fullName =
                                                         String.join "." <| moduleName ++ [ name ]
                                                 in
-                                                case Dict.get moduleName Elm.Kernel.functions of
+                                                case Dict.get moduleName Kernel.functions of
                                                     Nothing ->
                                                         Err <| NameError fullName
 
@@ -461,7 +461,7 @@ evalExpression env (Node _ expression) =
 
 evalKernelFunction : ModuleName -> String -> Result EvalError Value
 evalKernelFunction moduleName name =
-    case Dict.get moduleName Elm.Kernel.functions of
+    case Dict.get moduleName Kernel.functions of
         Nothing ->
             Err <| NameError (String.join "." moduleName)
 

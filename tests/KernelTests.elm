@@ -1,12 +1,12 @@
 module KernelTests exposing (suite)
 
 import Core
-import Elm.Kernel
 import Elm.Syntax.Expression exposing (Case, CaseBlock, Expression(..), Function, FunctionImplementation, Lambda, LetBlock, LetDeclaration(..), RecordSetter)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Expect
 import FastDict as Dict
+import Kernel
 import Rope exposing (Rope)
 import Test exposing (Test, describe, test)
 
@@ -178,7 +178,7 @@ testDefined ( ( moduleName, name ), requiredBy ) =
                     ++ String.join ", " requiredBy
                 )
     in
-    case Dict.get moduleName Elm.Kernel.functions of
+    case Dict.get moduleName Kernel.functions of
         Just kernelModule ->
             if Dict.member name kernelModule then
                 test fullName <|

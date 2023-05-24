@@ -1,4 +1,4 @@
-module Elm.Kernel exposing (functions)
+module Kernel exposing (functions)
 
 import Array exposing (Array)
 import Bitwise
@@ -102,7 +102,6 @@ functions =
         , ( "toLower", one string to string String.toLower )
         , ( "toUpper", one string to string String.toUpper )
 
-        -- , ( "all", one string to string String.all )
         -- , ( "any", one string to string String.any )
         , ( "append", two string string to string String.append )
         , ( "cons", two char string to string String.cons )
@@ -117,8 +116,6 @@ functions =
         , ( "indexes", two string string to (list int) String.indexes )
         , ( "join", two string (list string) to string String.join )
         , ( "lines", one string to (list string) String.lines )
-
-        -- , ( "map", one string to string String.map )
         , ( "reverse", one string to string String.reverse )
         , ( "slice", three int int string to string String.slice )
         , ( "split", two string string to (list string) String.split )
