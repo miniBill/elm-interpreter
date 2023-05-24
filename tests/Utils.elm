@@ -41,6 +41,7 @@ evalTest name expression toValue a =
                     v |> Expect.equal (Ok result)
 
 
-skipSlowTests : Bool
-skipSlowTests =
-    True
+skipSlowTests : Test -> Test
+skipSlowTests test =
+    -- Test.skip test
+    test
