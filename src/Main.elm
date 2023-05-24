@@ -148,4 +148,4 @@ errorToString err =
             in
             messageWithType
                 ++ "\nCall stack:\n - "
-                ++ String.join "\n - " (List.map Syntax.qualifiedNameToString callStack)
+                ++ String.join "\n - " (List.reverse <| List.map Syntax.qualifiedNameToString callStack)
