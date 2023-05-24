@@ -5,7 +5,7 @@ import Core.Basics
 import Elm.Parser
 import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
-import Elm.Syntax.Expression as Expression exposing (Expression, Function)
+import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Module exposing (Module(..))
 import Elm.Syntax.ModuleName exposing (ModuleName)
@@ -18,7 +18,9 @@ import List.Extra
 import Parser exposing (DeadEnd)
 import Result.Extra
 import Result.MyExtra
+import Set exposing (Set)
 import Syntax exposing (fakeNode)
+import TopologicalSort
 import Unicode
 import Value exposing (Env, EnvValues, EvalError(..), EvalResult, Value(..), nameError, typeError, unsupported)
 
@@ -259,7 +261,7 @@ evalExpression env (Node _ expression) =
 
                                             _ ->
                                                 evalExpression
-                                                    (localEnv () |> Env.with newEnvValues)
+                                                    (localEnv |> Env.with newEnvValues)
                                                     implementation
 
                 Ok other ->
@@ -312,7 +314,7 @@ evalExpression env (Node _ expression) =
 
                                     Just function ->
                                         PartiallyApplied
-                                            (\_ -> Env.call moduleName name env)
+                                            (Env.call moduleName name env)
                                             []
                                             function.arguments
                                             function.expression
@@ -321,7 +323,7 @@ evalExpression env (Node _ expression) =
                     _ ->
                         case ( moduleName, Dict.get name env.values ) of
                             ( [], Just (PartiallyApplied localEnv [] [] implementation) ) ->
-                                evalExpression (localEnv ()) implementation
+                                evalExpression localEnv implementation
 
                             ( [], Just value ) ->
                                 Ok value
@@ -356,7 +358,7 @@ evalExpression env (Node _ expression) =
 
                                         else
                                             PartiallyApplied
-                                                (\_ -> Env.call fixedModuleName name env)
+                                                (Env.call fixedModuleName name env)
                                                 []
                                                 function.arguments
                                                 function.expression
@@ -437,18 +439,13 @@ evalExpression env (Node _ expression) =
             evalExpression env child
 
         Expression.LetExpression letBlock ->
-            case evalLetBlock env letBlock of
-                Err e ->
-                    Err e
-
-                Ok newEnv ->
-                    evalExpression newEnv letBlock.expression
+            evalLet env letBlock
 
         Expression.CaseExpression caseExpr ->
             evalCase env caseExpr
 
         Expression.LambdaExpression lambda ->
-            Ok <| PartiallyApplied (\_ -> env) [] lambda.args lambda.expression
+            Ok <| PartiallyApplied env [] lambda.args lambda.expression
 
         Expression.RecordExpr fields ->
             fields
@@ -509,7 +506,7 @@ evalFunction localEnv oldArgs patterns implementation =
         let
             env : Env
             env =
-                localEnv ()
+                localEnv
 
             maybeNewEnvValues : EvalResult (Maybe EnvValues)
             maybeNewEnvValues =
@@ -548,7 +545,7 @@ evalFunction localEnv oldArgs patterns implementation =
 
                     _ ->
                         evalExpression
-                            (localEnv () |> Env.with newEnvValues)
+                            (localEnv |> Env.with newEnvValues)
                             implementation
 
 
@@ -568,7 +565,7 @@ evalKernelFunction env moduleName name =
                         f (Env.call moduleName name env) []
 
                     else
-                        PartiallyApplied (\_ -> Env.empty moduleName)
+                        PartiallyApplied (Env.empty moduleName)
                             []
                             (List.repeat argCount (fakeNode AllPattern))
                             (fakeNode <| Expression.FunctionOrValue moduleName name)
@@ -589,102 +586,6 @@ evalNegation env child =
 
         _ ->
             typeError env "Trying to negate a non-number"
-
-
-evalLetBlock : Env -> Expression.LetBlock -> EvalResult Env
-evalLetBlock env letBlock =
-    let
-        evalLetFunction : Function -> Env -> Env
-        evalLetFunction function acc =
-            let
-                (Node _ implementation) =
-                    function.declaration
-
-                functionVal : Value
-                functionVal =
-                    -- The error is irrelevant, it will fail earlier
-                    PartiallyApplied (\_ -> knot () |> Result.withDefault (withFunctions ()))
-                        []
-                        implementation.arguments
-                        implementation.expression
-            in
-            Env.addValue
-                (Node.value implementation.name)
-                functionVal
-                acc
-
-        withFunctions : () -> Env
-        withFunctions () =
-            List.foldl
-                (\(Node _ letDeclaration) acc ->
-                    case letDeclaration of
-                        Expression.LetFunction function ->
-                            evalLetFunction function acc
-
-                        Expression.LetDestructuring _ _ ->
-                            acc
-                )
-                env
-                letBlock.declarations
-
-        letPatterns : List ( Node Pattern, Node Expression )
-        letPatterns =
-            List.filterMap
-                (\(Node _ letDeclaration) ->
-                    case letDeclaration of
-                        Expression.LetDestructuring letPattern letExpression ->
-                            Just ( letPattern, letExpression )
-
-                        Expression.LetFunction _ ->
-                            Nothing
-                )
-                letBlock.declarations
-
-        knot : () -> EvalResult Env
-        knot () =
-            let
-                knotHelperRound : List ( Node Pattern, Node Expression ) -> Env -> EvalResult Env
-                knotHelperRound remaining acc =
-                    knotHelper remaining [] False acc
-
-                -- TODO: use topological sort to avoid retries and get better errors
-                knotHelper : List ( Node Pattern, Node Expression ) -> List ( Node Pattern, Node Expression ) -> Bool -> Env -> EvalResult Env
-                knotHelper remaining later loop acc =
-                    case remaining of
-                        [] ->
-                            if List.isEmpty later then
-                                Ok acc
-
-                            else if not loop then
-                                typeError env "Loop detected evaluating values in a loop block"
-
-                            else
-                                knotHelperRound later acc
-
-                        (( letPattern, letExpression ) as remaningHead) :: remainingQueue ->
-                            case evalExpression acc letExpression of
-                                Err e ->
-                                    case e.error of
-                                        NameError _ ->
-                                            knotHelper remainingQueue (remaningHead :: later) loop acc
-
-                                        _ ->
-                                            Err e
-
-                                Ok letValue ->
-                                    case match env letPattern letValue of
-                                        Err e ->
-                                            Err e
-
-                                        Ok Nothing ->
-                                            typeError env "Match failed in let block"
-
-                                        Ok (Just newEnvValues) ->
-                                            knotHelper remainingQueue later True (Env.with newEnvValues acc)
-            in
-            knotHelperRound letPatterns (withFunctions ())
-    in
-    knot ()
 
 
 evalRecordAccess : Env -> Node Expression -> Node String -> EvalResult Value
@@ -709,7 +610,7 @@ evalRecordAccess env recordExpr (Node _ field) =
 evalRecordAccessFunction : String -> Value
 evalRecordAccessFunction field =
     PartiallyApplied
-        (\_ -> Env.empty [])
+        (Env.empty [])
         []
         [ fakeNode (VarPattern "r") ]
         (fakeNode <|
@@ -750,7 +651,7 @@ evalOperator env opName =
 
         Just kernelFunction ->
             PartiallyApplied
-                (\_ -> Env.call kernelFunction.moduleName opName env)
+                (Env.call kernelFunction.moduleName opName env)
                 []
                 [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
                 (fakeNode <|
@@ -761,6 +662,217 @@ evalOperator env opName =
                         ]
                 )
                 |> Ok
+
+
+evalLet : Env -> Expression.LetBlock -> EvalResult Value
+evalLet env letBlock =
+    let
+        envDefs : Set String
+        envDefs =
+            Set.union
+                (Dict.get env.currentModule env.functions
+                    |> Maybe.map (Dict.keys >> Set.fromList)
+                    |> Maybe.withDefault Set.empty
+                )
+                (Dict.keys env.values |> Set.fromList)
+
+        patternDefs : Node Pattern -> Set String
+        patternDefs (Node _ pattern) =
+            case pattern of
+                TuplePattern patterns ->
+                    List.foldl (\p -> Set.union (patternDefs p)) Set.empty patterns
+
+                RecordPattern fields ->
+                    List.foldl (\(Node _ s) -> Set.insert s) Set.empty fields
+
+                UnConsPattern head tail ->
+                    Set.union (patternDefs head) (patternDefs tail)
+
+                ListPattern patterns ->
+                    List.foldl (\p -> Set.union (patternDefs p)) Set.empty patterns
+
+                VarPattern name ->
+                    Set.singleton name
+
+                NamedPattern _ patterns ->
+                    List.foldl (\p -> Set.union (patternDefs p)) Set.empty patterns
+
+                AsPattern p (Node _ s) ->
+                    Set.insert s (patternDefs p)
+
+                ParenthesizedPattern p ->
+                    patternDefs p
+
+                _ ->
+                    Set.empty
+
+        declarationDefs : Node Expression.LetDeclaration -> Set String
+        declarationDefs (Node _ letDeclaration) =
+            case letDeclaration of
+                Expression.LetFunction { declaration } ->
+                    Set.singleton <| Node.value (Node.value declaration).name
+
+                Expression.LetDestructuring letPattern _ ->
+                    patternDefs letPattern
+
+        declarationFreeVars : Node Expression.LetDeclaration -> Set String
+        declarationFreeVars (Node _ letDeclaration) =
+            case letDeclaration of
+                Expression.LetFunction { declaration } ->
+                    let
+                        { name, arguments, expression } =
+                            Node.value declaration
+                    in
+                    Set.diff (freeVars expression)
+                        (List.foldl (\p -> Set.union (patternDefs p))
+                            (Set.singleton (Node.value name))
+                            arguments
+                        )
+
+                Expression.LetDestructuring pattern expression ->
+                    Set.diff (freeVars expression) (patternDefs pattern)
+
+        letFreeVars : Expression.LetBlock -> Set String
+        letFreeVars { declarations, expression } =
+            Set.diff
+                (List.foldl (\d -> Set.union (declarationFreeVars d)) (freeVars expression) declarations)
+                (List.foldl (\d -> Set.union (declarationDefs d)) Set.empty declarations)
+
+        caseFreeVars : Expression.Case -> Set String
+        caseFreeVars ( pattern, expression ) =
+            Set.diff (freeVars expression) (patternDefs pattern)
+
+        freeVars : Node Expression -> Set String
+        freeVars (Node _ expr) =
+            case expr of
+                Expression.Application expressions ->
+                    List.foldl (\e -> Set.union (freeVars e)) Set.empty expressions
+
+                Expression.OperatorApplication _ _ l r ->
+                    Set.union (freeVars l) (freeVars r)
+
+                Expression.FunctionOrValue [] name ->
+                    if isVariant name then
+                        Set.empty
+
+                    else
+                        Set.singleton name
+
+                Expression.IfBlock cond true false ->
+                    Set.union (freeVars cond) (Set.union (freeVars true) (freeVars false))
+
+                Expression.Negation child ->
+                    freeVars child
+
+                Expression.TupledExpression expressions ->
+                    List.foldl (\e -> Set.union (freeVars e)) Set.empty expressions
+
+                Expression.ParenthesizedExpression child ->
+                    freeVars child
+
+                Expression.LetExpression block ->
+                    letFreeVars block
+
+                Expression.CaseExpression { expression, cases } ->
+                    List.foldl (\c -> Set.union (caseFreeVars c)) (freeVars expression) cases
+
+                Expression.LambdaExpression { expression, args } ->
+                    Set.diff (freeVars expression)
+                        (List.foldl (\p -> Set.union (patternDefs p)) Set.empty args)
+
+                Expression.RecordExpr setters ->
+                    List.foldl (\(Node _ ( _, e )) -> Set.union (freeVars e)) Set.empty setters
+
+                Expression.ListExpr expressions ->
+                    List.foldl (\e -> Set.union (freeVars e)) Set.empty expressions
+
+                Expression.RecordAccess record _ ->
+                    freeVars record
+
+                Expression.RecordUpdateExpression (Node _ s) setters ->
+                    List.foldl (\(Node _ ( _, e )) -> Set.union (freeVars e)) (Set.singleton s) setters
+
+                _ ->
+                    Set.empty
+
+        isFunction : Node Expression.LetDeclaration -> Bool
+        isFunction (Node _ d) =
+            case d of
+                Expression.LetFunction { declaration } ->
+                    List.length (Node.value declaration).arguments > 0
+
+                _ ->
+                    False
+
+        sortedDeclarations : Result TopologicalSort.SortError (List (Node Expression.LetDeclaration))
+        sortedDeclarations =
+            letBlock.declarations
+                |> List.indexedMap
+                    (\id declaration ->
+                        { id = id + 1
+                        , declaration = declaration
+                        , defVars = declarationDefs declaration
+                        , refVars = Set.diff (declarationFreeVars declaration) envDefs
+                        , cycleAllowed = isFunction declaration
+                        }
+                    )
+                |> TopologicalSort.sort
+                    { id = .id
+                    , defVars = .defVars
+                    , refVars = .refVars
+                    , cycleAllowed = .cycleAllowed
+                    }
+                |> Result.map (List.map .declaration >> List.reverse)
+
+        mapSortError : Env -> Result TopologicalSort.SortError a -> EvalResult a
+        mapSortError errEnv sortResult =
+            case sortResult of
+                Ok a ->
+                    Ok a
+
+                Err TopologicalSort.IllegalCycle ->
+                    typeError errEnv "illegal cycle in let block"
+
+                Err TopologicalSort.InternalError ->
+                    typeError errEnv "internal error in let block"
+
+        addDeclaration : Node Expression.LetDeclaration -> Env -> EvalResult Env
+        addDeclaration ((Node _ letDeclaration) as node) acc =
+            case letDeclaration of
+                Expression.LetFunction { declaration } ->
+                    case declaration of
+                        Node _ ({ name, expression } as implementation) ->
+                            if isFunction node then
+                                Ok <| Env.addFunction acc.currentModule implementation acc
+
+                            else
+                                case evalExpression acc expression of
+                                    Err e ->
+                                        Err e
+
+                                    Ok value ->
+                                        Ok <| Env.addValue (Node.value name) value acc
+
+                Expression.LetDestructuring letPattern letExpression ->
+                    case evalExpression acc letExpression of
+                        Err e ->
+                            Err e
+
+                        Ok letValue ->
+                            case match acc letPattern letValue of
+                                Err e ->
+                                    Err e
+
+                                Ok Nothing ->
+                                    typeError acc "Could not match pattern inside let"
+
+                                Ok (Just patternEnv) ->
+                                    Ok (Env.with patternEnv acc)
+    in
+    sortedDeclarations
+        |> mapSortError env
+        |> Result.andThen (Result.MyExtra.combineFoldl addDeclaration (Ok env))
+        |> Result.andThen (\newEnv -> evalExpression newEnv letBlock.expression)
 
 
 isVariant : String -> Bool
