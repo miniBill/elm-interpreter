@@ -6,10 +6,10 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import FastDict as Dict exposing (Dict)
 import List.Extra
 import Maybe.Extra
-import Value exposing (EvalError(..), Value(..))
+import Value exposing (Env, EvalError(..), EvalResult, Value(..), typeError)
 
 
-functions : Dict ModuleName (Dict String ( Int, List Value -> Result EvalError Value ))
+functions : Dict ModuleName (Dict String ( Int, Env -> List Value -> EvalResult Value ))
 functions =
     [ -- Elm.Kernel.Basics
       ( [ "Elm", "Kernel", "Basics" ]
@@ -333,16 +333,16 @@ tuple ( firstSelector, firstToValue, firstName ) ( secondSelector, secondToValue
     )
 
 
-constant : Selector res -> res -> ( Int, List Value -> Result EvalError Value )
+constant : Selector res -> res -> ( Int, Env -> List Value -> EvalResult Value )
 constant ( _, toValue, _ ) const =
     ( 0
-    , \args ->
+    , \env args ->
         case args of
             [] ->
                 Ok <| toValue const
 
             _ ->
-                Err <| TypeError <| "Didn't expect any args"
+                typeError env <| "Didn't expect any args"
     )
 
 
@@ -350,7 +350,7 @@ zero :
     To
     -> Selector out
     -> out
-    -> ( Int, List Value -> Result EvalError Value )
+    -> ( Int, Env -> List Value -> EvalResult Value )
 zero To output f =
     zeroWithError To output (Ok f)
 
@@ -358,22 +358,22 @@ zero To output f =
 zeroWithError :
     To
     -> Selector out
-    -> Result EvalError out
-    -> ( Int, List Value -> Result EvalError Value )
+    -> EvalResult out
+    -> ( Int, Env -> List Value -> EvalResult Value )
 zeroWithError To ( _, output, _ ) f =
     let
-        err : String -> Result EvalError value
-        err got =
-            Err <| TypeError <| "Expected zero args, got " ++ got
+        err : Env -> String -> EvalResult value
+        err env got =
+            typeError env <| "Expected zero args, got " ++ got
     in
     ( 0
-    , \args ->
+    , \env args ->
         case args of
             [] ->
                 Result.map output f
 
             _ ->
-                err "more"
+                err env "more"
     )
 
 
@@ -382,39 +382,39 @@ one :
     -> To
     -> Selector out
     -> (a -> out)
-    -> ( Int, List Value -> Result EvalError Value )
+    -> ( Int, Env -> List Value -> EvalResult Value )
 one firstSelector To output f =
-    oneWithError firstSelector To output (\v -> Ok (f v))
+    oneWithError firstSelector To output (\_ v -> Ok (f v))
 
 
 oneWithError :
     Selector a
     -> To
     -> Selector out
-    -> (a -> Result EvalError out)
-    -> ( Int, List Value -> Result EvalError Value )
+    -> (Env -> a -> EvalResult out)
+    -> ( Int, Env -> List Value -> EvalResult Value )
 oneWithError ( firstSelector, _, firstName ) To ( _, output, _ ) f =
     let
-        err : String -> Result EvalError value
-        err got =
-            Err <| TypeError <| "Expected one " ++ firstName ++ ", got " ++ got
+        err : Env -> String -> EvalResult value
+        err env got =
+            typeError env <| "Expected one " ++ firstName ++ ", got " ++ got
     in
     ( 1
-    , \args ->
+    , \env args ->
         case args of
             [ arg ] ->
                 case firstSelector arg of
                     Just s ->
-                        Result.map output <| f s
+                        Result.map output <| f env s
 
                     Nothing ->
-                        err <| Value.toString arg
+                        err env <| Value.toString arg
 
             [] ->
-                err "zero"
+                err env "zero"
 
             _ ->
-                err "more"
+                err env "more"
     )
 
 
@@ -424,9 +424,9 @@ two :
     -> To
     -> Selector out
     -> (a -> b -> out)
-    -> ( Int, List Value -> Result EvalError Value )
+    -> ( Int, Env -> List Value -> EvalResult Value )
 two firstSelector secondSelector To output f =
-    twoWithError firstSelector secondSelector To output (\l r -> Ok (f l r))
+    twoWithError firstSelector secondSelector To output (\_ l r -> Ok (f l r))
 
 
 twoWithError :
@@ -434,39 +434,39 @@ twoWithError :
     -> Selector b
     -> To
     -> Selector out
-    -> (a -> b -> Result EvalError out)
-    -> ( Int, List Value -> Result EvalError Value )
+    -> (Env -> a -> b -> EvalResult out)
+    -> ( Int, Env -> List Value -> EvalResult Value )
 twoWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) To ( _, output, _ ) f =
     let
-        err : String -> Result EvalError value
-        err got =
+        err : Env -> String -> EvalResult value
+        err env got =
             if firstName == secondName then
-                Err <| TypeError <| "Expected two " ++ firstName ++ "s, got " ++ got
+                typeError env <| "Expected two " ++ firstName ++ "s, got " ++ got
 
             else
-                Err <| TypeError <| "Expected one " ++ firstName ++ " and one " ++ secondName ++ ", got " ++ got
+                typeError env <| "Expected one " ++ firstName ++ " and one " ++ secondName ++ ", got " ++ got
     in
     ( 2
-    , \args ->
+    , \env args ->
         case args of
             [ firstArg, secondArg ] ->
                 case firstSelector firstArg of
                     Nothing ->
-                        Err <| TypeError <| "Expected the first argument to be " ++ firstName ++ ", got " ++ Value.toString firstArg
+                        typeError env <| "Expected the first argument to be " ++ firstName ++ ", got " ++ Value.toString firstArg
 
                     Just first ->
                         case secondSelector secondArg of
                             Nothing ->
-                                Err <| TypeError <| "Expected the second argument to be " ++ secondName ++ ", got " ++ Value.toString secondArg
+                                typeError env <| "Expected the second argument to be " ++ secondName ++ ", got " ++ Value.toString secondArg
 
                             Just second ->
-                                Result.map output <| f first second
+                                Result.map output <| f env first second
 
             [] ->
-                err "zero"
+                err env "zero"
 
             _ ->
-                err (String.join ", " <| List.map Value.toString args)
+                err env <| String.join ", " <| List.map Value.toString args
     )
 
 
@@ -477,43 +477,55 @@ three :
     -> To
     -> Selector out
     -> (a -> b -> c -> out)
-    -> ( Int, List Value -> Result EvalError Value )
-three ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) ( thirdSelector, _, thirdName ) To ( _, output, _ ) f =
+    -> ( Int, Env -> List Value -> EvalResult Value )
+three firstSelector secondSelector thirdSelector To output f =
+    threeWithError firstSelector secondSelector thirdSelector To output (\_ l m r -> Ok (f l m r))
+
+
+threeWithError :
+    Selector a
+    -> Selector b
+    -> Selector c
+    -> To
+    -> Selector out
+    -> (Env -> a -> b -> c -> EvalResult out)
+    -> ( Int, Env -> List Value -> EvalResult Value )
+threeWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) ( thirdSelector, _, thirdName ) To ( _, output, _ ) f =
     let
-        err : String -> Result EvalError value
-        err got =
+        err : Env -> String -> EvalResult value
+        err env got =
             if firstName == secondName && secondName == thirdName then
-                Err <| TypeError <| "Expected three " ++ firstName ++ "s, got " ++ got
+                typeError env <| "Expected three " ++ firstName ++ "s, got " ++ got
 
             else
-                Err <| TypeError <| "Expected one " ++ firstName ++ ", one " ++ secondName ++ " and one " ++ thirdName ++ ", got " ++ got
+                typeError env <| "Expected one " ++ firstName ++ ", one " ++ secondName ++ " and one " ++ thirdName ++ ", got " ++ got
     in
-    ( 2
-    , \args ->
+    ( 3
+    , \env args ->
         case args of
             [ firstArg, secondArg, thirdArg ] ->
                 case ( firstSelector firstArg, secondSelector secondArg, thirdSelector thirdArg ) of
                     ( Just first, Just second, Just third ) ->
-                        Ok <| output <| f first second third
+                        Result.map output <| f env first second third
 
                     _ ->
-                        err (String.join ", " (List.map Value.toString args))
+                        err env <| String.join ", " (List.map Value.toString args)
 
             [] ->
-                err "zero"
+                err env "zero"
 
             _ ->
-                err (String.join ", " (List.map Value.toString args))
+                err env <| "[ " ++ String.join ", " (List.map Value.toString args) ++ " ]"
     )
 
 
 twoNumbers :
     (Int -> Int -> Int)
     -> (Float -> Float -> Float)
-    -> ( Int, List Value -> Result EvalError Value )
+    -> ( Int, Env -> List Value -> EvalResult Value )
 twoNumbers fInt fFloat =
     ( 2
-    , \args ->
+    , \env args ->
         case args of
             [ Int li, Int ri ] ->
                 Ok <| Int (fInt li ri)
@@ -528,27 +540,27 @@ twoNumbers fInt fFloat =
                 Ok <| Float (fFloat lf rf)
 
             _ ->
-                Err <| TypeError "Expected two numbers"
+                typeError env "Expected two numbers"
     )
 
 
-comparison : List Order -> ( Int, List Value -> Result EvalError Value )
+comparison : List Order -> ( Int, Env -> List Value -> EvalResult Value )
 comparison orders =
     ( 2
-    , \args ->
+    , \env args ->
         case args of
             [ l, r ] ->
-                Result.map (\result -> Bool (List.member result orders)) <| compare l r
+                Result.map (\result -> Bool (List.member result orders)) <| compare env l r
 
             _ ->
-                Err <| TypeError "Comparison needs exactly two arguments"
+                typeError env "Comparison needs exactly two arguments"
     )
 
 
-compare : Value -> Value -> Result EvalError Order
-compare l r =
+compare : Env -> Value -> Value -> EvalResult Order
+compare env l r =
     let
-        inner : comparable -> comparable -> Result EvalError Order
+        inner : comparable -> comparable -> EvalResult Order
         inner lv rv =
             Ok <| Basics.compare lv rv
     in
@@ -573,32 +585,32 @@ compare l r =
             inner lv rv
 
         ( Tuple la lb, Tuple ra rb ) ->
-            compare la ra
+            compare env la ra
                 |> Result.andThen
                     (\a ->
                         if a /= EQ then
                             Ok a
 
                         else
-                            compare lb rb
+                            compare env lb rb
                     )
 
         ( Triple la lb lc, Triple ra rb rc ) ->
-            compare la ra
+            compare env la ra
                 |> Result.andThen
                     (\a ->
                         if a /= EQ then
                             Ok a
 
                         else
-                            compare lb rb
+                            compare env lb rb
                                 |> Result.andThen
                                     (\b ->
                                         if b /= EQ then
                                             Ok b
 
                                         else
-                                            compare lc rc
+                                            compare env lc rc
                                     )
                     )
 
@@ -612,26 +624,26 @@ compare l r =
             Ok EQ
 
         ( List (lh :: lt), List (rh :: rt) ) ->
-            compare lh rh
+            compare env lh rh
                 |> Result.andThen
                     (\h ->
                         if h /= EQ then
                             Ok h
 
                         else
-                            compare (List lt) (List rt)
+                            compare env (List lt) (List rt)
                     )
 
         _ ->
-            Err <| TypeError <| "Comparison not yet implemented for " ++ Value.toString l ++ " and " ++ Value.toString r
+            typeError env <| "Comparison not yet implemented for " ++ Value.toString l ++ " and " ++ Value.toString r
 
 
 
 --
 
 
-append : Value -> Value -> Result EvalError Value
-append l r =
+append : Env -> Value -> Value -> EvalResult Value
+append env l r =
     case ( l, r ) of
         ( String ls, String rs ) ->
             Ok <| String (ls ++ rs)
@@ -640,11 +652,11 @@ append l r =
             Ok <| List (ll ++ rl)
 
         _ ->
-            Err <| TypeError <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
+            typeError env <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
 
 
-fromNumber : Value -> Result EvalError String
-fromNumber s =
+fromNumber : Env -> Value -> EvalResult String
+fromNumber env s =
     case s of
         Int i ->
             Ok <| String.fromInt i
@@ -653,7 +665,7 @@ fromNumber s =
             Ok <| String.fromFloat f
 
         _ ->
-            Err <| TypeError <| "Cannot convert " ++ Value.toString s ++ " to a number"
+            typeError env <| "Cannot convert " ++ Value.toString s ++ " to a number"
 
 
 appendN : Int -> Array Value -> Array Value -> Array Value

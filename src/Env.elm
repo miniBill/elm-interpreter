@@ -35,9 +35,10 @@ with newValues old =
     { old | values = Dict.union newValues old.values }
 
 
-empty : ModuleName -> Env
-empty moduleName =
+empty : { moduleName : ModuleName, functionName : Maybe String } -> Env
+empty { moduleName, functionName } =
     { currentModule = moduleName
+    , currentFunction = functionName
     , functions = Dict.empty
     , values = Dict.empty
     }

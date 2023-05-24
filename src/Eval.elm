@@ -20,12 +20,16 @@ import Result.Extra
 import Result.MyExtra
 import Syntax exposing (fakeNode)
 import Unicode
-import Value exposing (Env, EnvValues, EvalError(..), Value(..))
+import Value exposing (Env, EnvValues, EvalError(..), EvalResult, Value(..), nameError, typeError, unsupported)
 
 
 type Error
     = ParsingError (List DeadEnd)
-    | EvalError EvalError
+    | EvalError
+        { currentModule : ModuleName
+        , currentFunction : Maybe String
+        , error : EvalError
+        }
 
 
 eval : String -> Result Error Value
@@ -82,6 +86,7 @@ buildInitialEnv file =
         coreEnv : Env
         coreEnv =
             { currentModule = moduleName
+            , currentFunction = Nothing
             , functions = Core.functions
             , values = Dict.empty
             }
@@ -97,13 +102,13 @@ buildInitialEnv file =
                     Ok (Env.addFunction moduleName implementation env)
 
                 PortDeclaration _ ->
-                    Err (EvalError <| Unsupported "Port declaration")
+                    Result.mapError EvalError <| unsupported env "Port declaration"
 
                 InfixDeclaration _ ->
-                    Err (EvalError <| Unsupported "Infix declaration")
+                    Result.mapError EvalError <| unsupported env "Infix declaration"
 
                 Destructuring _ _ ->
-                    Err (EvalError <| Unsupported "Top level destructuring")
+                    Result.mapError EvalError <| unsupported env "Top level destructuring"
 
                 AliasDeclaration _ ->
                     Ok env
@@ -117,7 +122,7 @@ buildInitialEnv file =
             (Ok coreEnv)
 
 
-evalExpression : Env -> Node Expression -> Result EvalError Value
+evalExpression : Env -> Node Expression -> EvalResult Value
 evalExpression env (Node _ expression) =
     case expression of
         Expression.UnitExpr ->
@@ -135,7 +140,7 @@ evalExpression env (Node _ expression) =
                     Err e
 
                 Ok v ->
-                    Err <| TypeError <| "|| applied to non-Bool " ++ Value.toString v
+                    typeError env <| "|| applied to non-Bool " ++ Value.toString v
 
         Expression.OperatorApplication "&&" _ l r ->
             case evalExpression env l of
@@ -149,7 +154,7 @@ evalExpression env (Node _ expression) =
                     Err e
 
                 Ok v ->
-                    Err <| TypeError <| "&& applied to non-Bool " ++ Value.toString v
+                    typeError env <| "&& applied to non-Bool " ++ Value.toString v
 
         Expression.OperatorApplication opName _ l r ->
             evalExpression env
@@ -162,7 +167,7 @@ evalExpression env (Node _ expression) =
                 )
 
         Expression.Application [] ->
-            Err <| TypeError "Empty application"
+            typeError env "Empty application"
 
         Expression.Application (first :: rest) ->
             case evalExpression env first of
@@ -217,9 +222,9 @@ evalExpression env (Node _ expression) =
 
                             Ok values ->
                                 let
-                                    maybeNewEnvValues : Result EvalError (Maybe EnvValues)
+                                    maybeNewEnvValues : EvalResult (Maybe EnvValues)
                                     maybeNewEnvValues =
-                                        match
+                                        match env
                                             (fakeNode <| ListPattern patterns)
                                             (List (oldArgs ++ values))
                                 in
@@ -228,7 +233,7 @@ evalExpression env (Node _ expression) =
                                         Err e
 
                                     Ok Nothing ->
-                                        Err (TypeError "Could not match lambda patterns")
+                                        typeError env "Could not match lambda patterns"
 
                                     Ok (Just newEnvValues) ->
                                         case implementation of
@@ -236,19 +241,24 @@ evalExpression env (Node _ expression) =
                                                 let
                                                     fullName : String
                                                     fullName =
-                                                        String.join "." <| moduleName ++ [ name ]
+                                                        Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
                                                 in
                                                 case Dict.get moduleName Kernel.functions of
                                                     Nothing ->
-                                                        Err <| NameError fullName
+                                                        nameError env fullName
 
                                                     Just kernelModule ->
                                                         case Dict.get name kernelModule of
                                                             Nothing ->
-                                                                Err <| NameError fullName
+                                                                nameError env fullName
 
                                                             Just ( _, f ) ->
-                                                                f values
+                                                                f
+                                                                    { env
+                                                                        | currentModule = moduleName
+                                                                        , currentFunction = Just name
+                                                                    }
+                                                                    values
 
                                             _ ->
                                                 evalExpression
@@ -256,11 +266,10 @@ evalExpression env (Node _ expression) =
                                                     implementation
 
                 Ok other ->
-                    Err <|
-                        TypeError <|
-                            "Trying to apply "
-                                ++ Value.toString other
-                                ++ ", which is a non-lambda non-variant"
+                    typeError env <|
+                        "Trying to apply "
+                            ++ Value.toString other
+                            ++ ", which is a non-lambda non-variant"
 
         Expression.FunctionOrValue moduleName name ->
             let
@@ -295,7 +304,22 @@ evalExpression env (Node _ expression) =
             else
                 case moduleName of
                     "Elm" :: "Kernel" :: _ ->
-                        evalKernelFunction moduleName name
+                        case Dict.get moduleName env.functions of
+                            Nothing ->
+                                evalKernelFunction env moduleName name
+
+                            Just kernelModule ->
+                                case Dict.get name kernelModule of
+                                    Nothing ->
+                                        evalKernelFunction env moduleName name
+
+                                    Just function ->
+                                        PartiallyApplied
+                                            (\_ -> { env | currentModule = moduleName, currentFunction = Just name })
+                                            []
+                                            function.arguments
+                                            function.expression
+                                            |> Ok
 
                     _ ->
                         case Dict.get name env.values of
@@ -329,20 +353,32 @@ evalExpression env (Node _ expression) =
                                 case maybeFunction of
                                     Just function ->
                                         if List.isEmpty function.arguments then
-                                            evalExpression { env | currentModule = fixedModuleName } function.expression
+                                            evalExpression
+                                                { env
+                                                    | currentModule = fixedModuleName
+                                                    , currentFunction = Just name
+                                                }
+                                                function.expression
 
                                         else
-                                            PartiallyApplied (\_ -> { env | currentModule = fixedModuleName })
+                                            PartiallyApplied
+                                                (\_ ->
+                                                    { env
+                                                        | currentModule = fixedModuleName
+                                                        , currentFunction = Just name
+                                                    }
+                                                )
                                                 []
                                                 function.arguments
                                                 function.expression
                                                 |> Ok
 
                                     Nothing ->
-                                        (fixedModuleName ++ [ name ])
-                                            |> String.join "."
-                                            |> NameError
-                                            |> Err
+                                        Syntax.qualifiedNameToString
+                                            { moduleName = fixedModuleName
+                                            , name = name
+                                            }
+                                            |> nameError env
 
         Expression.IfBlock cond true false ->
             case evalExpression env cond of
@@ -358,13 +394,13 @@ evalExpression env (Node _ expression) =
                             evalExpression env false
 
                         _ ->
-                            Err <| TypeError "ifThenElse condition was not a boolean"
+                            typeError env "ifThenElse condition was not a boolean"
 
         Expression.PrefixOperator opName ->
-            evalOperator opName
+            evalOperator env opName
 
         Expression.Operator opName ->
-            evalOperator opName
+            evalOperator env opName
 
         Expression.Integer i ->
             Ok (Value.Int i)
@@ -406,7 +442,7 @@ evalExpression env (Node _ expression) =
                         (evalExpression env r)
 
                 _ :: _ :: _ :: _ :: _ ->
-                    Err <| TypeError "Tuples with more than three elements are not supported"
+                    typeError env "Tuples with more than three elements are not supported"
 
         Expression.ParenthesizedExpression child ->
             evalExpression env child
@@ -456,36 +492,33 @@ evalExpression env (Node _ expression) =
             evalRecordUpdate env name setters
 
         Expression.GLSLExpression _ ->
-            Err <| Unsupported "GLSL not supported"
+            unsupported env "GLSL not supported"
 
 
-evalKernelFunction : ModuleName -> String -> Result EvalError Value
-evalKernelFunction moduleName name =
+evalKernelFunction : Env -> ModuleName -> String -> EvalResult Value
+evalKernelFunction env moduleName name =
     case Dict.get moduleName Kernel.functions of
         Nothing ->
-            Err <| NameError (String.join "." moduleName)
+            nameError env (String.join "." moduleName)
 
         Just kernelModule ->
             case Dict.get name kernelModule of
                 Nothing ->
-                    (moduleName ++ [ name ])
-                        |> String.join "."
-                        |> NameError
-                        |> Err
+                    nameError env <| Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
 
                 Just ( argCount, f ) ->
                     if argCount == 0 then
-                        f []
+                        f { env | currentModule = moduleName, currentFunction = Just name } []
 
                     else
-                        PartiallyApplied (\_ -> Env.empty [])
+                        PartiallyApplied (\_ -> Env.empty { moduleName = moduleName, functionName = Just name })
                             []
                             (List.repeat argCount (fakeNode AllPattern))
                             (fakeNode <| Expression.FunctionOrValue moduleName name)
                             |> Ok
 
 
-evalNegation : Env -> Node Expression -> Result EvalError Value
+evalNegation : Env -> Node Expression -> EvalResult Value
 evalNegation env child =
     case evalExpression env child of
         Err e ->
@@ -498,10 +531,10 @@ evalNegation env child =
             Ok <| Value.Float -f
 
         _ ->
-            Err <| TypeError "Trying to negate a non-number"
+            typeError env "Trying to negate a non-number"
 
 
-evalLetBlock : Env -> Expression.LetBlock -> Result EvalError Env
+evalLetBlock : Env -> Expression.LetBlock -> EvalResult Env
 evalLetBlock env letBlock =
     let
         evalLetFunction : Function -> Env -> Env
@@ -550,15 +583,15 @@ evalLetBlock env letBlock =
                 )
                 letBlock.declarations
 
-        knot : () -> Result EvalError Env
+        knot : () -> EvalResult Env
         knot () =
             let
-                knotHelperRound : List ( Node Pattern, Node Expression ) -> Env -> Result EvalError Env
+                knotHelperRound : List ( Node Pattern, Node Expression ) -> Env -> EvalResult Env
                 knotHelperRound remaining acc =
                     knotHelper remaining [] False acc
 
                 -- TODO: use topological sort to avoid retries and get better errors
-                knotHelper : List ( Node Pattern, Node Expression ) -> List ( Node Pattern, Node Expression ) -> Bool -> Env -> Result EvalError Env
+                knotHelper : List ( Node Pattern, Node Expression ) -> List ( Node Pattern, Node Expression ) -> Bool -> Env -> EvalResult Env
                 knotHelper remaining later loop acc =
                     case remaining of
                         [] ->
@@ -566,26 +599,28 @@ evalLetBlock env letBlock =
                                 Ok acc
 
                             else if not loop then
-                                Err <| TypeError "Loop detected evaluating values in a loop block"
+                                typeError env "Loop detected evaluating values in a loop block"
 
                             else
                                 knotHelperRound later acc
 
                         (( letPattern, letExpression ) as remaningHead) :: remainingQueue ->
                             case evalExpression acc letExpression of
-                                Err (NameError _) ->
-                                    knotHelper remainingQueue (remaningHead :: later) loop acc
-
                                 Err e ->
-                                    Err e
+                                    case e.error of
+                                        NameError _ ->
+                                            knotHelper remainingQueue (remaningHead :: later) loop acc
+
+                                        _ ->
+                                            Err e
 
                                 Ok letValue ->
-                                    case match letPattern letValue of
+                                    case match env letPattern letValue of
                                         Err e ->
                                             Err e
 
                                         Ok Nothing ->
-                                            Err <| TypeError "Match failed in let block"
+                                            typeError env "Match failed in let block"
 
                                         Ok (Just newEnvValues) ->
                                             knotHelper remainingQueue later True (Env.with newEnvValues acc)
@@ -595,7 +630,7 @@ evalLetBlock env letBlock =
     knot ()
 
 
-evalRecordAccess : Env -> Node Expression -> Node String -> Result EvalError Value
+evalRecordAccess : Env -> Node Expression -> Node String -> EvalResult Value
 evalRecordAccess env recordExpr (Node _ field) =
     evalExpression env recordExpr
         |> Result.andThen
@@ -607,17 +642,17 @@ evalRecordAccess env recordExpr (Node _ field) =
                                 Ok fieldValue
 
                             Nothing ->
-                                Err <| TypeError <| "Field " ++ field ++ " not found [record access]"
+                                typeError env <| "Field " ++ field ++ " not found [record access]"
 
                     _ ->
-                        Err <| TypeError "Trying to access a field on a non-record value"
+                        typeError env "Trying to access a field on a non-record value"
             )
 
 
 evalRecordAccessFunction : String -> Value
 evalRecordAccessFunction field =
     PartiallyApplied
-        (\_ -> Env.empty [])
+        (\_ -> Env.empty { moduleName = [], functionName = Just <| "." ++ field })
         []
         [ fakeNode (VarPattern "r") ]
         (fakeNode <|
@@ -627,7 +662,7 @@ evalRecordAccessFunction field =
         )
 
 
-evalRecordUpdate : Env -> Node String -> List (Node Expression.RecordSetter) -> Result EvalError Value
+evalRecordUpdate : Env -> Node String -> List (Node Expression.RecordSetter) -> EvalResult Value
 evalRecordUpdate env (Node _ name) setters =
     case evalExpression env (fakeNode <| Expression.FunctionOrValue [] name) of
         Err e ->
@@ -647,17 +682,24 @@ evalRecordUpdate env (Node _ name) setters =
                 |> Result.map Value.Record
 
         Ok _ ->
-            Err <| TypeError "Trying to update fields on a value which is not a record"
+            typeError env "Trying to update fields on a value which is not a record"
 
 
-evalOperator : String -> Result EvalError Value
-evalOperator opName =
+evalOperator : Env -> String -> EvalResult Value
+evalOperator env opName =
     case Dict.get opName Core.operators of
         Nothing ->
-            Err <| NameError opName
+            nameError env opName
 
         Just kernelFunction ->
-            PartiallyApplied (\_ -> Env.empty [])
+            PartiallyApplied
+                (\_ ->
+                    { currentModule = kernelFunction.moduleName
+                    , currentFunction = Just opName
+                    , values = Dict.empty
+                    , functions = Core.functions
+                    }
+                )
                 []
                 [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
                 (fakeNode <|
@@ -680,7 +722,7 @@ isVariant name =
             Unicode.isUpper first
 
 
-evalCase : Env -> Expression.CaseBlock -> Result EvalError Value
+evalCase : Env -> Expression.CaseBlock -> EvalResult Value
 evalCase env { expression, cases } =
     case evalExpression env expression of
         Err e ->
@@ -695,7 +737,7 @@ evalCase env { expression, cases } =
                                 Ok acc
 
                             Nothing ->
-                                case match pattern exprValue of
+                                case match env pattern exprValue of
                                     Err e ->
                                         Err e
 
@@ -711,15 +753,15 @@ evalCase env { expression, cases } =
                     (\result ->
                         case result of
                             Nothing ->
-                                Err <| TypeError <| "Missing case branch for " ++ Value.toString exprValue
+                                typeError env <| "Missing case branch for " ++ Value.toString exprValue
 
                             Just res ->
                                 Ok res
                     )
 
 
-match : Node Pattern -> Value -> Result EvalError (Maybe EnvValues)
-match (Node _ pattern) value =
+match : Env -> Node Pattern -> Value -> EvalResult (Maybe EnvValues)
+match env (Node _ pattern) value =
     let
         ok : a -> Result error (Maybe a)
         ok val =
@@ -728,10 +770,6 @@ match (Node _ pattern) value =
         noMatch : Result error (Maybe a)
         noMatch =
             Ok Nothing
-
-        typeError : String -> Result EvalError value
-        typeError message =
-            Err <| TypeError message
 
         andThen : (a -> Result error (Maybe a)) -> Result error (Maybe a) -> Result error (Maybe a)
         andThen f v =
@@ -756,7 +794,7 @@ match (Node _ pattern) value =
             ok Dict.empty
 
         ( ParenthesizedPattern subPattern, _ ) ->
-            match subPattern value
+            match env subPattern value
 
         ( NamedPattern namePattern argsPatterns, Value.Custom variant args ) ->
             -- Two names from different modules can never have the same type
@@ -766,21 +804,21 @@ match (Node _ pattern) value =
                     matchNamedPatternHelper :
                         EnvValues
                         -> ( List (Node Pattern), List Value )
-                        -> Result EvalError (Maybe EnvValues)
+                        -> EvalResult (Maybe EnvValues)
                     matchNamedPatternHelper envValues queue =
                         case queue of
                             ( [], [] ) ->
                                 ok envValues
 
                             ( patternHead :: patternTail, argHead :: argTail ) ->
-                                match patternHead argHead
+                                match env patternHead argHead
                                     |> andThen
                                         (\newEnvValues ->
                                             matchNamedPatternHelper (Dict.union newEnvValues envValues) ( patternTail, argTail )
                                         )
 
                             _ ->
-                                typeError "Mismatched number of arguments to variant"
+                                typeError env "Mismatched number of arguments to variant"
                 in
                 matchNamedPatternHelper Dict.empty ( argsPatterns, args )
 
@@ -795,10 +833,10 @@ match (Node _ pattern) value =
             ok Dict.empty
 
         ( ListPattern (patternHead :: patternTail), List (listHead :: listTail) ) ->
-            match patternHead listHead
+            match env patternHead listHead
                 |> andThen
                     (\headEnv ->
-                        match (fakeNode <| ListPattern patternTail) (List listTail)
+                        match env (fakeNode <| ListPattern patternTail) (List listTail)
                             |> andThen
                                 (\tailEnv ->
                                     ok
@@ -807,10 +845,10 @@ match (Node _ pattern) value =
                     )
 
         ( UnConsPattern patternHead patternTail, Value.List (listHead :: listTail) ) ->
-            match patternHead listHead
+            match env patternHead listHead
                 |> andThen
                     (\headEnv ->
-                        match patternTail (List listTail)
+                        match env patternTail (List listTail)
                             |> andThen
                                 (\tailEnv ->
                                     ok
@@ -878,10 +916,10 @@ match (Node _ pattern) value =
             noMatch
 
         ( TuplePattern [ lpattern, rpattern ], Value.Tuple lvalue rvalue ) ->
-            match lpattern lvalue
+            match env lpattern lvalue
                 |> andThen
                     (\lenv ->
-                        match rpattern rvalue
+                        match env rpattern rvalue
                             |> andThen
                                 (\renv ->
                                     ok <| Dict.union renv lenv
@@ -889,13 +927,13 @@ match (Node _ pattern) value =
                     )
 
         ( TuplePattern [ lpattern, mpattern, rpattern ], Value.Triple lvalue mvalue rvalue ) ->
-            match lpattern lvalue
+            match env lpattern lvalue
                 |> andThen
                     (\lenv ->
-                        match mpattern mvalue
+                        match env mpattern mvalue
                             |> andThen
                                 (\menv ->
-                                    match rpattern rvalue
+                                    match env rpattern rvalue
                                         |> andThen
                                             (\renv ->
                                                 ok <| Dict.union renv <| Dict.union menv lenv
@@ -907,9 +945,9 @@ match (Node _ pattern) value =
             noMatch
 
         ( AsPattern childPattern (Node _ asName), _ ) ->
-            match childPattern value
+            match env childPattern value
                 |> andThen
-                    (\env -> ok <| Dict.insert asName value env)
+                    (\e -> ok <| Dict.insert asName value e)
 
         ( RecordPattern fields, Value.Record fieldValues ) ->
             List.foldl
@@ -918,7 +956,7 @@ match (Node _ pattern) value =
                         (\acc ->
                             case Dict.get fieldName fieldValues of
                                 Nothing ->
-                                    Err <| TypeError <| "Field " ++ fieldName ++ " not found in record"
+                                    typeError env <| "Field " ++ fieldName ++ " not found in record"
 
                                 Just fieldValue ->
                                     ok <| Dict.insert fieldName fieldValue acc
@@ -935,8 +973,8 @@ evalExpression2 :
     Env
     -> Node Expression
     -> Node Expression
-    -> (Value -> Value -> Result EvalError value)
-    -> Result EvalError value
+    -> (Value -> Value -> EvalResult value)
+    -> EvalResult value
 evalExpression2 env l r f =
     case evalExpression env l of
         Err e ->

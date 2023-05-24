@@ -8,6 +8,7 @@ import Expect
 import FastDict as Dict
 import Kernel
 import Rope exposing (Rope)
+import Syntax
 import Test exposing (Test, describe, test)
 
 
@@ -168,7 +169,10 @@ testDefined ( ( moduleName, name ), requiredBy ) =
     let
         fullName : String
         fullName =
-            String.join "." (moduleName ++ [ name ])
+            Syntax.qualifiedNameToString
+                { moduleName = moduleName
+                , name = name
+                }
 
         error : Test
         error =

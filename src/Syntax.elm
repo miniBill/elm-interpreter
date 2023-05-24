@@ -1,6 +1,7 @@
-module Syntax exposing (fakeNode)
+module Syntax exposing (fakeNode, qualifiedNameToString)
 
 import Elm.Syntax.Node exposing (Node(..))
+import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import Elm.Syntax.Range exposing (Location, Range)
 
 
@@ -19,3 +20,9 @@ fakeLocation =
     { row = -1
     , column = -1
     }
+
+
+qualifiedNameToString : QualifiedNameRef -> String
+qualifiedNameToString { moduleName, name } =
+    (moduleName ++ [ name ])
+        |> String.join "."

@@ -1,4 +1,4 @@
-module Value exposing (Env, EnvValues, EvalError(..), Value(..), fromOrder, toOrder, toString)
+module Value exposing (Env, EnvValues, EvalError(..), EvalResult, Value(..), fromOrder, nameError, toOrder, toString, typeError, unsupported)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
@@ -7,7 +7,6 @@ import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern, QualifiedNameRef)
 import Elm.Writer
 import FastDict as Dict exposing (Dict)
-import Maybe.Extra
 import Syntax exposing (fakeNode)
 
 
@@ -29,6 +28,7 @@ type Value
 
 type alias Env =
     { currentModule : ModuleName
+    , currentFunction : Maybe String
     , functions : Dict ModuleName (Dict String FunctionImplementation)
     , values : EnvValues
     }
@@ -38,10 +38,43 @@ type alias EnvValues =
     Dict String Value
 
 
+type alias EvalResult a =
+    Result
+        { currentModule : ModuleName
+        , currentFunction : Maybe String
+        , error : EvalError
+        }
+        a
+
+
 type EvalError
     = TypeError String
     | Unsupported String
     | NameError String
+
+
+typeError : Env -> String -> EvalResult value
+typeError env msg =
+    error env (TypeError msg)
+
+
+nameError : Env -> String -> EvalResult value
+nameError env msg =
+    error env (NameError msg)
+
+
+unsupported : Env -> String -> EvalResult value
+unsupported env msg =
+    error env (Unsupported msg)
+
+
+error : Env -> EvalError -> EvalResult value
+error env msg =
+    Err
+        { currentModule = env.currentModule
+        , currentFunction = env.currentFunction
+        , error = msg
+        }
 
 
 toExpression : Value -> Node Expression
