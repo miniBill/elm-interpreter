@@ -4,6 +4,7 @@ import Core
 import Elm.Syntax.Expression exposing (Case, CaseBlock, Expression(..), Function, FunctionImplementation, Lambda, LetBlock, LetDeclaration(..), RecordSetter)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
+import Eval
 import Expect
 import FastDict as Dict
 import Kernel
@@ -182,7 +183,7 @@ testDefined ( ( moduleName, name ), requiredBy ) =
                     ++ String.join ", " requiredBy
                 )
     in
-    case Dict.get moduleName Kernel.functions of
+    case Dict.get moduleName (Kernel.functions Eval.evalFunction) of
         Just kernelModule ->
             if Dict.member name kernelModule then
                 test fullName <|

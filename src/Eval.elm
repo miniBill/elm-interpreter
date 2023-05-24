@@ -1,4 +1,4 @@
-module Eval exposing (Error(..), eval, evalModule)
+module Eval exposing (Error(..), eval, evalFunction, evalModule)
 
 import Core
 import Core.Basics
@@ -12,7 +12,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Env
-import FastDict as Dict
+import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
 import Parser exposing (DeadEnd)
@@ -243,7 +243,7 @@ evalExpression env (Node _ expression) =
                                                     fullName =
                                                         Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
                                                 in
-                                                case Dict.get moduleName Kernel.functions of
+                                                case Dict.get moduleName kernelFunctions of
                                                     Nothing ->
                                                         nameError env fullName
 
@@ -484,9 +484,77 @@ evalExpression env (Node _ expression) =
             unsupported env "GLSL not supported"
 
 
+kernelFunctions : Dict ModuleName (Dict String ( Int, Env -> List Value -> EvalResult Value ))
+kernelFunctions =
+    Kernel.functions evalFunction
+
+
+evalFunction : Kernel.EvalFunction
+evalFunction localEnv oldArgs patterns implementation =
+    let
+        oldArgsLength : Int
+        oldArgsLength =
+            List.length oldArgs
+
+        patternsLength : Int
+        patternsLength =
+            List.length patterns
+    in
+    if oldArgsLength < patternsLength then
+        -- Still not enough
+        Ok <| Value.PartiallyApplied localEnv oldArgs patterns implementation
+
+    else
+        -- Just right, we special case this for TCO
+        let
+            env : Env
+            env =
+                localEnv ()
+
+            maybeNewEnvValues : EvalResult (Maybe EnvValues)
+            maybeNewEnvValues =
+                match env
+                    (fakeNode <| ListPattern patterns)
+                    (List oldArgs)
+        in
+        case maybeNewEnvValues of
+            Err e ->
+                Err e
+
+            Ok Nothing ->
+                typeError env "Could not match lambda patterns"
+
+            Ok (Just newEnvValues) ->
+                case implementation of
+                    Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
+                        let
+                            fullName : String
+                            fullName =
+                                Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
+                        in
+                        case Dict.get moduleName kernelFunctions of
+                            Nothing ->
+                                nameError env fullName
+
+                            Just kernelModule ->
+                                case Dict.get name kernelModule of
+                                    Nothing ->
+                                        nameError env fullName
+
+                                    Just ( _, f ) ->
+                                        f
+                                            (Env.call moduleName name env)
+                                            []
+
+                    _ ->
+                        evalExpression
+                            (localEnv () |> Env.with newEnvValues)
+                            implementation
+
+
 evalKernelFunction : Env -> ModuleName -> String -> EvalResult Value
 evalKernelFunction env moduleName name =
-    case Dict.get moduleName Kernel.functions of
+    case Dict.get moduleName kernelFunctions of
         Nothing ->
             nameError env (String.join "." moduleName)
 

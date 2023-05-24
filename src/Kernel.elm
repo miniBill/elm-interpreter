@@ -1,16 +1,27 @@
-module Kernel exposing (functions)
+module Kernel exposing (EvalFunction, functions)
 
 import Array exposing (Array)
 import Bitwise
+import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
+import Elm.Syntax.Node exposing (Node)
+import Elm.Syntax.Pattern as Pattern
 import FastDict as Dict exposing (Dict)
-import List.Extra
+import Kernel.Array
 import Maybe.Extra
 import Value exposing (Env, EvalResult, Value(..), typeError)
 
 
-functions : Dict ModuleName (Dict String ( Int, Env -> List Value -> EvalResult Value ))
-functions =
+type alias EvalFunction =
+    (() -> Env)
+    -> List Value
+    -> List (Node Pattern.Pattern)
+    -> Node Expression
+    -> EvalResult Value
+
+
+functions : EvalFunction -> Dict ModuleName (Dict String ( Int, Env -> List Value -> EvalResult Value ))
+functions evalFunction =
     [ -- Elm.Kernel.Basics
       ( [ "Elm", "Kernel", "Basics" ]
       , [ ( "acos", one float to float acos )
@@ -79,9 +90,10 @@ functions =
 
     -- Elm.Kernel.JsArray
     , ( [ "Elm", "Kernel", "JsArray" ]
-      , [ ( "appendN", three int (jsArray anything) (jsArray anything) to (jsArray anything) appendN )
+      , [ ( "appendN", three int (jsArray anything) (jsArray anything) to (jsArray anything) Kernel.Array.appendN )
         , ( "empty", zero to (jsArray anything) Array.empty )
-        , ( "initializeFromList", two int (list anything) to (tuple (jsArray anything) (list anything)) initializeFromList )
+        , ( "initialize", threeWithError int int (function evalFunction int anything) to (jsArray anything) Kernel.Array.initialize )
+        , ( "initializeFromList", two int (list anything) to (tuple (jsArray anything) (list anything)) Kernel.Array.initializeFromList )
         , ( "length", one (jsArray anything) to int Array.length )
         ]
       )
@@ -147,11 +159,22 @@ functions =
 -- Selectors
 
 
+type alias InSelector a x =
+    { x
+        | fromValue : Value -> Maybe a
+        , name : String
+    }
+
+
+type alias OutSelector a x =
+    { x
+        | toValue : a -> Value
+        , name : String
+    }
+
+
 type alias Selector a =
-    ( Value -> Maybe a
-    , a -> Value
-    , String
-    )
+    InSelector a (OutSelector a {})
 
 
 type To
@@ -165,181 +188,228 @@ to =
 
 anything : Selector Value
 anything =
-    ( Just
-    , identity
-    , "anything"
-    )
+    { fromValue = Just
+    , toValue = identity
+    , name = "anything"
+    }
 
 
 order : Selector Order
 order =
-    ( Value.toOrder
-    , Value.fromOrder
-    , "Order"
-    )
+    { fromValue = Value.toOrder
+    , toValue = Value.fromOrder
+    , name = "Order"
+    }
 
 
 string : Selector String
 string =
-    ( \value ->
-        case value of
-            String s ->
-                Just s
+    { fromValue =
+        \value ->
+            case value of
+                String s ->
+                    Just s
 
-            _ ->
-                Nothing
-    , String
-    , "String"
-    )
+                _ ->
+                    Nothing
+    , toValue = String
+    , name = "String"
+    }
 
 
 float : Selector Float
 float =
-    ( \value ->
-        case value of
-            Float s ->
-                Just s
+    { fromValue =
+        \value ->
+            case value of
+                Float s ->
+                    Just s
 
-            Int i ->
-                -- Stuff like "2 / 3" is parsed as (Int 2) / (Int 3)
-                Just (toFloat i)
+                Int i ->
+                    -- Stuff like "2 / 3" is parsed as (Int 2) / (Int 3)
+                    Just (toFloat i)
 
-            _ ->
-                Nothing
-    , Float
-    , "Float"
-    )
+                _ ->
+                    Nothing
+    , toValue = Float
+    , name = "Float"
+    }
 
 
 int : Selector Int
 int =
-    ( \value ->
-        case value of
-            Int s ->
-                Just s
+    { fromValue =
+        \value ->
+            case value of
+                Int s ->
+                    Just s
 
-            _ ->
-                Nothing
-    , Int
-    , "Int"
-    )
+                _ ->
+                    Nothing
+    , toValue = Int
+    , name = "Int"
+    }
 
 
 char : Selector Char
 char =
-    ( \value ->
-        case value of
-            Char s ->
-                Just s
+    { fromValue =
+        \value ->
+            case value of
+                Char s ->
+                    Just s
 
-            _ ->
-                Nothing
-    , Char
-    , "Char"
-    )
+                _ ->
+                    Nothing
+    , toValue = Char
+    , name = "Char"
+    }
 
 
 bool : Selector Bool
 bool =
-    ( \value ->
-        case value of
-            Bool s ->
-                Just s
+    { fromValue =
+        \value ->
+            case value of
+                Bool s ->
+                    Just s
 
-            _ ->
-                Nothing
-    , Bool
-    , "Bool"
-    )
+                _ ->
+                    Nothing
+    , toValue = Bool
+    , name = "Bool"
+    }
 
 
 maybe : Selector a -> Selector (Maybe a)
-maybe ( selector, toValue, name ) =
-    ( \value ->
-        case value of
-            Custom ctor args ->
-                case ( ctor.moduleName, ctor.name, args ) of
-                    ( [ "Maybe" ], "Nothing", [] ) ->
-                        Just Nothing
+maybe selector =
+    { fromValue =
+        \value ->
+            case value of
+                Custom ctor args ->
+                    case ( ctor.moduleName, ctor.name, args ) of
+                        ( [ "Maybe" ], "Nothing", [] ) ->
+                            Just Nothing
 
-                    ( [ "Maybe" ], "Just", [ arg ] ) ->
-                        Maybe.map Just (selector arg)
+                        ( [ "Maybe" ], "Just", [ arg ] ) ->
+                            Maybe.map Just (selector.fromValue arg)
 
-                    _ ->
-                        Nothing
+                        _ ->
+                            Nothing
 
-            _ ->
-                Nothing
-    , \maybeValue ->
-        case maybeValue of
-            Nothing ->
-                Custom { moduleName = [ "Maybe" ], name = "Nothing" } []
+                _ ->
+                    Nothing
+    , toValue =
+        \maybeValue ->
+            case maybeValue of
+                Nothing ->
+                    Custom { moduleName = [ "Maybe" ], name = "Nothing" } []
 
-            Just value ->
-                Custom { moduleName = [ "Maybe" ], name = "Just" } [ toValue value ]
-    , "Maybe " ++ name
-    )
+                Just value ->
+                    Custom { moduleName = [ "Maybe" ], name = "Just" } [ selector.toValue value ]
+    , name = "Maybe " ++ selector.name
+    }
 
 
 list : Selector a -> Selector (List a)
-list ( selector, toValue, name ) =
-    ( \value ->
-        case value of
-            List l ->
-                Maybe.Extra.traverse selector l
+list selector =
+    { fromValue =
+        \value ->
+            case value of
+                List l ->
+                    Maybe.Extra.traverse selector.fromValue l
 
-            _ ->
-                Nothing
-    , \value ->
-        value
-            |> List.map toValue
-            |> List
-    , "List " ++ name
-    )
+                _ ->
+                    Nothing
+    , toValue =
+        \value ->
+            value
+                |> List.map selector.toValue
+                |> List
+    , name = "List " ++ selector.name
+    }
 
 
 jsArray : Selector a -> Selector (Array a)
-jsArray ( selector, toValue, name ) =
-    ( \value ->
-        case value of
-            JSArray jsa ->
-                jsa
-                    |> Array.toList
-                    |> Maybe.Extra.traverse selector
-                    |> Maybe.map Array.fromList
+jsArray selector =
+    { fromValue =
+        \value ->
+            case value of
+                JSArray jsa ->
+                    jsa
+                        |> Array.toList
+                        |> Maybe.Extra.traverse selector.fromValue
+                        |> Maybe.map Array.fromList
 
-            _ ->
-                Nothing
-    , \array ->
-        array
-            |> Array.map toValue
-            |> JSArray
-    , "JSArray " ++ name
-    )
+                _ ->
+                    Nothing
+    , toValue =
+        \array ->
+            array
+                |> Array.map selector.toValue
+                |> JSArray
+    , name = "JSArray " ++ selector.name
+    }
+
+
+function :
+    EvalFunction
+    -> OutSelector from xf
+    -> InSelector to xt
+    -> InSelector (Env -> from -> EvalResult to) {}
+function evalFunctionWith inSelector outSelector =
+    let
+        fromValue : Value -> Maybe (Env -> from -> EvalResult to)
+        fromValue value =
+            case value of
+                PartiallyApplied localEnv oldArgs patterns implementation ->
+                    Just
+                        (\env arg ->
+                            case evalFunctionWith localEnv (oldArgs ++ [ inSelector.toValue arg ]) patterns implementation of
+                                Err e ->
+                                    Err e
+
+                                Ok out ->
+                                    case outSelector.fromValue out of
+                                        Just ov ->
+                                            Ok ov
+
+                                        Nothing ->
+                                            typeError env <| "Could not convert output from " ++ Value.toString out ++ " to " ++ outSelector.name
+                        )
+
+                _ ->
+                    Nothing
+    in
+    { name = inSelector.name ++ " -> " ++ outSelector.name
+    , fromValue = fromValue
+    }
 
 
 tuple : Selector a -> Selector b -> Selector ( a, b )
-tuple ( firstSelector, firstToValue, firstName ) ( secondSelector, secondToValue, secondName ) =
-    ( \value ->
-        case value of
-            Tuple first second ->
-                Maybe.map2 Tuple.pair (firstSelector first) (secondSelector second)
+tuple firstSelector secondSelector =
+    { fromValue =
+        \value ->
+            case value of
+                Tuple first second ->
+                    Maybe.map2 Tuple.pair (firstSelector.fromValue first) (secondSelector.fromValue second)
 
-            _ ->
-                Nothing
-    , \( first, second ) ->
-        Tuple (firstToValue first) (secondToValue second)
-    , "( " ++ firstName ++ ", " ++ secondName ++ ")"
-    )
+                _ ->
+                    Nothing
+    , toValue =
+        \( first, second ) ->
+            Tuple (firstSelector.toValue first) (secondSelector.toValue second)
+    , name = "( " ++ firstSelector.name ++ ", " ++ secondSelector.name ++ ")"
+    }
 
 
-constant : Selector res -> res -> ( Int, Env -> List Value -> EvalResult Value )
-constant ( _, toValue, _ ) const =
+constant : OutSelector res x -> res -> ( Int, Env -> List Value -> EvalResult Value )
+constant selector const =
     ( 0
     , \env args ->
         case args of
             [] ->
-                Ok <| toValue const
+                Ok <| selector.toValue const
 
             _ ->
                 typeError env <| "Didn't expect any args"
@@ -348,7 +418,7 @@ constant ( _, toValue, _ ) const =
 
 zero :
     To
-    -> Selector out
+    -> OutSelector out ox
     -> out
     -> ( Int, Env -> List Value -> EvalResult Value )
 zero _ output f =
@@ -357,10 +427,10 @@ zero _ output f =
 
 zeroWithError :
     To
-    -> Selector out
+    -> OutSelector out ox
     -> EvalResult out
     -> ( Int, Env -> List Value -> EvalResult Value )
-zeroWithError _ ( _, output, _ ) f =
+zeroWithError _ output f =
     let
         err : Env -> String -> EvalResult value
         err env got =
@@ -370,7 +440,7 @@ zeroWithError _ ( _, output, _ ) f =
     , \env args ->
         case args of
             [] ->
-                Result.map output f
+                Result.map output.toValue f
 
             _ ->
                 err env "more"
@@ -378,9 +448,9 @@ zeroWithError _ ( _, output, _ ) f =
 
 
 one :
-    Selector a
+    InSelector a ax
     -> To
-    -> Selector out
+    -> OutSelector out ox
     -> (a -> out)
     -> ( Int, Env -> List Value -> EvalResult Value )
 one firstSelector _ output f =
@@ -388,24 +458,24 @@ one firstSelector _ output f =
 
 
 oneWithError :
-    Selector a
+    InSelector a xa
     -> To
-    -> Selector out
+    -> OutSelector out xo
     -> (Env -> a -> EvalResult out)
     -> ( Int, Env -> List Value -> EvalResult Value )
-oneWithError ( firstSelector, _, firstName ) _ ( _, output, _ ) f =
+oneWithError firstSelector _ output f =
     let
         err : Env -> String -> EvalResult value
         err env got =
-            typeError env <| "Expected one " ++ firstName ++ ", got " ++ got
+            typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
     in
     ( 1
     , \env args ->
         case args of
             [ arg ] ->
-                case firstSelector arg of
+                case firstSelector.fromValue arg of
                     Just s ->
-                        Result.map output <| f env s
+                        Result.map output.toValue <| f env s
 
                     Nothing ->
                         err env <| Value.toString arg
@@ -419,10 +489,10 @@ oneWithError ( firstSelector, _, firstName ) _ ( _, output, _ ) f =
 
 
 two :
-    Selector a
-    -> Selector b
+    InSelector a xa
+    -> InSelector b xb
     -> To
-    -> Selector out
+    -> OutSelector out xo
     -> (a -> b -> out)
     -> ( Int, Env -> List Value -> EvalResult Value )
 two firstSelector secondSelector _ output f =
@@ -430,37 +500,37 @@ two firstSelector secondSelector _ output f =
 
 
 twoWithError :
-    Selector a
-    -> Selector b
+    InSelector a xa
+    -> InSelector b xb
     -> To
-    -> Selector out
+    -> OutSelector out xo
     -> (Env -> a -> b -> EvalResult out)
     -> ( Int, Env -> List Value -> EvalResult Value )
-twoWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) _ ( _, output, _ ) f =
+twoWithError firstSelector secondSelector _ output f =
     let
         err : Env -> String -> EvalResult value
         err env got =
-            if firstName == secondName then
-                typeError env <| "Expected two " ++ firstName ++ "s, got " ++ got
+            if firstSelector.name == secondSelector.name then
+                typeError env <| "Expected two " ++ firstSelector.name ++ "s, got " ++ got
 
             else
-                typeError env <| "Expected one " ++ firstName ++ " and one " ++ secondName ++ ", got " ++ got
+                typeError env <| "Expected one " ++ firstSelector.name ++ " and one " ++ secondSelector.name ++ ", got " ++ got
     in
     ( 2
     , \env args ->
         case args of
             [ firstArg, secondArg ] ->
-                case firstSelector firstArg of
+                case firstSelector.fromValue firstArg of
                     Nothing ->
-                        typeError env <| "Expected the first argument to be " ++ firstName ++ ", got " ++ Value.toString firstArg
+                        typeError env <| "Expected the first argument to be " ++ firstSelector.name ++ ", got " ++ Value.toString firstArg
 
                     Just first ->
-                        case secondSelector secondArg of
+                        case secondSelector.fromValue secondArg of
                             Nothing ->
-                                typeError env <| "Expected the second argument to be " ++ secondName ++ ", got " ++ Value.toString secondArg
+                                typeError env <| "Expected the second argument to be " ++ secondSelector.name ++ ", got " ++ Value.toString secondArg
 
                             Just second ->
-                                Result.map output <| f env first second
+                                Result.map output.toValue <| f env first second
 
             [] ->
                 err env "zero"
@@ -471,11 +541,11 @@ twoWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) _
 
 
 three :
-    Selector a
-    -> Selector b
-    -> Selector c
+    InSelector a xa
+    -> InSelector b xb
+    -> InSelector c xc
     -> To
-    -> Selector out
+    -> OutSelector out xo
     -> (a -> b -> c -> out)
     -> ( Int, Env -> List Value -> EvalResult Value )
 three firstSelector secondSelector thirdSelector _ output f =
@@ -483,30 +553,30 @@ three firstSelector secondSelector thirdSelector _ output f =
 
 
 threeWithError :
-    Selector a
-    -> Selector b
-    -> Selector c
+    InSelector a xa
+    -> InSelector b xb
+    -> InSelector c xc
     -> To
-    -> Selector out
+    -> OutSelector out xo
     -> (Env -> a -> b -> c -> EvalResult out)
     -> ( Int, Env -> List Value -> EvalResult Value )
-threeWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) ( thirdSelector, _, thirdName ) _ ( _, output, _ ) f =
+threeWithError firstSelector secondSelector thirdSelector _ output f =
     let
         err : Env -> String -> EvalResult value
         err env got =
-            if firstName == secondName && secondName == thirdName then
-                typeError env <| "Expected three " ++ firstName ++ "s, got " ++ got
+            if firstSelector.name == secondSelector.name && secondSelector.name == thirdSelector.name then
+                typeError env <| "Expected three " ++ firstSelector.name ++ "s, got " ++ got
 
             else
-                typeError env <| "Expected one " ++ firstName ++ ", one " ++ secondName ++ " and one " ++ thirdName ++ ", got " ++ got
+                typeError env <| "Expected one " ++ firstSelector.name ++ ", one " ++ secondSelector.name ++ " and one " ++ thirdSelector.name ++ ", got " ++ got
     in
     ( 3
     , \env args ->
         case args of
             [ firstArg, secondArg, thirdArg ] ->
-                case ( firstSelector firstArg, secondSelector secondArg, thirdSelector thirdArg ) of
+                case ( firstSelector.fromValue firstArg, secondSelector.fromValue secondArg, thirdSelector.fromValue thirdArg ) of
                     ( Just first, Just second, Just third ) ->
-                        Result.map output <| f env first second third
+                        Result.map output.toValue <| f env first second third
 
                     _ ->
                         err env <| String.join ", " (List.map Value.toString args)
@@ -666,24 +736,3 @@ fromNumber env s =
 
         _ ->
             typeError env <| "Cannot convert " ++ Value.toString s ++ " to a number"
-
-
-appendN : Int -> Array Value -> Array Value -> Array Value
-appendN n dest source =
-    let
-        itemsToCopy : Int
-        itemsToCopy =
-            min (Array.length source) (n - Array.length dest)
-    in
-    Array.append
-        dest
-        (Array.slice 0 itemsToCopy source)
-
-
-initializeFromList : Int -> List Value -> ( Array Value, List Value )
-initializeFromList n values =
-    let
-        ( before, after ) =
-            List.Extra.splitAt n values
-    in
-    ( Array.fromList before, after )
