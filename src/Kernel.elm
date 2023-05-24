@@ -106,6 +106,7 @@ functions evalFunction =
       , [ ( "cons", two anything (list anything) to (list anything) (::) )
         , ( "fromArray", one anything to anything identity )
         , ( "sortBy", twoWithError (function evalFunction anything anything) (list anything) to (list anything) Kernel.List.sortBy )
+        , ( "sortWith", twoWithError (function evalFunction anything (function evalFunction anything order)) (list anything) to (list anything) Kernel.List.sortWith )
         , ( "toArray", one anything to anything identity )
         ]
       )
