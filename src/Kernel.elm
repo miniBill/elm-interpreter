@@ -79,10 +79,10 @@ functions =
 
     -- Elm.Kernel.JsArray
     , ( [ "Elm", "Kernel", "JsArray" ]
-      , [ ( "appendN", three int (array anything) (array anything) to (array anything) appendN )
-        , ( "empty", zero to (array anything) Array.empty )
-        , ( "initializeFromList", two int (list anything) to (tuple (array anything) (list anything)) initializeFromList )
-        , ( "length", one (array anything) to int Array.length )
+      , [ ( "appendN", three int (jsArray anything) (jsArray anything) to (jsArray anything) appendN )
+        , ( "empty", zero to (jsArray anything) Array.empty )
+        , ( "initializeFromList", two int (list anything) to (tuple (jsArray anything) (list anything)) initializeFromList )
+        , ( "length", one (jsArray anything) to int Array.length )
         ]
       )
 
@@ -298,23 +298,23 @@ list ( selector, toValue, name ) =
     )
 
 
-array : Selector a -> Selector (Array a)
-array ( selector, toValue, name ) =
+jsArray : Selector a -> Selector (Array a)
+jsArray ( selector, toValue, name ) =
     ( \value ->
         case value of
-            Array l ->
-                l
+            JSArray jsa ->
+                jsa
                     |> Array.toList
                     |> Maybe.Extra.traverse selector
                     |> Maybe.map Array.fromList
 
             _ ->
                 Nothing
-    , \value ->
-        value
+    , \array ->
+        array
             |> Array.map toValue
-            |> Array
-    , "Array " ++ name
+            |> JSArray
+    , "JSArray " ++ name
     )
 
 

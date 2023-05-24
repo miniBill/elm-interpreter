@@ -15,4 +15,4 @@ node_modules/elm-codegen/bin/elm-codegen: package.json yarn.lock
 
 generated/modules.elms: $(KERNELS) Makefile
 	mkdir -p generated
-	(find ${ELM_HOME}/0.19.1/packages/elm/core/1.0.5/src -type f -name '*.elm'; echo $(KERNELS) | tr " " "\n") | xargs awk 'FNR==1 && NR!=1 {print "---SNIP---"}{print}' > $@
+	(find ${ELM_HOME}/0.19.1/packages/elm/core/1.0.5/src -type f -name '*.elm'; find codegen/Elm -type f -name '*.elm') | xargs awk 'FNR==1 && NR!=1 {print "---SNIP---"}{print}' > $@

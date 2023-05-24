@@ -1,12 +1,14 @@
 module Main exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, column, fill, padding, paragraph, spacing, text, width)
+import Element exposing (Element, column, fill, padding, paragraph, spacing, text, textColumn, width)
 import Element.Border as Border
+import Element.Font as Font
 import Element.Input as Input
 import Elm.Syntax.Expression as Expression
 import Eval exposing (Error(..))
 import Parser
+import Syntax
 import Value exposing (EvalError(..))
 
 
@@ -17,7 +19,7 @@ type Msg
 
 type alias Model =
     { input : String
-    , output : String
+    , output : Result String String
     }
 
 
@@ -71,7 +73,15 @@ innerView model =
                 else
                     text "Eval"
             }
-        , paragraph [] [ text model.output ]
+        , case model.output of
+            Ok output ->
+                paragraph [] [ text output ]
+
+            Err e ->
+                e
+                    |> String.split "\n"
+                    |> List.map (\line -> paragraph [] [ text line ])
+                    |> textColumn [ Font.family [ Font.monospace ] ]
         ]
 
 
@@ -85,7 +95,7 @@ init =
             boom (x - 1)
 in
 boom 100000"""
-    , output = ""
+    , output = Ok ""
     }
 
 
@@ -109,10 +119,10 @@ update msg model =
                     in
                     case result of
                         Err e ->
-                            errorToString e
+                            Err <| errorToString e
 
                         Ok value ->
-                            Value.toString value
+                            Ok <| Value.toString value
             }
 
 
@@ -122,7 +132,7 @@ errorToString err =
         ParsingError deadEnds ->
             "Parsing error: " ++ Parser.deadEndsToString deadEnds
 
-        EvalError { currentModule, currentFunction, error } ->
+        EvalError { callStack, error } ->
             let
                 messageWithType : String
                 messageWithType =
@@ -135,17 +145,7 @@ errorToString err =
 
                         NameError name ->
                             "Name error: " ++ name ++ " not found"
-
-                maybeCurrentFunction : String
-                maybeCurrentFunction =
-                    case currentFunction of
-                        Nothing ->
-                            ""
-
-                        Just name ->
-                            "\nCurrent function: " ++ name
             in
             messageWithType
-                ++ "\nCurrent module: "
-                ++ String.join "." currentModule
-                ++ maybeCurrentFunction
+                ++ "\nCall stack:\n - "
+                ++ String.join "\n - " (List.map Syntax.qualifiedNameToString callStack)

@@ -22,15 +22,15 @@ type Value
     | Record (Dict String Value)
     | Custom QualifiedNameRef (List Value)
     | PartiallyApplied (() -> Env) (List Value) (List (Node Pattern)) (Node Expression)
-    | Array (Array Value)
+    | JSArray (Array Value)
     | List (List Value)
 
 
 type alias Env =
     { currentModule : ModuleName
-    , currentFunction : Maybe String
     , functions : Dict ModuleName (Dict String FunctionImplementation)
     , values : EnvValues
+    , callStack : List QualifiedNameRef
     }
 
 
@@ -41,7 +41,7 @@ type alias EnvValues =
 type alias EvalResult a =
     Result
         { currentModule : ModuleName
-        , currentFunction : Maybe String
+        , callStack : List QualifiedNameRef
         , error : EvalError
         }
         a
@@ -72,7 +72,7 @@ error : Env -> EvalError -> EvalResult value
 error env msg =
     Err
         { currentModule = env.currentModule
-        , currentFunction = env.currentFunction
+        , callStack = env.callStack
         , error = msg
         }
 
@@ -126,26 +126,19 @@ toExpression value =
                     |> List.map toExpression
                     |> Expression.ListExpr
 
-            Array array ->
-                array
-                    |> Array.toList
-                    |> List
-                    |> toExpression
-                    |> (\list ->
-                            Expression.Application
-                                [ Expression.FunctionOrValue
-                                    [ "Array" ]
-                                    "fromList"
-                                    |> fakeNode
-                                , list
-                                ]
-                       )
-
             Custom name args ->
-                (fakeNode (Expression.FunctionOrValue name.moduleName name.name)
-                    :: List.map toExpression args
-                )
-                    |> Expression.Application
+                case toArray value of
+                    Just array ->
+                        arrayToExpression array
+
+                    Nothing ->
+                        (fakeNode (Expression.FunctionOrValue name.moduleName name.name)
+                            :: List.map toExpression args
+                        )
+                            |> Expression.Application
+
+            JSArray array ->
+                arrayToExpression (Array.toList array)
 
             PartiallyApplied _ [] patterns implementation ->
                 Expression.LambdaExpression
@@ -163,6 +156,53 @@ toExpression value =
                     :: List.map toExpression args
                 )
                     |> Expression.Application
+
+
+arrayToExpression : List Value -> Expression
+arrayToExpression array =
+    Expression.Application
+        [ Expression.FunctionOrValue
+            [ "Array" ]
+            "fromList"
+            |> fakeNode
+        , array
+            |> List
+            |> toExpression
+        ]
+
+
+toArray : Value -> Maybe (List Value)
+toArray value =
+    case value of
+        Custom name args ->
+            case ( name.moduleName, name.name, args ) of
+                ( [ "Array" ], "Array_elm_builtin", [ _, _, tree, tail ] ) ->
+                    let
+                        treeToArray : Value -> List Value -> Maybe (List Value)
+                        treeToArray node acc =
+                            case node of
+                                JSArray arr ->
+                                    Just (Array.toList arr ++ acc)
+
+                                _ ->
+                                    let
+                                        _ =
+                                            Debug.log "treeToArray" { node = node }
+                                    in
+                                    Debug.todo "treeToArray"
+                    in
+                    case tail of
+                        JSArray tailArray ->
+                            treeToArray tree (Array.toList tailArray)
+
+                        _ ->
+                            Nothing
+
+                _ ->
+                    Nothing
+
+        _ ->
+            Nothing
 
 
 boolToString : Bool -> String

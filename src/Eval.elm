@@ -27,7 +27,7 @@ type Error
     = ParsingError (List DeadEnd)
     | EvalError
         { currentModule : ModuleName
-        , currentFunction : Maybe String
+        , callStack : List QualifiedNameRef
         , error : EvalError
         }
 
@@ -86,7 +86,7 @@ buildInitialEnv file =
         coreEnv : Env
         coreEnv =
             { currentModule = moduleName
-            , currentFunction = Nothing
+            , callStack = []
             , functions = Core.functions
             , values = Dict.empty
             }
@@ -254,10 +254,7 @@ evalExpression env (Node _ expression) =
 
                                                             Just ( _, f ) ->
                                                                 f
-                                                                    { env
-                                                                        | currentModule = moduleName
-                                                                        , currentFunction = Just name
-                                                                    }
+                                                                    (Env.call moduleName name env)
                                                                     values
 
                                             _ ->
@@ -315,21 +312,21 @@ evalExpression env (Node _ expression) =
 
                                     Just function ->
                                         PartiallyApplied
-                                            (\_ -> { env | currentModule = moduleName, currentFunction = Just name })
+                                            (\_ -> Env.call moduleName name env)
                                             []
                                             function.arguments
                                             function.expression
                                             |> Ok
 
                     _ ->
-                        case Dict.get name env.values of
-                            Just (PartiallyApplied localEnv [] [] implementation) ->
+                        case ( moduleName, Dict.get name env.values ) of
+                            ( [], Just (PartiallyApplied localEnv [] [] implementation) ) ->
                                 evalExpression (localEnv ()) implementation
 
-                            Just value ->
+                            ( [], Just value ) ->
                                 Ok value
 
-                            Nothing ->
+                            _ ->
                                 let
                                     maybeFunction : Maybe Expression.FunctionImplementation
                                     maybeFunction =
@@ -354,20 +351,12 @@ evalExpression env (Node _ expression) =
                                     Just function ->
                                         if List.isEmpty function.arguments then
                                             evalExpression
-                                                { env
-                                                    | currentModule = fixedModuleName
-                                                    , currentFunction = Just name
-                                                }
+                                                (Env.call fixedModuleName name env)
                                                 function.expression
 
                                         else
                                             PartiallyApplied
-                                                (\_ ->
-                                                    { env
-                                                        | currentModule = fixedModuleName
-                                                        , currentFunction = Just name
-                                                    }
-                                                )
+                                                (\_ -> Env.call fixedModuleName name env)
                                                 []
                                                 function.arguments
                                                 function.expression
@@ -508,10 +497,10 @@ evalKernelFunction env moduleName name =
 
                 Just ( argCount, f ) ->
                     if argCount == 0 then
-                        f { env | currentModule = moduleName, currentFunction = Just name } []
+                        f (Env.call moduleName name env) []
 
                     else
-                        PartiallyApplied (\_ -> Env.empty { moduleName = moduleName, functionName = Just name })
+                        PartiallyApplied (\_ -> Env.empty moduleName)
                             []
                             (List.repeat argCount (fakeNode AllPattern))
                             (fakeNode <| Expression.FunctionOrValue moduleName name)
@@ -652,7 +641,7 @@ evalRecordAccess env recordExpr (Node _ field) =
 evalRecordAccessFunction : String -> Value
 evalRecordAccessFunction field =
     PartiallyApplied
-        (\_ -> Env.empty { moduleName = [], functionName = Just <| "." ++ field })
+        (\_ -> Env.empty [])
         []
         [ fakeNode (VarPattern "r") ]
         (fakeNode <|
@@ -693,13 +682,7 @@ evalOperator env opName =
 
         Just kernelFunction ->
             PartiallyApplied
-                (\_ ->
-                    { currentModule = kernelFunction.moduleName
-                    , currentFunction = Just opName
-                    , values = Dict.empty
-                    , functions = Core.functions
-                    }
-                )
+                (\_ -> Env.call kernelFunction.moduleName opName env)
                 []
                 [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
                 (fakeNode <|

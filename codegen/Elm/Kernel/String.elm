@@ -1,4 +1,4 @@
-module Elm.Kernel.String exposing (all, foldr, map)
+module Elm.Kernel.String exposing (all, foldl, foldr, map)
 
 
 all : (Char -> Bool) -> String -> Bool
@@ -9,6 +9,16 @@ all f s =
 map : (Char -> Char) -> String -> String
 map f s =
     String.fromList (List.map f (String.toList s))
+
+
+foldl : (Char -> b -> b) -> b -> String -> b
+foldl f i s =
+    case String.uncons s of
+        Nothing ->
+            i
+
+        Just ( c, t ) ->
+            foldl f (f c i) t
 
 
 foldr : (Char -> b -> b) -> b -> String -> b

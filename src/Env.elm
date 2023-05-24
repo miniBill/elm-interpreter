@@ -1,4 +1,4 @@
-module Env exposing (addFunction, addValue, empty, with)
+module Env exposing (addFunction, addValue, call, empty, with)
 
 import Elm.Syntax.Expression exposing (FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
@@ -35,10 +35,20 @@ with newValues old =
     { old | values = Dict.union newValues old.values }
 
 
-empty : { moduleName : ModuleName, functionName : Maybe String } -> Env
-empty { moduleName, functionName } =
+empty : ModuleName -> Env
+empty moduleName =
     { currentModule = moduleName
-    , currentFunction = functionName
+    , callStack = []
     , functions = Dict.empty
     , values = Dict.empty
+    }
+
+
+call : ModuleName -> String -> Env -> Env
+call moduleName name env =
+    { env
+        | currentModule = moduleName
+        , callStack =
+            { moduleName = moduleName, name = name }
+                :: env.callStack
     }

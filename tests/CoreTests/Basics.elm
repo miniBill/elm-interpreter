@@ -32,7 +32,7 @@ suite =
                 , evalTest_ "compare 'f' 'f'" identity <| Value.fromOrder (compare 'f' 'f')
                 , evalTest_ "compare (1, 2, 3) (0, 1, 2)" identity <| Value.fromOrder (compare ( 1, 2, 3 ) ( 0, 1, 2 ))
                 , evalTest_ "compare ['a'] ['b']" identity <| Value.fromOrder (compare [ 'a' ] [ 'b' ])
-                , Test.skip <| evalTest "array equality" "Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1" Bool <| Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1
+                , evalTest "array equality" "Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1" Bool <| Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1
                 , Test.skip <| evalTest "set equality" "Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]" Bool <| Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]
                 , Test.skip <| evalTest "dict equality" "Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]" Bool <| Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]
                 , evalTest "char equality" "'0' == '饑'" Bool <| '0' == '饑'
