@@ -1,4 +1,4 @@
-module Value exposing (Env, EnvValues, EvalError(..), EvalResult, Value(..), fromOrder, nameError, toOrder, toString, typeError, unsupported)
+module Value exposing (Env, EnvValues, EvalError(..), EvalResult, Value(..), fromOrder, nameError, toArray, toOrder, toString, typeError, unsupported)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
@@ -22,7 +22,7 @@ type Value
     | Record (Dict String Value)
     | Custom QualifiedNameRef (List Value)
     | PartiallyApplied (() -> Env) (List Value) (List (Node Pattern)) (Node Expression)
-    | JSArray (Array Value)
+    | JsArray (Array Value)
     | List (List Value)
 
 
@@ -129,7 +129,7 @@ toExpression value =
             Custom name args ->
                 case toArray value of
                     Just array ->
-                        arrayToExpression array
+                        arrayToExpression "Array" array
 
                     Nothing ->
                         (fakeNode (Expression.FunctionOrValue name.moduleName name.name)
@@ -137,8 +137,8 @@ toExpression value =
                         )
                             |> Expression.Application
 
-            JSArray array ->
-                arrayToExpression (Array.toList array)
+            JsArray array ->
+                arrayToExpression "JsArray" (Array.toList array)
 
             PartiallyApplied _ [] patterns implementation ->
                 Expression.LambdaExpression
@@ -158,11 +158,11 @@ toExpression value =
                     |> Expression.Application
 
 
-arrayToExpression : List Value -> Expression
-arrayToExpression array =
+arrayToExpression : String -> List Value -> Expression
+arrayToExpression name array =
     Expression.Application
         [ Expression.FunctionOrValue
-            [ "Array" ]
+            [ name ]
             "fromList"
             |> fakeNode
         , array
@@ -181,7 +181,7 @@ toArray value =
                         treeToArray : Value -> List Value -> Maybe (List Value)
                         treeToArray node acc =
                             case node of
-                                JSArray arr ->
+                                JsArray arr ->
                                     Just (Array.toList arr ++ acc)
 
                                 _ ->
@@ -192,7 +192,7 @@ toArray value =
                                     Debug.todo "treeToArray"
                     in
                     case tail of
-                        JSArray tailArray ->
+                        JsArray tailArray ->
                             treeToArray tree (Array.toList tailArray)
 
                         _ ->

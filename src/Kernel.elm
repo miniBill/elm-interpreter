@@ -337,7 +337,7 @@ jsArray selector =
     { fromValue =
         \value ->
             case value of
-                JSArray jsa ->
+                JsArray jsa ->
                     jsa
                         |> Array.toList
                         |> Maybe.Extra.traverse selector.fromValue
@@ -349,8 +349,8 @@ jsArray selector =
         \array ->
             array
                 |> Array.map selector.toValue
-                |> JSArray
-    , name = "JSArray " ++ selector.name
+                |> JsArray
+    , name = "JsArray " ++ selector.name
     }
 
 
@@ -707,4 +707,13 @@ compare env l r =
                     )
 
         _ ->
-            typeError env <| "Comparison not yet implemented for " ++ Value.toString l ++ " and " ++ Value.toString r
+            case ( Value.toArray l, Value.toArray r ) of
+                ( Just la, Just ra ) ->
+                    compare env (List la) (List ra)
+
+                _ ->
+                    typeError env <|
+                        "Comparison not yet implemented for "
+                            ++ Value.toString l
+                            ++ " and "
+                            ++ Value.toString r
