@@ -6,7 +6,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import FastDict as Dict exposing (Dict)
 import List.Extra
 import Maybe.Extra
-import Value exposing (Env, EvalError(..), EvalResult, Value(..), typeError)
+import Value exposing (Env, EvalResult, Value(..), typeError)
 
 
 functions : Dict ModuleName (Dict String ( Int, Env -> List Value -> EvalResult Value ))
