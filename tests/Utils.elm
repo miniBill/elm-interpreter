@@ -1,4 +1,4 @@
-module Utils exposing (evalTest, evalTest_)
+module Utils exposing (evalTest, evalTest_, skipSlowTests)
 
 import Eval
 import Expect
@@ -14,6 +14,7 @@ evalTest_ expr toValue a =
 evalTest : String -> String -> (a -> Value) -> a -> Test
 evalTest name expression toValue a =
     let
+        result : Value
         result =
             toValue a
     in
@@ -26,3 +27,8 @@ evalTest name expression toValue a =
 
                 ( v, _ ) ->
                     v |> Expect.equal (Ok result)
+
+
+skipSlowTests : Bool
+skipSlowTests =
+    False

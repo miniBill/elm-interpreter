@@ -77,10 +77,17 @@ standardLibraryTest =
 
 tailCallTest : Test
 tailCallTest =
-    evalTest "Tail Call"
-        "let boom x = if x <= 0 then False else boom (x - 1) in boom 100000"
-        Bool
-        False
+    (if Utils.skipSlowTests then
+        Test.skip
+
+     else
+        identity
+    )
+    <|
+        evalTest "Tail Call"
+            "let boom x = if x <= 0 then False else boom (x - 1) in boom 100000"
+            Bool
+            False
 
 
 closureTest : Test
