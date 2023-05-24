@@ -6,13 +6,17 @@ import Test exposing (Test, test)
 import Value exposing (Value(..))
 
 
-evalTest_ : String -> Value -> Test
-evalTest_ expr value =
-    evalTest expr expr value
+evalTest_ : String -> (a -> Value) -> a -> Test
+evalTest_ expr toValue a =
+    evalTest expr expr toValue a
 
 
-evalTest : String -> String -> Value -> Test
-evalTest name expression result =
+evalTest : String -> String -> (a -> Value) -> a -> Test
+evalTest name expression toValue a =
+    let
+        result =
+            toValue a
+    in
     test name <|
         \_ ->
             case ( Eval.eval expression, result ) of
