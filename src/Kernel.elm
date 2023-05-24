@@ -351,7 +351,7 @@ zero :
     -> Selector out
     -> out
     -> ( Int, Env -> List Value -> EvalResult Value )
-zero To output f =
+zero _ output f =
     zeroWithError To output (Ok f)
 
 
@@ -360,7 +360,7 @@ zeroWithError :
     -> Selector out
     -> EvalResult out
     -> ( Int, Env -> List Value -> EvalResult Value )
-zeroWithError To ( _, output, _ ) f =
+zeroWithError _ ( _, output, _ ) f =
     let
         err : Env -> String -> EvalResult value
         err env got =
@@ -383,7 +383,7 @@ one :
     -> Selector out
     -> (a -> out)
     -> ( Int, Env -> List Value -> EvalResult Value )
-one firstSelector To output f =
+one firstSelector _ output f =
     oneWithError firstSelector To output (\_ v -> Ok (f v))
 
 
@@ -393,7 +393,7 @@ oneWithError :
     -> Selector out
     -> (Env -> a -> EvalResult out)
     -> ( Int, Env -> List Value -> EvalResult Value )
-oneWithError ( firstSelector, _, firstName ) To ( _, output, _ ) f =
+oneWithError ( firstSelector, _, firstName ) _ ( _, output, _ ) f =
     let
         err : Env -> String -> EvalResult value
         err env got =
@@ -425,7 +425,7 @@ two :
     -> Selector out
     -> (a -> b -> out)
     -> ( Int, Env -> List Value -> EvalResult Value )
-two firstSelector secondSelector To output f =
+two firstSelector secondSelector _ output f =
     twoWithError firstSelector secondSelector To output (\_ l r -> Ok (f l r))
 
 
@@ -436,7 +436,7 @@ twoWithError :
     -> Selector out
     -> (Env -> a -> b -> EvalResult out)
     -> ( Int, Env -> List Value -> EvalResult Value )
-twoWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) To ( _, output, _ ) f =
+twoWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) _ ( _, output, _ ) f =
     let
         err : Env -> String -> EvalResult value
         err env got =
@@ -478,7 +478,7 @@ three :
     -> Selector out
     -> (a -> b -> c -> out)
     -> ( Int, Env -> List Value -> EvalResult Value )
-three firstSelector secondSelector thirdSelector To output f =
+three firstSelector secondSelector thirdSelector _ output f =
     threeWithError firstSelector secondSelector thirdSelector To output (\_ l m r -> Ok (f l m r))
 
 
@@ -490,7 +490,7 @@ threeWithError :
     -> Selector out
     -> (Env -> a -> b -> c -> EvalResult out)
     -> ( Int, Env -> List Value -> EvalResult Value )
-threeWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) ( thirdSelector, _, thirdName ) To ( _, output, _ ) f =
+threeWithError ( firstSelector, _, firstName ) ( secondSelector, _, secondName ) ( thirdSelector, _, thirdName ) _ ( _, output, _ ) f =
     let
         err : Env -> String -> EvalResult value
         err env got =
