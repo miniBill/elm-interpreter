@@ -36,8 +36,8 @@ case. This is an optimization that has proved useful in the `Array` module.
     initialize 3 5 identity == [ 5, 6, 7 ]
 
 -}
-initialize : Env -> Int -> Int -> (Env -> Int -> EvalResult Value) -> EvalResult (Array Value)
-initialize env len offset f =
+initialize : Env -> Int -> Int -> (Int -> EvalResult Value) -> EvalResult (Array Value)
+initialize _ len offset f =
     List.range offset (offset + len - 1)
-        |> Result.Extra.combineMap (f env)
+        |> Result.Extra.combineMap f
         |> Result.map Array.fromList

@@ -8,6 +8,7 @@ import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern
 import FastDict as Dict exposing (Dict)
 import Kernel.Array
+import Kernel.List
 import Kernel.String
 import Kernel.Utils
 import Maybe.Extra
@@ -104,6 +105,7 @@ functions evalFunction =
     , ( [ "Elm", "Kernel", "List" ]
       , [ ( "cons", two anything (list anything) to (list anything) (::) )
         , ( "fromArray", one anything to anything identity )
+        , ( "sortBy", twoWithError (function evalFunction anything anything) (list anything) to (list anything) Kernel.List.sortBy )
         , ( "toArray", one anything to anything identity )
         ]
       )
@@ -144,12 +146,12 @@ functions evalFunction =
     , -- Elm.Kernel.Utils
       ( [ "Elm", "Kernel", "Utils" ]
       , [ ( "append", twoWithError anything anything to anything Kernel.Utils.append )
-        , ( "ge", comparison [ GT, EQ ] )
-        , ( "gt", comparison [ GT ] )
-        , ( "le", comparison [ LT, EQ ] )
-        , ( "lt", comparison [ LT ] )
-        , ( "equal", comparison [ EQ ] )
-        , ( "compare", twoWithError anything anything to order compare )
+        , ( "ge", Kernel.Utils.comparison [ GT, EQ ] )
+        , ( "gt", Kernel.Utils.comparison [ GT ] )
+        , ( "le", Kernel.Utils.comparison [ LT, EQ ] )
+        , ( "lt", Kernel.Utils.comparison [ LT ] )
+        , ( "equal", Kernel.Utils.comparison [ EQ ] )
+        , ( "compare", twoWithError anything anything to order Kernel.Utils.compare )
         ]
       )
     ]
@@ -358,15 +360,15 @@ function :
     EvalFunction
     -> OutSelector from xf
     -> InSelector to xt
-    -> InSelector (Env -> from -> EvalResult to) {}
+    -> InSelector (from -> EvalResult to) {}
 function evalFunctionWith inSelector outSelector =
     let
-        fromValue : Value -> Maybe (Env -> from -> EvalResult to)
+        fromValue : Value -> Maybe (from -> EvalResult to)
         fromValue value =
             case value of
                 PartiallyApplied localEnv oldArgs patterns implementation ->
                     Just
-                        (\env arg ->
+                        (\arg ->
                             case evalFunctionWith localEnv (oldArgs ++ [ inSelector.toValue arg ]) patterns implementation of
                                 Err e ->
                                     Err e
@@ -377,7 +379,7 @@ function evalFunctionWith inSelector outSelector =
                                             Ok ov
 
                                         Nothing ->
-                                            typeError env <| "Could not convert output from " ++ Value.toString out ++ " to " ++ outSelector.name
+                                            typeError (localEnv ()) <| "Could not convert output from " ++ Value.toString out ++ " to " ++ outSelector.name
                         )
 
                 _ ->
@@ -614,106 +616,3 @@ twoNumbers fInt fFloat =
             _ ->
                 typeError env "Expected two numbers"
     )
-
-
-comparison : List Order -> ( Int, Env -> List Value -> EvalResult Value )
-comparison orders =
-    ( 2
-    , \env args ->
-        case args of
-            [ l, r ] ->
-                Result.map (\result -> Bool (List.member result orders)) <| compare env l r
-
-            _ ->
-                typeError env "Comparison needs exactly two arguments"
-    )
-
-
-compare : Env -> Value -> Value -> EvalResult Order
-compare env l r =
-    let
-        inner : comparable -> comparable -> EvalResult Order
-        inner lv rv =
-            Ok <| Basics.compare lv rv
-    in
-    case ( l, r ) of
-        -- TODO: Implement all cases
-        ( Int lv, Int rv ) ->
-            inner lv rv
-
-        ( Float lv, Float rv ) ->
-            inner lv rv
-
-        ( Int lv, Float rv ) ->
-            inner (toFloat lv) rv
-
-        ( Float lv, Int rv ) ->
-            inner lv (toFloat rv)
-
-        ( String lv, String rv ) ->
-            inner lv rv
-
-        ( Char lv, Char rv ) ->
-            inner lv rv
-
-        ( Tuple la lb, Tuple ra rb ) ->
-            compare env la ra
-                |> Result.andThen
-                    (\a ->
-                        if a /= EQ then
-                            Ok a
-
-                        else
-                            compare env lb rb
-                    )
-
-        ( Triple la lb lc, Triple ra rb rc ) ->
-            compare env la ra
-                |> Result.andThen
-                    (\a ->
-                        if a /= EQ then
-                            Ok a
-
-                        else
-                            compare env lb rb
-                                |> Result.andThen
-                                    (\b ->
-                                        if b /= EQ then
-                                            Ok b
-
-                                        else
-                                            compare env lc rc
-                                    )
-                    )
-
-        ( List [], List (_ :: _) ) ->
-            Ok LT
-
-        ( List (_ :: _), List [] ) ->
-            Ok GT
-
-        ( List [], List [] ) ->
-            Ok EQ
-
-        ( List (lh :: lt), List (rh :: rt) ) ->
-            compare env lh rh
-                |> Result.andThen
-                    (\h ->
-                        if h /= EQ then
-                            Ok h
-
-                        else
-                            compare env (List lt) (List rt)
-                    )
-
-        _ ->
-            case ( Value.toArray l, Value.toArray r ) of
-                ( Just la, Just ra ) ->
-                    compare env (List la) (List ra)
-
-                _ ->
-                    typeError env <|
-                        "Comparison not yet implemented for "
-                            ++ Value.toString l
-                            ++ " and "
-                            ++ Value.toString r
