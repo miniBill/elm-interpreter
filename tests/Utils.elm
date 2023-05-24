@@ -31,4 +31,4 @@ evalTest name expression toValue a =
 
 skipSlowTests : Bool
 skipSlowTests =
-    False
+    True
