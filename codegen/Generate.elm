@@ -15,6 +15,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
 import Gen.CodeGen.Generate as Generate
+import Gen.Dict as Dict
 import Gen.Elm.Syntax.Expression
 import Gen.Elm.Syntax.Infix
 import Gen.Elm.Syntax.ModuleName
@@ -23,6 +24,7 @@ import Gen.FastDict
 import Gen.List
 import Gen.Maybe
 import Gen.Syntax
+import List.Extra
 import Result.Extra
 
 
@@ -34,12 +36,33 @@ main =
 toFiles : String -> List Elm.File
 toFiles modulesSource =
     let
-        maybeFiles : Result String (List { moduleName : ModuleName, file : Elm.File, hasOperators : Bool })
+        maybeFiles :
+            Result
+                String
+                (List
+                    { moduleName : ModuleName
+                    , file : Elm.File
+                    , hasOperators : Bool
+                    }
+                )
         maybeFiles =
             modulesSource
                 |> String.split "---SNIP---"
                 |> Result.Extra.combineMap toFile
-                |> Result.map (List.filterMap identity)
+                |> Result.map
+                    (List.filterMap identity
+                        >> List.Extra.gatherEqualsBy .moduleName
+                        >> List.map
+                            (\( { moduleName } as first, rest ) ->
+                                { moduleName = moduleName
+                                , file =
+                                    (first :: rest)
+                                        |> List.concatMap .declarations
+                                        |> Elm.file moduleName
+                                , hasOperators = List.any .hasOperators (first :: rest)
+                                }
+                            )
+                    )
     in
     case maybeFiles of
         Err e ->
@@ -106,7 +129,7 @@ toFiles modulesSource =
             core :: List.map .file files
 
 
-toFile : String -> Result String (Maybe { moduleName : ModuleName, file : Elm.File, hasOperators : Bool })
+toFile : String -> Result String (Maybe { moduleName : ModuleName, declarations : List Elm.Declaration, hasOperators : Bool })
 toFile moduleSource =
     case Elm.Parser.parse moduleSource of
         Err _ ->
@@ -137,7 +160,7 @@ toFile moduleSource =
                     Ok <| Just <| normalModuleToFile moduleName file
 
 
-normalModuleToFile : Node ModuleName -> File.File -> { moduleName : ModuleName, file : Elm.File, hasOperators : Bool }
+normalModuleToFile : Node ModuleName -> File.File -> { moduleName : ModuleName, declarations : List Elm.Declaration, hasOperators : Bool }
 normalModuleToFile (Node _ moduleName) file =
     let
         generatedModuleName : ModuleName
@@ -189,11 +212,19 @@ normalModuleToFile (Node _ moduleName) file =
                             in
                             case List.reverse <| List.map Elm.string <| String.split "." functionName of
                                 name :: reverseModule ->
+                                    let
+                                        fixedModule =
+                                            if List.isEmpty reverseModule then
+                                                List.map Elm.string moduleName
+
+                                            else
+                                                List.reverse reverseModule
+                                    in
                                     Just
                                         (Elm.tuple
                                             (Elm.string <| Node.value operator)
                                             (Gen.Elm.Syntax.Pattern.make_.qualifiedNameRef
-                                                { moduleName = Elm.list <| List.reverse reverseModule
+                                                { moduleName = Elm.list fixedModule
                                                 , name = name
                                                 }
                                             )
@@ -207,11 +238,10 @@ normalModuleToFile (Node _ moduleName) file =
                 )
                 file.declarations
 
-        result : Elm.File
-        result =
+        outputDeclarations : List Elm.Declaration
+        outputDeclarations =
             if List.isEmpty operators then
-                (functions :: declarations)
-                    |> Elm.file generatedModuleName
+                functions :: declarations
 
             else
                 let
@@ -222,11 +252,10 @@ normalModuleToFile (Node _ moduleName) file =
                             |> Elm.declaration "operators"
                             |> Elm.expose
                 in
-                (functions :: operatorsDeclaration :: declarations)
-                    |> Elm.file generatedModuleName
+                functions :: operatorsDeclaration :: declarations
     in
     { moduleName = generatedModuleName
-    , file = result
+    , declarations = outputDeclarations
     , hasOperators = not (List.isEmpty operators)
     }
 

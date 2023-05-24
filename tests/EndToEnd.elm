@@ -26,6 +26,7 @@ suite =
         , kernelTest
         , joinTest
         , modulesTest
+        , higherOrderTest
         ]
 
 
@@ -219,6 +220,12 @@ joinTest =
 modulesTest : Test
 modulesTest =
     evalTest_ "List.sum [ 1, 2, 3 ]" Int 6
+
+
+higherOrderTest : Test
+higherOrderTest =
+    evalTest_ "String.map Char.toUpper \"Hello, world!\"" String <|
+        String.map Char.toUpper "Hello, world!"
 
 
 evalTestModule : String -> String -> (a -> Value) -> a -> Test
