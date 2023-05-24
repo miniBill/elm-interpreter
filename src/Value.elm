@@ -44,82 +44,61 @@ type EvalError
     | NameError String
 
 
-toExpression : Value -> Maybe (Node Expression)
+toExpression : Value -> Node Expression
 toExpression value =
-    let
-        ok : a -> Maybe (Node a)
-        ok e =
-            Just (fakeNode e)
-    in
-    case value of
-        String s ->
-            ok (Expression.Literal s)
+    fakeNode <|
+        case value of
+            String s ->
+                Expression.Literal s
 
-        Int i ->
-            ok (Expression.Integer i)
+            Int i ->
+                Expression.Integer i
 
-        Float f ->
-            ok (Expression.Floatable f)
+            Float f ->
+                Expression.Floatable f
 
-        Char c ->
-            ok (Expression.CharLiteral c)
+            Char c ->
+                Expression.CharLiteral c
 
-        Bool b ->
-            ok (Expression.FunctionOrValue [] (boolToString b))
+            Bool b ->
+                Expression.FunctionOrValue [] (boolToString b)
 
-        Unit ->
-            ok Expression.UnitExpr
+            Unit ->
+                Expression.UnitExpr
 
-        Tuple l r ->
-            Maybe.map2
-                (\le re ->
-                    fakeNode <|
-                        Expression.TupledExpression
-                            [ le
-                            , re
-                            ]
-                )
-                (toExpression l)
-                (toExpression r)
+            Tuple l r ->
+                Expression.TupledExpression
+                    [ toExpression l
+                    , toExpression r
+                    ]
 
-        Triple l m r ->
-            Maybe.map3
-                (\le me re ->
-                    fakeNode <|
-                        Expression.TupledExpression
-                            [ le
-                            , me
-                            , re
-                            ]
-                )
-                (toExpression l)
-                (toExpression m)
-                (toExpression r)
+            Triple l m r ->
+                Expression.TupledExpression
+                    [ toExpression l
+                    , toExpression m
+                    , toExpression r
+                    ]
 
-        Record fields ->
-            fields
-                |> Dict.toList
-                |> Maybe.Extra.traverse
-                    (\( fieldName, fieldValue ) ->
-                        Maybe.map
-                            (\expr -> fakeNode ( fakeNode fieldName, expr ))
-                            (toExpression fieldValue)
-                    )
-                |> Maybe.map (Expression.RecordExpr >> fakeNode)
+            Record fields ->
+                fields
+                    |> Dict.toList
+                    |> List.map
+                        (\( fieldName, fieldValue ) ->
+                            fakeNode ( fakeNode fieldName, toExpression fieldValue )
+                        )
+                    |> Expression.RecordExpr
 
-        List list ->
-            list
-                |> Maybe.Extra.traverse toExpression
-                |> Maybe.map (Expression.ListExpr >> fakeNode)
+            List list ->
+                list
+                    |> List.map toExpression
+                    |> Expression.ListExpr
 
-        Array array ->
-            array
-                |> Array.toList
-                |> List
-                |> toExpression
-                |> Maybe.map
-                    (\list ->
-                        fakeNode <|
+            Array array ->
+                array
+                    |> Array.toList
+                    |> List
+                    |> toExpression
+                    |> (\list ->
                             Expression.Application
                                 [ Expression.FunctionOrValue
                                     [ "Array" ]
@@ -127,30 +106,30 @@ toExpression value =
                                     |> fakeNode
                                 , list
                                 ]
-                    )
+                       )
 
-        Custom name args ->
-            (ok (Expression.FunctionOrValue name.moduleName name.name)
-                :: List.map toExpression args
-            )
-                |> Maybe.Extra.combine
-                |> Maybe.map (Expression.Application >> fakeNode)
+            Custom name args ->
+                (fakeNode (Expression.FunctionOrValue name.moduleName name.name)
+                    :: List.map toExpression args
+                )
+                    |> Expression.Application
 
-        PartiallyApplied _ [] patterns implementation ->
-            ok
-                (Expression.LambdaExpression
+            PartiallyApplied _ [] patterns implementation ->
+                Expression.LambdaExpression
                     { args = patterns
                     , expression = implementation
                     }
-                )
 
-        PartiallyApplied localEnv args patterns implementation ->
-            Maybe.map2
-                (\lambda argExprs ->
-                    fakeNode <| Expression.Application (lambda :: argExprs)
+            PartiallyApplied _ args patterns implementation ->
+                (fakeNode
+                    (Expression.LambdaExpression
+                        { args = patterns
+                        , expression = implementation
+                        }
+                    )
+                    :: List.map toExpression args
                 )
-                (toExpression (PartiallyApplied localEnv [] patterns implementation))
-                (Maybe.Extra.traverse toExpression args)
+                    |> Expression.Application
 
 
 boolToString : Bool -> String
@@ -165,14 +144,9 @@ boolToString b =
 toString : Value -> String
 toString value =
     -- TODO: This is inefficient and subtly different from Debug.toString
-    case toExpression value of
-        Just e ->
-            e
-                |> Elm.Writer.writeExpression
-                |> Elm.Writer.write
-
-        Nothing ->
-            "Could not convert to string :("
+    toExpression value
+        |> Elm.Writer.writeExpression
+        |> Elm.Writer.write
 
 
 fromOrder : Order -> Value
