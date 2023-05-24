@@ -122,11 +122,30 @@ errorToString err =
         ParsingError deadEnds ->
             "Parsing error: " ++ Parser.deadEndsToString deadEnds
 
-        EvalError (TypeError message) ->
-            "Type error: " ++ message
+        EvalError { currentModule, currentFunction, error } ->
+            let
+                messageWithType : String
+                messageWithType =
+                    case error of
+                        TypeError message ->
+                            "Type error: " ++ message
 
-        EvalError (Unsupported message) ->
-            "Unsupported: " ++ message
+                        Unsupported message ->
+                            "Unsupported: " ++ message
 
-        EvalError (NameError name) ->
-            "Name error: " ++ name ++ " not found"
+                        NameError name ->
+                            "Name error: " ++ name ++ " not found"
+
+                maybeCurrentFunction : String
+                maybeCurrentFunction =
+                    case currentFunction of
+                        Nothing ->
+                            ""
+
+                        Just name ->
+                            "\nCurrent function: " ++ name
+            in
+            messageWithType
+                ++ "\nCurrent module: "
+                ++ String.join "." currentModule
+                ++ maybeCurrentFunction
