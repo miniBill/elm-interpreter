@@ -605,125 +605,6 @@ evalLetBlock env letBlock =
                 )
                 (Dict.keys env.values |> Set.fromList)
 
-        patternDefs : Node Pattern -> Set String
-        patternDefs (Node _ pattern) =
-            case pattern of
-                TuplePattern patterns ->
-                    List.foldl (\p -> Set.union (patternDefs p)) Set.empty patterns
-
-                RecordPattern fields ->
-                    List.foldl (\(Node _ s) -> Set.insert s) Set.empty fields
-
-                UnConsPattern head tail ->
-                    Set.union (patternDefs head) (patternDefs tail)
-
-                ListPattern patterns ->
-                    List.foldl (\p -> Set.union (patternDefs p)) Set.empty patterns
-
-                VarPattern name ->
-                    Set.singleton name
-
-                NamedPattern _ patterns ->
-                    List.foldl (\p -> Set.union (patternDefs p)) Set.empty patterns
-
-                AsPattern p (Node _ s) ->
-                    Set.insert s (patternDefs p)
-
-                ParenthesizedPattern p ->
-                    patternDefs p
-
-                _ ->
-                    Set.empty
-
-        declarationDefs : Node Expression.LetDeclaration -> Set String
-        declarationDefs (Node _ letDeclaration) =
-            case letDeclaration of
-                Expression.LetFunction { declaration } ->
-                    Set.singleton <| Node.value (Node.value declaration).name
-
-                Expression.LetDestructuring letPattern _ ->
-                    patternDefs letPattern
-
-        declarationFreeVars : Node Expression.LetDeclaration -> Set String
-        declarationFreeVars (Node _ letDeclaration) =
-            case letDeclaration of
-                Expression.LetFunction { declaration } ->
-                    let
-                        { name, arguments, expression } =
-                            Node.value declaration
-                    in
-                    Set.diff (freeVars expression)
-                        (List.foldl (\p -> Set.union (patternDefs p))
-                            (Set.singleton (Node.value name))
-                            arguments
-                        )
-
-                Expression.LetDestructuring pattern expression ->
-                    Set.diff (freeVars expression) (patternDefs pattern)
-
-        letFreeVars : Expression.LetBlock -> Set String
-        letFreeVars { declarations, expression } =
-            Set.diff
-                (List.foldl (\d -> Set.union (declarationFreeVars d)) (freeVars expression) declarations)
-                (List.foldl (\d -> Set.union (declarationDefs d)) Set.empty declarations)
-
-        caseFreeVars : Expression.Case -> Set String
-        caseFreeVars ( pattern, expression ) =
-            Set.diff (freeVars expression) (patternDefs pattern)
-
-        freeVars : Node Expression -> Set String
-        freeVars (Node _ expr) =
-            case expr of
-                Expression.Application expressions ->
-                    List.foldl (\e -> Set.union (freeVars e)) Set.empty expressions
-
-                Expression.OperatorApplication _ _ l r ->
-                    Set.union (freeVars l) (freeVars r)
-
-                Expression.FunctionOrValue [] name ->
-                    if isVariant name then
-                        Set.empty
-
-                    else
-                        Set.singleton name
-
-                Expression.IfBlock cond true false ->
-                    Set.union (freeVars cond) (Set.union (freeVars true) (freeVars false))
-
-                Expression.Negation child ->
-                    freeVars child
-
-                Expression.TupledExpression expressions ->
-                    List.foldl (\e -> Set.union (freeVars e)) Set.empty expressions
-
-                Expression.ParenthesizedExpression child ->
-                    freeVars child
-
-                Expression.LetExpression block ->
-                    letFreeVars block
-
-                Expression.CaseExpression { expression, cases } ->
-                    List.foldl (\c -> Set.union (caseFreeVars c)) (freeVars expression) cases
-
-                Expression.LambdaExpression { expression, args } ->
-                    Set.diff (freeVars expression)
-                        (List.foldl (\p -> Set.union (patternDefs p)) Set.empty args)
-
-                Expression.RecordExpr setters ->
-                    List.foldl (\(Node _ ( _, e )) -> Set.union (freeVars e)) Set.empty setters
-
-                Expression.ListExpr expressions ->
-                    List.foldl (\e -> Set.union (freeVars e)) Set.empty expressions
-
-                Expression.RecordAccess record _ ->
-                    freeVars record
-
-                Expression.RecordUpdateExpression (Node _ s) setters ->
-                    List.foldl (\(Node _ ( _, e )) -> Set.union (freeVars e)) (Set.singleton s) setters
-
-                _ ->
-                    Set.empty
-
         isFunction : Node Expression.LetDeclaration -> Bool
         isFunction (Node _ d) =
             case d of
@@ -740,8 +621,8 @@ evalLetBlock env letBlock =
                     (\id declaration ->
                         { id = id + 1
                         , declaration = declaration
-                        , defVars = declarationDefs declaration
-                        , refVars = Set.diff (declarationFreeVars declaration) envDefs
+                        , defVars = declarationDefinedVariables declaration
+                        , refVars = Set.diff (declarationFreeVariables declaration) envDefs
                         , cycleAllowed = isFunction declaration
                         }
                     )
@@ -801,6 +682,131 @@ evalLetBlock env letBlock =
     sortedDeclarations
         |> mapSortError env
         |> Result.andThen (Result.MyExtra.combineFoldl addDeclaration (Ok env))
+
+
+declarationFreeVariables : Node Expression.LetDeclaration -> Set String
+declarationFreeVariables (Node _ letDeclaration) =
+    case letDeclaration of
+        Expression.LetFunction { declaration } ->
+            let
+                { name, arguments, expression } =
+                    Node.value declaration
+            in
+            Set.diff (freeVariables expression)
+                (List.foldl (\p -> Set.union (patternDefinedVariables p))
+                    (Set.singleton (Node.value name))
+                    arguments
+                )
+
+        Expression.LetDestructuring pattern expression ->
+            Set.diff (freeVariables expression) (patternDefinedVariables pattern)
+
+
+letFreeVariables : Expression.LetBlock -> Set String
+letFreeVariables { declarations, expression } =
+    Set.diff
+        (List.foldl (\d -> Set.union (declarationFreeVariables d)) (freeVariables expression) declarations)
+        (List.foldl (\d -> Set.union (declarationDefinedVariables d)) Set.empty declarations)
+
+
+caseFreeVariables : Expression.Case -> Set String
+caseFreeVariables ( pattern, expression ) =
+    Set.diff (freeVariables expression) (patternDefinedVariables pattern)
+
+
+freeVariables : Node Expression -> Set String
+freeVariables (Node _ expr) =
+    case expr of
+        Expression.Application expressions ->
+            List.foldl (\e -> Set.union (freeVariables e)) Set.empty expressions
+
+        Expression.OperatorApplication _ _ l r ->
+            Set.union (freeVariables l) (freeVariables r)
+
+        Expression.FunctionOrValue [] name ->
+            if isVariant name then
+                Set.empty
+
+            else
+                Set.singleton name
+
+        Expression.IfBlock cond true false ->
+            Set.union (freeVariables cond) (Set.union (freeVariables true) (freeVariables false))
+
+        Expression.Negation child ->
+            freeVariables child
+
+        Expression.TupledExpression expressions ->
+            List.foldl (\e -> Set.union (freeVariables e)) Set.empty expressions
+
+        Expression.ParenthesizedExpression child ->
+            freeVariables child
+
+        Expression.LetExpression block ->
+            letFreeVariables block
+
+        Expression.CaseExpression { expression, cases } ->
+            List.foldl (\c -> Set.union (caseFreeVariables c)) (freeVariables expression) cases
+
+        Expression.LambdaExpression { expression, args } ->
+            Set.diff (freeVariables expression)
+                (List.foldl (\p -> Set.union (patternDefinedVariables p)) Set.empty args)
+
+        Expression.RecordExpr setters ->
+            List.foldl (\(Node _ ( _, e )) -> Set.union (freeVariables e)) Set.empty setters
+
+        Expression.ListExpr expressions ->
+            List.foldl (\e -> Set.union (freeVariables e)) Set.empty expressions
+
+        Expression.RecordAccess record _ ->
+            freeVariables record
+
+        Expression.RecordUpdateExpression (Node _ s) setters ->
+            List.foldl (\(Node _ ( _, e )) -> Set.union (freeVariables e)) (Set.singleton s) setters
+
+        _ ->
+            Set.empty
+
+
+patternDefinedVariables : Node Pattern -> Set String
+patternDefinedVariables (Node _ pattern) =
+    case pattern of
+        TuplePattern patterns ->
+            List.foldl (\p -> Set.union (patternDefinedVariables p)) Set.empty patterns
+
+        RecordPattern fields ->
+            List.foldl (\(Node _ s) -> Set.insert s) Set.empty fields
+
+        UnConsPattern head tail ->
+            Set.union (patternDefinedVariables head) (patternDefinedVariables tail)
+
+        ListPattern patterns ->
+            List.foldl (\p -> Set.union (patternDefinedVariables p)) Set.empty patterns
+
+        VarPattern name ->
+            Set.singleton name
+
+        NamedPattern _ patterns ->
+            List.foldl (\p -> Set.union (patternDefinedVariables p)) Set.empty patterns
+
+        AsPattern p (Node _ s) ->
+            Set.insert s (patternDefinedVariables p)
+
+        ParenthesizedPattern p ->
+            patternDefinedVariables p
+
+        _ ->
+            Set.empty
+
+
+declarationDefinedVariables : Node Expression.LetDeclaration -> Set String
+declarationDefinedVariables (Node _ letDeclaration) =
+    case letDeclaration of
+        Expression.LetFunction { declaration } ->
+            Set.singleton <| Node.value (Node.value declaration).name
+
+        Expression.LetDestructuring letPattern _ ->
+            patternDefinedVariables letPattern
 
 
 evalRecordAccess : Env -> Node Expression -> Node String -> EvalResult Value
