@@ -1,4 +1,4 @@
-module Value exposing (Env, EnvValues, EvalError(..), EvalResult, Value(..), fromOrder, nameError, toArray, toOrder, toString, typeError, unsupported)
+module Value exposing (Env, EnvValues, EvalError, EvalErrorKind(..), EvalResult, Value(..), fromOrder, nameError, toArray, toOrder, toString, typeError, unsupported)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
@@ -39,42 +39,43 @@ type alias EnvValues =
 
 
 type alias EvalResult a =
-    Result
-        { currentModule : ModuleName
-        , callStack : List QualifiedNameRef
-        , error : EvalError
-        }
-        a
+    Result EvalError a
 
 
-type EvalError
+type alias EvalError =
+    { currentModule : ModuleName
+    , callStack : List QualifiedNameRef
+    , error : EvalErrorKind
+    }
+
+
+type EvalErrorKind
     = TypeError String
     | Unsupported String
     | NameError String
 
 
-typeError : Env -> String -> EvalResult value
+typeError : Env -> String -> EvalError
 typeError env msg =
     error env (TypeError msg)
 
 
-nameError : Env -> String -> EvalResult value
+nameError : Env -> String -> EvalError
 nameError env msg =
     error env (NameError msg)
 
 
-unsupported : Env -> String -> EvalResult value
+unsupported : Env -> String -> EvalError
 unsupported env msg =
     error env (Unsupported msg)
 
 
-error : Env -> EvalError -> EvalResult value
+error : Env -> EvalErrorKind -> EvalError
 error env msg =
-    Err
-        { currentModule = env.currentModule
-        , callStack = env.callStack
-        , error = msg
-        }
+    { currentModule = env.currentModule
+    , callStack = env.callStack
+    , error = msg
+    }
 
 
 toExpression : Value -> Node Expression

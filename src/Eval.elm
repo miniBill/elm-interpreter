@@ -12,6 +12,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Env
+import Eval.PartialResult as PartialResult exposing (PartialResult(..))
 import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
@@ -22,7 +23,7 @@ import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import TopologicalSort
 import Unicode
-import Value exposing (Env, EnvValues, EvalError(..), EvalResult, Value(..), nameError, typeError, unsupported)
+import Value exposing (Env, EnvValues, EvalErrorKind, EvalResult, Value(..), nameError, typeError, unsupported)
 
 
 type Error
@@ -30,7 +31,7 @@ type Error
     | EvalError
         { currentModule : ModuleName
         , callStack : List QualifiedNameRef
-        , error : EvalError
+        , error : EvalErrorKind
         }
 
 
@@ -104,13 +105,13 @@ buildInitialEnv file =
                     Ok (Env.addFunction moduleName implementation env)
 
                 PortDeclaration _ ->
-                    Result.mapError EvalError <| unsupported env "Port declaration"
+                    Err <| EvalError <| unsupported env "Port declaration"
 
                 InfixDeclaration _ ->
-                    Result.mapError EvalError <| unsupported env "Infix declaration"
+                    Err <| EvalError <| unsupported env "Infix declaration"
 
                 Destructuring _ _ ->
-                    Result.mapError EvalError <| unsupported env "Top level destructuring"
+                    Err <| EvalError <| unsupported env "Top level destructuring"
 
                 AliasDeclaration _ ->
                     Ok env
@@ -142,7 +143,7 @@ evalExpression env (Node _ expression) =
                     Err e
 
                 Ok v ->
-                    typeError env <| "|| applied to non-Bool " ++ Value.toString v
+                    Err <| typeError env <| "|| applied to non-Bool " ++ Value.toString v
 
         Expression.OperatorApplication "&&" _ l r ->
             case evalExpression env l of
@@ -156,7 +157,7 @@ evalExpression env (Node _ expression) =
                     Err e
 
                 Ok v ->
-                    typeError env <| "&& applied to non-Bool " ++ Value.toString v
+                    Err <| typeError env <| "&& applied to non-Bool " ++ Value.toString v
 
         Expression.OperatorApplication opName _ l r ->
             evalExpression env
@@ -169,223 +170,40 @@ evalExpression env (Node _ expression) =
                 )
 
         Expression.Application [] ->
-            typeError env "Empty application"
+            Err <| typeError env "Empty application"
 
         Expression.Application (first :: rest) ->
-            case evalExpression env first of
-                Err e ->
+            case evalApplication env first rest of
+                PartialValue v ->
+                    Ok v
+
+                PartialExpression newEnv expr ->
+                    evalExpression newEnv expr
+
+                PartialErr e ->
                     Err e
-
-                Ok (Value.Custom name customArgs) ->
-                    rest
-                        |> Result.Extra.combineMap (\arg -> evalExpression env arg)
-                        |> Result.map (\values -> Value.Custom name (customArgs ++ values))
-
-                Ok (Value.PartiallyApplied localEnv oldArgs patterns implementation) ->
-                    let
-                        ( used, leftover ) =
-                            List.Extra.splitAt (patternsLength - oldArgsLength) rest
-
-                        oldArgsLength : Int
-                        oldArgsLength =
-                            List.length oldArgs
-
-                        restLength : Int
-                        restLength =
-                            List.length rest
-
-                        patternsLength : Int
-                        patternsLength =
-                            List.length patterns
-                    in
-                    if oldArgsLength + restLength < patternsLength then
-                        -- Still not enough
-                        rest
-                            |> Result.Extra.combineMap (\arg -> evalExpression env arg)
-                            |> Result.map (\values -> Value.PartiallyApplied localEnv (oldArgs ++ values) patterns implementation)
-
-                    else if oldArgsLength + restLength > patternsLength then
-                        -- Too many args, we split
-                        evalExpression
-                            env
-                            (fakeNode <|
-                                Expression.Application
-                                    (fakeNode
-                                        (Expression.Application (first :: used))
-                                        :: leftover
-                                    )
-                            )
-
-                    else
-                        -- Just right, we special case this for TCO
-                        case Result.Extra.combineMap (\arg -> evalExpression env arg) rest of
-                            Err e ->
-                                Err e
-
-                            Ok values ->
-                                let
-                                    maybeNewEnvValues : EvalResult (Maybe EnvValues)
-                                    maybeNewEnvValues =
-                                        match env
-                                            (fakeNode <| ListPattern patterns)
-                                            (List (oldArgs ++ values))
-                                in
-                                case maybeNewEnvValues of
-                                    Err e ->
-                                        Err e
-
-                                    Ok Nothing ->
-                                        typeError env "Could not match lambda patterns"
-
-                                    Ok (Just newEnvValues) ->
-                                        case implementation of
-                                            Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
-                                                let
-                                                    fullName : String
-                                                    fullName =
-                                                        Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
-                                                in
-                                                case Dict.get moduleName kernelFunctions of
-                                                    Nothing ->
-                                                        nameError env fullName
-
-                                                    Just kernelModule ->
-                                                        case Dict.get name kernelModule of
-                                                            Nothing ->
-                                                                nameError env fullName
-
-                                                            Just ( _, f ) ->
-                                                                f
-                                                                    (Env.call moduleName name env)
-                                                                    values
-
-                                            _ ->
-                                                evalExpression
-                                                    (localEnv |> Env.with newEnvValues)
-                                                    implementation
-
-                Ok other ->
-                    typeError env <|
-                        "Trying to apply "
-                            ++ Value.toString other
-                            ++ ", which is a non-lambda non-variant"
 
         Expression.FunctionOrValue moduleName name ->
-            let
-                fixedModuleName : ModuleName
-                fixedModuleName =
-                    if List.isEmpty moduleName then
-                        env.currentModule
+            case evalFunctionOrValue env moduleName name of
+                PartialValue v ->
+                    Ok v
 
-                    else if moduleName == [ "JsArray" ] then
-                        -- TODO: Generic import aliases
-                        [ "Elm", "JsArray" ]
+                PartialExpression newEnv expr ->
+                    evalExpression newEnv expr
 
-                    else
-                        moduleName
-            in
-            if isVariant name then
-                case ( moduleName, name ) of
-                    ( [], "True" ) ->
-                        Ok (Value.Bool True)
-
-                    ( [], "False" ) ->
-                        Ok (Value.Bool False)
-
-                    _ ->
-                        let
-                            qualifiedNameRef : QualifiedNameRef
-                            qualifiedNameRef =
-                                { moduleName = fixedModuleName, name = name }
-                        in
-                        Ok (Value.Custom qualifiedNameRef [])
-
-            else
-                case moduleName of
-                    "Elm" :: "Kernel" :: _ ->
-                        case Dict.get moduleName env.functions of
-                            Nothing ->
-                                evalKernelFunction env moduleName name
-
-                            Just kernelModule ->
-                                case Dict.get name kernelModule of
-                                    Nothing ->
-                                        evalKernelFunction env moduleName name
-
-                                    Just function ->
-                                        PartiallyApplied
-                                            (Env.call moduleName name env)
-                                            []
-                                            function.arguments
-                                            function.expression
-                                            |> Ok
-
-                    _ ->
-                        case ( moduleName, Dict.get name env.values ) of
-                            ( [], Just (PartiallyApplied localEnv [] [] implementation) ) ->
-                                evalExpression localEnv implementation
-
-                            ( [], Just value ) ->
-                                Ok value
-
-                            _ ->
-                                let
-                                    maybeFunction : Maybe Expression.FunctionImplementation
-                                    maybeFunction =
-                                        let
-                                            fromModule : Maybe Expression.FunctionImplementation
-                                            fromModule =
-                                                Dict.get fixedModuleName env.functions
-                                                    |> Maybe.andThen (Dict.get name)
-                                        in
-                                        if List.isEmpty moduleName then
-                                            case fromModule of
-                                                Just function ->
-                                                    Just function
-
-                                                Nothing ->
-                                                    Dict.get name Core.Basics.functions
-
-                                        else
-                                            fromModule
-                                in
-                                case maybeFunction of
-                                    Just function ->
-                                        if List.isEmpty function.arguments then
-                                            evalExpression
-                                                (Env.call fixedModuleName name env)
-                                                function.expression
-
-                                        else
-                                            PartiallyApplied
-                                                (Env.call fixedModuleName name env)
-                                                []
-                                                function.arguments
-                                                function.expression
-                                                |> Ok
-
-                                    Nothing ->
-                                        Syntax.qualifiedNameToString
-                                            { moduleName = fixedModuleName
-                                            , name = name
-                                            }
-                                            |> nameError env
-
-        Expression.IfBlock cond true false ->
-            case evalExpression env cond of
-                Err e ->
+                PartialErr e ->
                     Err e
 
-                Ok condValue ->
-                    case condValue of
-                        Value.Bool True ->
-                            evalExpression env true
+        Expression.IfBlock cond true false ->
+            case evalIfBlock env cond true false of
+                PartialErr e ->
+                    Err e
 
-                        Value.Bool False ->
-                            evalExpression env false
+                PartialValue v ->
+                    Ok v
 
-                        _ ->
-                            typeError env "ifThenElse condition was not a boolean"
+                PartialExpression newEnv next ->
+                    evalExpression newEnv next
 
         Expression.PrefixOperator opName ->
             evalOperator env opName
@@ -433,7 +251,7 @@ evalExpression env (Node _ expression) =
                         (evalExpression env r)
 
                 _ :: _ :: _ :: _ :: _ ->
-                    typeError env "Tuples with more than three elements are not supported"
+                    Err <| typeError env "Tuples with more than three elements are not supported"
 
         Expression.ParenthesizedExpression child ->
             evalExpression env child
@@ -447,31 +265,21 @@ evalExpression env (Node _ expression) =
                     evalExpression newEnv letBlock.expression
 
         Expression.CaseExpression caseExpr ->
-            evalCase env caseExpr
+            case evalCase env caseExpr of
+                Err e ->
+                    Err e
+
+                Ok ( newEnv, next ) ->
+                    evalExpression newEnv next
 
         Expression.LambdaExpression lambda ->
             Ok <| PartiallyApplied env [] lambda.args lambda.expression
 
         Expression.RecordExpr fields ->
-            fields
-                |> Result.Extra.combineMap
-                    (\(Node _ ( Node _ fieldName, fieldExpr )) ->
-                        Result.map
-                            (Tuple.pair fieldName)
-                            (evalExpression env fieldExpr)
-                    )
-                |> Result.map
-                    (\tuples ->
-                        tuples
-                            |> Dict.fromList
-                            |> Value.Record
-                    )
+            evalRecord env fields
 
         Expression.ListExpr elements ->
-            elements
-                |> Result.Extra.combineMap
-                    (\element -> evalExpression env element)
-                |> Result.map List
+            evalList env elements
 
         Expression.RecordAccess recordExpr field ->
             evalRecordAccess env recordExpr field
@@ -483,7 +291,262 @@ evalExpression env (Node _ expression) =
             evalRecordUpdate env name setters
 
         Expression.GLSLExpression _ ->
-            unsupported env "GLSL not supported"
+            Err <| unsupported env "GLSL not supported"
+
+
+evalApplication : Env -> Node Expression -> List (Node Expression) -> PartialResult
+evalApplication env first rest =
+    case evalExpression env first of
+        Err e ->
+            PartialErr e
+
+        Ok (Value.Custom name customArgs) ->
+            case Result.Extra.combineMap (\arg -> evalExpression env arg) rest of
+                Ok values ->
+                    PartialValue <| Value.Custom name (customArgs ++ values)
+
+                Err e ->
+                    PartialErr e
+
+        Ok (Value.PartiallyApplied localEnv oldArgs patterns implementation) ->
+            let
+                ( used, leftover ) =
+                    List.Extra.splitAt (patternsLength - oldArgsLength) rest
+
+                oldArgsLength : Int
+                oldArgsLength =
+                    List.length oldArgs
+
+                restLength : Int
+                restLength =
+                    List.length rest
+
+                patternsLength : Int
+                patternsLength =
+                    List.length patterns
+            in
+            if oldArgsLength + restLength < patternsLength then
+                -- Still not enough
+                case Result.Extra.combineMap (\arg -> evalExpression env arg) rest of
+                    Ok values ->
+                        PartialValue <| Value.PartiallyApplied localEnv (oldArgs ++ values) patterns implementation
+
+                    Err e ->
+                        PartialErr e
+
+            else if oldArgsLength + restLength > patternsLength then
+                -- Too many args, we split
+                PartialExpression
+                    env
+                    (fakeNode <|
+                        Expression.Application
+                            (fakeNode
+                                (Expression.Application (first :: used))
+                                :: leftover
+                            )
+                    )
+
+            else
+                -- Just right, we special case this for TCO
+                case Result.Extra.combineMap (\arg -> evalExpression env arg) rest of
+                    Err e ->
+                        PartialErr e
+
+                    Ok values ->
+                        let
+                            maybeNewEnvValues : EvalResult (Maybe EnvValues)
+                            maybeNewEnvValues =
+                                match env
+                                    (fakeNode <| ListPattern patterns)
+                                    (List (oldArgs ++ values))
+                        in
+                        case maybeNewEnvValues of
+                            Err e ->
+                                PartialErr e
+
+                            Ok Nothing ->
+                                PartialErr <| typeError env "Could not match lambda patterns"
+
+                            Ok (Just newEnvValues) ->
+                                case implementation of
+                                    Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
+                                        let
+                                            fullName : String
+                                            fullName =
+                                                Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
+                                        in
+                                        case Dict.get moduleName kernelFunctions of
+                                            Nothing ->
+                                                PartialErr <| nameError env fullName
+
+                                            Just kernelModule ->
+                                                case Dict.get name kernelModule of
+                                                    Nothing ->
+                                                        PartialErr <| nameError env fullName
+
+                                                    Just ( _, f ) ->
+                                                        f
+                                                            (Env.call moduleName name env)
+                                                            values
+                                                            |> PartialResult.fromValue
+
+                                    _ ->
+                                        PartialExpression
+                                            (localEnv |> Env.with newEnvValues)
+                                            implementation
+
+        Ok other ->
+            PartialErr <|
+                typeError env <|
+                    "Trying to apply "
+                        ++ Value.toString other
+                        ++ ", which is a non-lambda non-variant"
+
+
+evalFunctionOrValue : Env -> ModuleName -> String -> PartialResult
+evalFunctionOrValue env moduleName name =
+    let
+        fixedModuleName : ModuleName
+        fixedModuleName =
+            if List.isEmpty moduleName then
+                env.currentModule
+
+            else if moduleName == [ "JsArray" ] then
+                -- TODO: Generic import aliases
+                [ "Elm", "JsArray" ]
+
+            else
+                moduleName
+    in
+    if isVariant name then
+        case ( moduleName, name ) of
+            ( [], "True" ) ->
+                PartialValue (Value.Bool True)
+
+            ( [], "False" ) ->
+                PartialValue (Value.Bool False)
+
+            _ ->
+                let
+                    qualifiedNameRef : QualifiedNameRef
+                    qualifiedNameRef =
+                        { moduleName = fixedModuleName, name = name }
+                in
+                PartialValue (Value.Custom qualifiedNameRef [])
+
+    else
+        case moduleName of
+            "Elm" :: "Kernel" :: _ ->
+                case Dict.get moduleName env.functions of
+                    Nothing ->
+                        evalKernelFunction env moduleName name
+
+                    Just kernelModule ->
+                        case Dict.get name kernelModule of
+                            Nothing ->
+                                evalKernelFunction env moduleName name
+
+                            Just function ->
+                                PartiallyApplied
+                                    (Env.call moduleName name env)
+                                    []
+                                    function.arguments
+                                    function.expression
+                                    |> PartialValue
+
+            _ ->
+                case ( moduleName, Dict.get name env.values ) of
+                    ( [], Just (PartiallyApplied localEnv [] [] implementation) ) ->
+                        PartialExpression localEnv implementation
+
+                    ( [], Just value ) ->
+                        PartialValue value
+
+                    _ ->
+                        let
+                            maybeFunction : Maybe Expression.FunctionImplementation
+                            maybeFunction =
+                                let
+                                    fromModule : Maybe Expression.FunctionImplementation
+                                    fromModule =
+                                        Dict.get fixedModuleName env.functions
+                                            |> Maybe.andThen (Dict.get name)
+                                in
+                                if List.isEmpty moduleName then
+                                    case fromModule of
+                                        Just function ->
+                                            Just function
+
+                                        Nothing ->
+                                            Dict.get name Core.Basics.functions
+
+                                else
+                                    fromModule
+                        in
+                        case maybeFunction of
+                            Just function ->
+                                if List.isEmpty function.arguments then
+                                    PartialExpression
+                                        (Env.call fixedModuleName name env)
+                                        function.expression
+
+                                else
+                                    PartiallyApplied
+                                        (Env.call fixedModuleName name env)
+                                        []
+                                        function.arguments
+                                        function.expression
+                                        |> PartialValue
+
+                            Nothing ->
+                                Syntax.qualifiedNameToString
+                                    { moduleName = fixedModuleName
+                                    , name = name
+                                    }
+                                    |> nameError env
+                                    |> PartialErr
+
+
+evalIfBlock : Env -> Node Expression -> Node Expression -> Node Expression -> PartialResult
+evalIfBlock env cond true false =
+    case evalExpression env cond of
+        Err e ->
+            PartialErr e
+
+        Ok condValue ->
+            case condValue of
+                Value.Bool True ->
+                    PartialExpression env true
+
+                Value.Bool False ->
+                    PartialExpression env false
+
+                _ ->
+                    PartialErr <| typeError env "ifThenElse condition was not a boolean"
+
+
+evalList : Env -> List (Node Expression) -> EvalResult Value
+evalList env elements =
+    elements
+        |> Result.Extra.combineMap (\element -> evalExpression env element)
+        |> Result.map List
+
+
+evalRecord : Env -> List (Node Expression.RecordSetter) -> EvalResult Value
+evalRecord env fields =
+    fields
+        |> Result.Extra.combineMap
+            (\(Node _ ( Node _ fieldName, fieldExpr )) ->
+                Result.map
+                    (Tuple.pair fieldName)
+                    (evalExpression env fieldExpr)
+            )
+        |> Result.map
+            (\tuples ->
+                tuples
+                    |> Dict.fromList
+                    |> Value.Record
+            )
 
 
 kernelFunctions : Dict ModuleName (Dict String ( Int, Env -> List Value -> EvalResult Value ))
@@ -524,7 +587,7 @@ evalFunction localEnv oldArgs patterns implementation =
                 Err e
 
             Ok Nothing ->
-                typeError env "Could not match lambda patterns"
+                Err <| typeError env "Could not match lambda patterns"
 
             Ok (Just newEnvValues) ->
                 case implementation of
@@ -536,12 +599,12 @@ evalFunction localEnv oldArgs patterns implementation =
                         in
                         case Dict.get moduleName kernelFunctions of
                             Nothing ->
-                                nameError env fullName
+                                Err <| nameError env fullName
 
                             Just kernelModule ->
                                 case Dict.get name kernelModule of
                                     Nothing ->
-                                        nameError env fullName
+                                        Err <| nameError env fullName
 
                                     Just ( _, f ) ->
                                         f
@@ -554,27 +617,32 @@ evalFunction localEnv oldArgs patterns implementation =
                             implementation
 
 
-evalKernelFunction : Env -> ModuleName -> String -> EvalResult Value
+evalKernelFunction : Env -> ModuleName -> String -> PartialResult
 evalKernelFunction env moduleName name =
     case Dict.get moduleName kernelFunctions of
         Nothing ->
-            nameError env (String.join "." moduleName)
+            PartialErr <| nameError env (String.join "." moduleName)
 
         Just kernelModule ->
             case Dict.get name kernelModule of
                 Nothing ->
-                    nameError env <| Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
+                    PartialErr <| nameError env <| Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
 
                 Just ( argCount, f ) ->
                     if argCount == 0 then
-                        f (Env.call moduleName name env) []
+                        case f (Env.call moduleName name env) [] of
+                            Ok value ->
+                                PartialValue value
+
+                            Err e ->
+                                PartialErr e
 
                     else
                         PartiallyApplied (Env.empty moduleName)
                             []
                             (List.repeat argCount (fakeNode AllPattern))
                             (fakeNode <| Expression.FunctionOrValue moduleName name)
-                            |> Ok
+                            |> PartialValue
 
 
 evalNegation : Env -> Node Expression -> EvalResult Value
@@ -590,7 +658,7 @@ evalNegation env child =
             Ok <| Value.Float -f
 
         _ ->
-            typeError env "Trying to negate a non-number"
+            Err <| typeError env "Trying to negate a non-number"
 
 
 evalLetBlock : Env -> Expression.LetBlock -> EvalResult Env
@@ -641,10 +709,10 @@ evalLetBlock env letBlock =
                     Ok a
 
                 Err TopologicalSort.IllegalCycle ->
-                    typeError errEnv "illegal cycle in let block"
+                    Err <| typeError errEnv "illegal cycle in let block"
 
                 Err TopologicalSort.InternalError ->
-                    typeError errEnv "internal error in let block"
+                    Err <| typeError errEnv "internal error in let block"
 
         addDeclaration : Node Expression.LetDeclaration -> Env -> EvalResult Env
         addDeclaration ((Node _ letDeclaration) as node) acc =
@@ -674,7 +742,7 @@ evalLetBlock env letBlock =
                                     Err e
 
                                 Ok Nothing ->
-                                    typeError acc "Could not match pattern inside let"
+                                    Err <| typeError acc "Could not match pattern inside let"
 
                                 Ok (Just patternEnv) ->
                                     Ok (Env.with patternEnv acc)
@@ -821,10 +889,10 @@ evalRecordAccess env recordExpr (Node _ field) =
                                 Ok fieldValue
 
                             Nothing ->
-                                typeError env <| "Field " ++ field ++ " not found [record access]"
+                                Err <| typeError env <| "Field " ++ field ++ " not found [record access]"
 
                     _ ->
-                        typeError env "Trying to access a field on a non-record value"
+                        Err <| typeError env "Trying to access a field on a non-record value"
             )
 
 
@@ -861,14 +929,14 @@ evalRecordUpdate env (Node _ name) setters =
                 |> Result.map Value.Record
 
         Ok _ ->
-            typeError env "Trying to update fields on a value which is not a record"
+            Err <| typeError env "Trying to update fields on a value which is not a record"
 
 
 evalOperator : Env -> String -> EvalResult Value
 evalOperator env opName =
     case Dict.get opName Core.operators of
         Nothing ->
-            nameError env opName
+            Err <| nameError env opName
 
         Just kernelFunction ->
             PartiallyApplied
@@ -895,7 +963,7 @@ isVariant name =
             Unicode.isUpper first
 
 
-evalCase : Env -> Expression.CaseBlock -> EvalResult Value
+evalCase : Env -> Expression.CaseBlock -> EvalResult ( Env, Node Expression )
 evalCase env { expression, cases } =
     case evalExpression env expression of
         Err e ->
@@ -918,15 +986,16 @@ evalCase env { expression, cases } =
                                         Ok Nothing
 
                                     Ok (Just additionalEnv) ->
-                                        evalExpression (Env.with additionalEnv env) result
-                                            |> Result.map Just
+                                        ( Env.with additionalEnv env, result )
+                                            |> Just
+                                            |> Ok
                     )
                     (Ok Nothing)
                 |> Result.andThen
                     (\result ->
                         case result of
                             Nothing ->
-                                typeError env <| "Missing case branch for " ++ Value.toString exprValue
+                                Err <| typeError env <| "Missing case branch for " ++ Value.toString exprValue
 
                             Just res ->
                                 Ok res
@@ -991,7 +1060,7 @@ match env (Node _ pattern) value =
                                         )
 
                             _ ->
-                                typeError env "Mismatched number of arguments to variant"
+                                Err <| typeError env "Mismatched number of arguments to variant"
                 in
                 matchNamedPatternHelper Dict.empty ( argsPatterns, args )
 
@@ -1129,7 +1198,7 @@ match env (Node _ pattern) value =
                         (\acc ->
                             case Dict.get fieldName fieldValues of
                                 Nothing ->
-                                    typeError env <| "Field " ++ fieldName ++ " not found in record"
+                                    Err <| typeError env <| "Field " ++ fieldName ++ " not found in record"
 
                                 Just fieldValue ->
                                     ok <| Dict.insert fieldName fieldValue acc

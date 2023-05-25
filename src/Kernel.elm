@@ -380,7 +380,7 @@ function evalFunctionWith inSelector outSelector =
                                             Ok ov
 
                                         Nothing ->
-                                            typeError localEnv <| "Could not convert output from " ++ Value.toString out ++ " to " ++ outSelector.name
+                                            Err <| typeError localEnv <| "Could not convert output from " ++ Value.toString out ++ " to " ++ outSelector.name
                         )
 
                 _ ->
@@ -417,7 +417,7 @@ constant selector const =
                 Ok <| selector.toValue const
 
             _ ->
-                typeError env <| "Didn't expect any args"
+                Err <| typeError env <| "Didn't expect any args"
     )
 
 
@@ -436,11 +436,6 @@ zeroWithError :
     -> EvalResult out
     -> ( Int, Env -> List Value -> EvalResult Value )
 zeroWithError _ output f =
-    let
-        err : Env -> String -> EvalResult value
-        err env got =
-            typeError env <| "Expected zero args, got " ++ got
-    in
     ( 0
     , \env args ->
         case args of
@@ -448,7 +443,7 @@ zeroWithError _ output f =
                 Result.map output.toValue f
 
             _ ->
-                err env "more"
+                Err <| typeError env <| "Expected zero args, got more"
     )
 
 
@@ -469,13 +464,13 @@ oneWithError :
     -> (Env -> a -> EvalResult out)
     -> ( Int, Env -> List Value -> EvalResult Value )
 oneWithError firstSelector _ output f =
-    let
-        err : Env -> String -> EvalResult value
-        err env got =
-            typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
-    in
     ( 1
     , \env args ->
+        let
+            err : String -> EvalResult value
+            err got =
+                Err <| typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
+        in
         case args of
             [ arg ] ->
                 case firstSelector.fromValue arg of
@@ -483,13 +478,13 @@ oneWithError firstSelector _ output f =
                         Result.map output.toValue <| f env s
 
                     Nothing ->
-                        err env <| Value.toString arg
+                        err <| Value.toString arg
 
             [] ->
-                err env "zero"
+                err "zero"
 
             _ ->
-                err env "more"
+                err "more"
     )
 
 
@@ -512,36 +507,40 @@ twoWithError :
     -> (Env -> a -> b -> EvalResult out)
     -> ( Int, Env -> List Value -> EvalResult Value )
 twoWithError firstSelector secondSelector _ output f =
-    let
-        err : Env -> String -> EvalResult value
-        err env got =
-            if firstSelector.name == secondSelector.name then
-                typeError env <| "Expected two " ++ firstSelector.name ++ "s, got " ++ got
-
-            else
-                typeError env <| "Expected one " ++ firstSelector.name ++ " and one " ++ secondSelector.name ++ ", got " ++ got
-    in
     ( 2
     , \env args ->
+        let
+            typeError_ : String -> EvalResult value
+            typeError_ msg =
+                Err (typeError env msg)
+
+            err : String -> EvalResult value
+            err got =
+                if firstSelector.name == secondSelector.name then
+                    typeError_ <| "Expected two " ++ firstSelector.name ++ "s, got " ++ got
+
+                else
+                    typeError_ <| "Expected one " ++ firstSelector.name ++ " and one " ++ secondSelector.name ++ ", got " ++ got
+        in
         case args of
             [ firstArg, secondArg ] ->
                 case firstSelector.fromValue firstArg of
                     Nothing ->
-                        typeError env <| "Expected the first argument to be " ++ firstSelector.name ++ ", got " ++ Value.toString firstArg
+                        typeError_ <| "Expected the first argument to be " ++ firstSelector.name ++ ", got " ++ Value.toString firstArg
 
                     Just first ->
                         case secondSelector.fromValue secondArg of
                             Nothing ->
-                                typeError env <| "Expected the second argument to be " ++ secondSelector.name ++ ", got " ++ Value.toString secondArg
+                                typeError_ <| "Expected the second argument to be " ++ secondSelector.name ++ ", got " ++ Value.toString secondArg
 
                             Just second ->
                                 Result.map output.toValue <| f env first second
 
             [] ->
-                err env "zero"
+                err "zero"
 
             _ ->
-                err env <| String.join ", " <| List.map Value.toString args
+                err <| String.join ", " <| List.map Value.toString args
     )
 
 
@@ -566,17 +565,17 @@ threeWithError :
     -> (Env -> a -> b -> c -> EvalResult out)
     -> ( Int, Env -> List Value -> EvalResult Value )
 threeWithError firstSelector secondSelector thirdSelector _ output f =
-    let
-        err : Env -> String -> EvalResult value
-        err env got =
-            if firstSelector.name == secondSelector.name && secondSelector.name == thirdSelector.name then
-                typeError env <| "Expected three " ++ firstSelector.name ++ "s, got " ++ got
-
-            else
-                typeError env <| "Expected one " ++ firstSelector.name ++ ", one " ++ secondSelector.name ++ " and one " ++ thirdSelector.name ++ ", got " ++ got
-    in
     ( 3
     , \env args ->
+        let
+            err : String -> EvalResult value
+            err got =
+                if firstSelector.name == secondSelector.name && secondSelector.name == thirdSelector.name then
+                    Err <| typeError env <| "Expected three " ++ firstSelector.name ++ "s, got " ++ got
+
+                else
+                    Err <| typeError env <| "Expected one " ++ firstSelector.name ++ ", one " ++ secondSelector.name ++ " and one " ++ thirdSelector.name ++ ", got " ++ got
+        in
         case args of
             [ firstArg, secondArg, thirdArg ] ->
                 case ( firstSelector.fromValue firstArg, secondSelector.fromValue secondArg, thirdSelector.fromValue thirdArg ) of
@@ -584,13 +583,13 @@ threeWithError firstSelector secondSelector thirdSelector _ output f =
                         Result.map output.toValue <| f env first second third
 
                     _ ->
-                        err env <| String.join ", " (List.map Value.toString args)
+                        err <| String.join ", " (List.map Value.toString args)
 
             [] ->
-                err env "zero"
+                err "zero"
 
             _ ->
-                err env <| "[ " ++ String.join ", " (List.map Value.toString args) ++ " ]"
+                err <| "[ " ++ String.join ", " (List.map Value.toString args) ++ " ]"
     )
 
 
@@ -615,5 +614,5 @@ twoNumbers fInt fFloat =
                 Ok <| Float (fFloat lf rf)
 
             _ ->
-                typeError env "Expected two numbers"
+                Err <| typeError env "Expected two numbers"
     )

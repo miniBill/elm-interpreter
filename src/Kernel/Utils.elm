@@ -13,7 +13,7 @@ append env l r =
             Ok <| List (ll ++ rl)
 
         _ ->
-            typeError env <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
+            Err <| typeError env <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
 
 
 compare : Env -> Value -> Value -> EvalResult Order
@@ -99,11 +99,12 @@ compare env l r =
                     compare env (List la) (List ra)
 
                 _ ->
-                    typeError env <|
-                        "Comparison not yet implemented for "
-                            ++ Value.toString l
-                            ++ " and "
-                            ++ Value.toString r
+                    Err <|
+                        typeError env <|
+                            "Comparison not yet implemented for "
+                                ++ Value.toString l
+                                ++ " and "
+                                ++ Value.toString r
 
 
 comparison : List Order -> ( Int, Env -> List Value -> EvalResult Value )
@@ -115,5 +116,5 @@ comparison orders =
                 Result.map (\result -> Bool (List.member result orders)) <| compare env l r
 
             _ ->
-                typeError env "Comparison needs exactly two arguments"
+                Err <| typeError env "Comparison needs exactly two arguments"
     )

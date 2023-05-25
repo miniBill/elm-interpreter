@@ -46,7 +46,7 @@ sortWith _ compare list =
         |> Ok
 
 
-handleErr : { currentModule : ModuleName, callStack : List QualifiedNameRef, error : Value.EvalError } -> Order
+handleErr : { currentModule : ModuleName, callStack : List QualifiedNameRef, error : Value.EvalErrorKind } -> Order
 handleErr err =
     let
         _ =

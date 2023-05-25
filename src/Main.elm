@@ -9,7 +9,7 @@ import Elm.Syntax.Expression as Expression
 import Eval exposing (Error(..))
 import Parser
 import Syntax
-import Value exposing (EvalError(..))
+import Value exposing (EvalErrorKind(..))
 
 
 type Msg

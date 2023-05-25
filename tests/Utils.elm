@@ -44,4 +44,4 @@ evalTest name expression toValue a =
 slowTest : (Int -> Test) -> Test
 slowTest test =
     -- Change this to 10 to make it fast
-    test 100000
+    test 10

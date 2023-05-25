@@ -13,4 +13,4 @@ fromNumber env s =
             Ok <| String.fromFloat f
 
         _ ->
-            typeError env <| "Cannot convert " ++ Value.toString s ++ " to a number"
+            Err <| typeError env <| "Cannot convert " ++ Value.toString s ++ " to a number"
