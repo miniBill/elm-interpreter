@@ -593,82 +593,6 @@ evalNegation env child =
             typeError env "Trying to negate a non-number"
 
 
-evalRecordAccess : Env -> Node Expression -> Node String -> EvalResult Value
-evalRecordAccess env recordExpr (Node _ field) =
-    evalExpression env recordExpr
-        |> Result.andThen
-            (\value ->
-                case value of
-                    Value.Record fields ->
-                        case Dict.get field fields of
-                            Just fieldValue ->
-                                Ok fieldValue
-
-                            Nothing ->
-                                typeError env <| "Field " ++ field ++ " not found [record access]"
-
-                    _ ->
-                        typeError env "Trying to access a field on a non-record value"
-            )
-
-
-evalRecordAccessFunction : String -> Value
-evalRecordAccessFunction field =
-    PartiallyApplied
-        (Env.empty [])
-        []
-        [ fakeNode (VarPattern "r") ]
-        (fakeNode <|
-            Expression.RecordAccess
-                (fakeNode <| Expression.FunctionOrValue [] "r")
-                (fakeNode <| String.dropLeft 1 field)
-        )
-
-
-evalRecordUpdate : Env -> Node String -> List (Node Expression.RecordSetter) -> EvalResult Value
-evalRecordUpdate env (Node _ name) setters =
-    case evalExpression env (fakeNode <| Expression.FunctionOrValue [] name) of
-        Err e ->
-            Err e
-
-        Ok (Value.Record fields) ->
-            Result.MyExtra.combineFoldl
-                (\(Node _ ( Node _ fieldName, fieldExpression )) acc ->
-                    evalExpression env fieldExpression
-                        |> Result.map
-                            (\fieldValue ->
-                                Dict.insert fieldName fieldValue acc
-                            )
-                )
-                (Ok fields)
-                setters
-                |> Result.map Value.Record
-
-        Ok _ ->
-            typeError env "Trying to update fields on a value which is not a record"
-
-
-evalOperator : Env -> String -> EvalResult Value
-evalOperator env opName =
-    case Dict.get opName Core.operators of
-        Nothing ->
-            nameError env opName
-
-        Just kernelFunction ->
-            PartiallyApplied
-                (Env.call kernelFunction.moduleName opName env)
-                []
-                [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
-                (fakeNode <|
-                    Expression.Application
-                        [ fakeNode <| Expression.FunctionOrValue kernelFunction.moduleName kernelFunction.name
-                        , fakeNode <| Expression.FunctionOrValue [] "l"
-                        , fakeNode <| Expression.FunctionOrValue [] "r"
-                        ]
-                )
-                |> Ok
-
-
 evalLetBlock : Env -> Expression.LetBlock -> EvalResult Env
 evalLetBlock env letBlock =
     let
@@ -877,6 +801,82 @@ evalLetBlock env letBlock =
     sortedDeclarations
         |> mapSortError env
         |> Result.andThen (Result.MyExtra.combineFoldl addDeclaration (Ok env))
+
+
+evalRecordAccess : Env -> Node Expression -> Node String -> EvalResult Value
+evalRecordAccess env recordExpr (Node _ field) =
+    evalExpression env recordExpr
+        |> Result.andThen
+            (\value ->
+                case value of
+                    Value.Record fields ->
+                        case Dict.get field fields of
+                            Just fieldValue ->
+                                Ok fieldValue
+
+                            Nothing ->
+                                typeError env <| "Field " ++ field ++ " not found [record access]"
+
+                    _ ->
+                        typeError env "Trying to access a field on a non-record value"
+            )
+
+
+evalRecordAccessFunction : String -> Value
+evalRecordAccessFunction field =
+    PartiallyApplied
+        (Env.empty [])
+        []
+        [ fakeNode (VarPattern "r") ]
+        (fakeNode <|
+            Expression.RecordAccess
+                (fakeNode <| Expression.FunctionOrValue [] "r")
+                (fakeNode <| String.dropLeft 1 field)
+        )
+
+
+evalRecordUpdate : Env -> Node String -> List (Node Expression.RecordSetter) -> EvalResult Value
+evalRecordUpdate env (Node _ name) setters =
+    case evalExpression env (fakeNode <| Expression.FunctionOrValue [] name) of
+        Err e ->
+            Err e
+
+        Ok (Value.Record fields) ->
+            Result.MyExtra.combineFoldl
+                (\(Node _ ( Node _ fieldName, fieldExpression )) acc ->
+                    evalExpression env fieldExpression
+                        |> Result.map
+                            (\fieldValue ->
+                                Dict.insert fieldName fieldValue acc
+                            )
+                )
+                (Ok fields)
+                setters
+                |> Result.map Value.Record
+
+        Ok _ ->
+            typeError env "Trying to update fields on a value which is not a record"
+
+
+evalOperator : Env -> String -> EvalResult Value
+evalOperator env opName =
+    case Dict.get opName Core.operators of
+        Nothing ->
+            nameError env opName
+
+        Just kernelFunction ->
+            PartiallyApplied
+                (Env.call kernelFunction.moduleName opName env)
+                []
+                [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
+                (fakeNode <|
+                    Expression.Application
+                        [ fakeNode <| Expression.FunctionOrValue kernelFunction.moduleName kernelFunction.name
+                        , fakeNode <| Expression.FunctionOrValue [] "l"
+                        , fakeNode <| Expression.FunctionOrValue [] "r"
+                        ]
+                )
+                |> Ok
 
 
 isVariant : String -> Bool
