@@ -23,7 +23,7 @@ import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import TopologicalSort
 import Unicode
-import Value exposing (Env, EnvValues, EvalErrorKind, EvalResult, Value(..), nameError, typeError, unsupported)
+import Value exposing (Env, EnvValues, EvalError, EvalErrorKind, EvalResult, Value(..), nameError, typeError, unsupported)
 
 
 type Error
@@ -127,171 +127,167 @@ buildInitialEnv file =
 
 evalExpression : Env -> Node Expression -> EvalResult Value
 evalExpression env (Node _ expression) =
-    case expression of
-        Expression.UnitExpr ->
-            Ok Value.Unit
+    let
+        partial : PartialResult
+        partial =
+            case expression of
+                Expression.UnitExpr ->
+                    PartialValue Value.Unit
 
-        Expression.OperatorApplication "||" _ l r ->
-            case evalExpression env l of
-                Ok (Bool True) ->
-                    Ok (Bool True)
+                Expression.OperatorApplication "||" _ l r ->
+                    evalShortCircuitOr env l r
 
-                Ok (Bool False) ->
-                    evalExpression env r
+                Expression.OperatorApplication "&&" _ l r ->
+                    evalShortCircuitAnd env l r
 
-                Err e ->
-                    Err e
+                Expression.OperatorApplication opName _ l r ->
+                    PartialExpression env
+                        (fakeNode <|
+                            Expression.Application
+                                [ fakeNode <| Expression.Operator opName
+                                , l
+                                , r
+                                ]
+                        )
 
-                Ok v ->
-                    Err <| typeError env <| "|| applied to non-Bool " ++ Value.toString v
+                Expression.Application [] ->
+                    PartialErr <| typeError env "Empty application"
 
-        Expression.OperatorApplication "&&" _ l r ->
-            case evalExpression env l of
-                Ok (Bool False) ->
-                    Ok (Bool False)
+                Expression.Application (first :: rest) ->
+                    evalApplication env first rest
 
-                Ok (Bool True) ->
-                    evalExpression env r
+                Expression.FunctionOrValue moduleName name ->
+                    evalFunctionOrValue env moduleName name
 
-                Err e ->
-                    Err e
+                Expression.IfBlock cond true false ->
+                    evalIfBlock env cond true false
 
-                Ok v ->
-                    Err <| typeError env <| "&& applied to non-Bool " ++ Value.toString v
+                Expression.PrefixOperator opName ->
+                    evalOperator env opName
 
-        Expression.OperatorApplication opName _ l r ->
-            evalExpression env
-                (fakeNode <|
-                    Expression.Application
-                        [ fakeNode <| Expression.Operator opName
-                        , l
-                        , r
-                        ]
-                )
+                Expression.Operator opName ->
+                    evalOperator env opName
 
-        Expression.Application [] ->
-            Err <| typeError env "Empty application"
+                Expression.Integer i ->
+                    PartialValue (Value.Int i)
 
-        Expression.Application (first :: rest) ->
-            case evalApplication env first rest of
-                PartialValue v ->
-                    Ok v
+                Expression.Hex i ->
+                    PartialValue (Value.Int i)
 
-                PartialExpression newEnv expr ->
-                    evalExpression newEnv expr
+                Expression.Floatable f ->
+                    PartialValue (Value.Float f)
 
-                PartialErr e ->
-                    Err e
+                Expression.Negation child ->
+                    evalNegation env child
 
-        Expression.FunctionOrValue moduleName name ->
-            case evalFunctionOrValue env moduleName name of
-                PartialValue v ->
-                    Ok v
+                Expression.Literal string ->
+                    PartialValue (Value.String string)
 
-                PartialExpression newEnv expr ->
-                    evalExpression newEnv expr
+                Expression.CharLiteral c ->
+                    PartialValue (Value.Char c)
 
-                PartialErr e ->
-                    Err e
+                Expression.TupledExpression exprs ->
+                    evalTuple env exprs
 
-        Expression.IfBlock cond true false ->
-            case evalIfBlock env cond true false of
-                PartialErr e ->
-                    Err e
+                Expression.ParenthesizedExpression child ->
+                    PartialExpression env child
 
-                PartialValue v ->
-                    Ok v
+                Expression.LetExpression letBlock ->
+                    evalLetBlock env letBlock
 
-                PartialExpression newEnv next ->
-                    evalExpression newEnv next
+                Expression.CaseExpression caseExpr ->
+                    evalCase env caseExpr
 
-        Expression.PrefixOperator opName ->
-            evalOperator env opName
+                Expression.LambdaExpression lambda ->
+                    PartialValue <| PartiallyApplied env [] lambda.args lambda.expression
 
-        Expression.Operator opName ->
-            evalOperator env opName
+                Expression.RecordExpr fields ->
+                    evalRecord env fields
 
-        Expression.Integer i ->
-            Ok (Value.Int i)
+                Expression.ListExpr elements ->
+                    evalList env elements
 
-        Expression.Hex i ->
-            Ok (Value.Int i)
+                Expression.RecordAccess recordExpr field ->
+                    evalRecordAccess env recordExpr field
 
-        Expression.Floatable f ->
-            Ok (Value.Float f)
+                Expression.RecordAccessFunction field ->
+                    PartialValue <| evalRecordAccessFunction field
 
-        Expression.Negation child ->
-            evalNegation env child
+                Expression.RecordUpdateExpression name setters ->
+                    evalRecordUpdate env name setters
 
-        Expression.Literal string ->
-            Ok (Value.String string)
+                Expression.GLSLExpression _ ->
+                    PartialErr <| unsupported env "GLSL not supported"
+    in
+    case partial of
+        PartialErr e ->
+            Err e
 
-        Expression.CharLiteral c ->
-            Ok (Value.Char c)
+        PartialValue v ->
+            Ok v
 
-        Expression.TupledExpression exprs ->
-            case exprs of
-                [] ->
-                    Ok Value.Unit
+        PartialExpression newEnv next ->
+            evalExpression newEnv next
 
-                [ c ] ->
-                    evalExpression env c
 
-                [ l, r ] ->
-                    evalExpression2
-                        env
-                        l
-                        r
-                        (\lvalue rvalue -> Ok (Value.Tuple lvalue rvalue))
+evalShortCircuitAnd : Env -> Node Expression -> Node Expression -> PartialResult
+evalShortCircuitAnd env l r =
+    case evalExpression env l of
+        Ok (Bool False) ->
+            PartialValue (Bool False)
 
-                [ l, m, r ] ->
-                    Result.map3 Value.Triple
-                        (evalExpression env l)
-                        (evalExpression env m)
-                        (evalExpression env r)
+        Ok (Bool True) ->
+            PartialExpression env r
 
-                _ :: _ :: _ :: _ :: _ ->
-                    Err <| typeError env "Tuples with more than three elements are not supported"
+        Err e ->
+            PartialErr e
 
-        Expression.ParenthesizedExpression child ->
-            evalExpression env child
+        Ok v ->
+            PartialErr <| typeError env <| "&& applied to non-Bool " ++ Value.toString v
 
-        Expression.LetExpression letBlock ->
-            case evalLetBlock env letBlock of
-                Err e ->
-                    Err e
 
-                Ok newEnv ->
-                    evalExpression newEnv letBlock.expression
+evalShortCircuitOr : Env -> Node Expression -> Node Expression -> PartialResult
+evalShortCircuitOr env l r =
+    case evalExpression env l of
+        Ok (Bool True) ->
+            PartialValue (Bool True)
 
-        Expression.CaseExpression caseExpr ->
-            case evalCase env caseExpr of
-                Err e ->
-                    Err e
+        Ok (Bool False) ->
+            PartialExpression env r
 
-                Ok ( newEnv, next ) ->
-                    evalExpression newEnv next
+        Err e ->
+            PartialErr e
 
-        Expression.LambdaExpression lambda ->
-            Ok <| PartiallyApplied env [] lambda.args lambda.expression
+        Ok v ->
+            PartialErr <| typeError env <| "|| applied to non-Bool " ++ Value.toString v
 
-        Expression.RecordExpr fields ->
-            evalRecord env fields
 
-        Expression.ListExpr elements ->
-            evalList env elements
+evalTuple : Env -> List (Node Expression) -> PartialResult
+evalTuple env exprs =
+    case exprs of
+        [] ->
+            PartialValue Value.Unit
 
-        Expression.RecordAccess recordExpr field ->
-            evalRecordAccess env recordExpr field
+        [ c ] ->
+            PartialExpression env c
 
-        Expression.RecordAccessFunction field ->
-            Ok <| evalRecordAccessFunction field
+        [ l, r ] ->
+            evalExpression2
+                env
+                l
+                r
+                (\lvalue rvalue -> Ok (Value.Tuple lvalue rvalue))
+                |> PartialResult.fromValue
 
-        Expression.RecordUpdateExpression name setters ->
-            evalRecordUpdate env name setters
+        [ l, m, r ] ->
+            Result.map3 Value.Triple
+                (evalExpression env l)
+                (evalExpression env m)
+                (evalExpression env r)
+                |> PartialResult.fromValue
 
-        Expression.GLSLExpression _ ->
-            Err <| unsupported env "GLSL not supported"
+        _ :: _ :: _ :: _ :: _ ->
+            PartialErr <| typeError env "Tuples with more than three elements are not supported"
 
 
 evalApplication : Env -> Node Expression -> List (Node Expression) -> PartialResult
@@ -525,28 +521,33 @@ evalIfBlock env cond true false =
                     PartialErr <| typeError env "ifThenElse condition was not a boolean"
 
 
-evalList : Env -> List (Node Expression) -> EvalResult Value
+evalList : Env -> List (Node Expression) -> PartialResult
 evalList env elements =
     elements
         |> Result.Extra.combineMap (\element -> evalExpression env element)
         |> Result.map List
+        |> PartialResult.fromValue
 
 
-evalRecord : Env -> List (Node Expression.RecordSetter) -> EvalResult Value
+evalRecord : Env -> List (Node Expression.RecordSetter) -> PartialResult
 evalRecord env fields =
-    fields
-        |> Result.Extra.combineMap
-            (\(Node _ ( Node _ fieldName, fieldExpr )) ->
-                Result.map
-                    (Tuple.pair fieldName)
-                    (evalExpression env fieldExpr)
-            )
-        |> Result.map
-            (\tuples ->
-                tuples
-                    |> Dict.fromList
-                    |> Value.Record
-            )
+    case
+        fields
+            |> Result.Extra.combineMap
+                (\(Node _ ( Node _ fieldName, fieldExpr )) ->
+                    Result.map
+                        (Tuple.pair fieldName)
+                        (evalExpression env fieldExpr)
+                )
+    of
+        Ok tuples ->
+            tuples
+                |> Dict.fromList
+                |> Value.Record
+                |> PartialValue
+
+        Err e ->
+            PartialErr e
 
 
 kernelFunctions : Dict ModuleName (Dict String ( Int, Env -> List Value -> EvalResult Value ))
@@ -645,23 +646,23 @@ evalKernelFunction env moduleName name =
                             |> PartialValue
 
 
-evalNegation : Env -> Node Expression -> EvalResult Value
+evalNegation : Env -> Node Expression -> PartialResult
 evalNegation env child =
     case evalExpression env child of
         Err e ->
-            Err e
+            PartialErr e
 
         Ok (Value.Int i) ->
-            Ok <| Value.Int -i
+            PartialValue <| Value.Int -i
 
         Ok (Value.Float f) ->
-            Ok <| Value.Float -f
+            PartialValue <| Value.Float -f
 
         _ ->
-            Err <| typeError env "Trying to negate a non-number"
+            PartialErr <| typeError env "Trying to negate a non-number"
 
 
-evalLetBlock : Env -> Expression.LetBlock -> EvalResult Env
+evalLetBlock : Env -> Expression.LetBlock -> PartialResult
 evalLetBlock env letBlock =
     let
         envDefs : Set String
@@ -746,10 +747,18 @@ evalLetBlock env letBlock =
 
                                 Ok (Just patternEnv) ->
                                     Ok (Env.with patternEnv acc)
+
+        newEnv =
+            sortedDeclarations
+                |> mapSortError env
+                |> Result.andThen (Result.MyExtra.combineFoldl addDeclaration (Ok env))
     in
-    sortedDeclarations
-        |> mapSortError env
-        |> Result.andThen (Result.MyExtra.combineFoldl addDeclaration (Ok env))
+    case newEnv of
+        Ok ne ->
+            PartialExpression ne letBlock.expression
+
+        Err e ->
+            PartialErr e
 
 
 declarationFreeVariables : Node Expression.LetDeclaration -> Set String
@@ -877,23 +886,24 @@ declarationDefinedVariables (Node _ letDeclaration) =
             patternDefinedVariables letPattern
 
 
-evalRecordAccess : Env -> Node Expression -> Node String -> EvalResult Value
+evalRecordAccess : Env -> Node Expression -> Node String -> PartialResult
 evalRecordAccess env recordExpr (Node _ field) =
-    evalExpression env recordExpr
-        |> Result.andThen
-            (\value ->
-                case value of
-                    Value.Record fields ->
-                        case Dict.get field fields of
-                            Just fieldValue ->
-                                Ok fieldValue
+    case evalExpression env recordExpr of
+        Ok value ->
+            case value of
+                Value.Record fields ->
+                    case Dict.get field fields of
+                        Just fieldValue ->
+                            PartialValue fieldValue
 
-                            Nothing ->
-                                Err <| typeError env <| "Field " ++ field ++ " not found [record access]"
+                        Nothing ->
+                            PartialErr <| typeError env <| "Field " ++ field ++ " not found [record access]"
 
-                    _ ->
-                        Err <| typeError env "Trying to access a field on a non-record value"
-            )
+                _ ->
+                    PartialErr <| typeError env "Trying to access a field on a non-record value"
+
+        Err e ->
+            PartialErr e
 
 
 evalRecordAccessFunction : String -> Value
@@ -909,11 +919,11 @@ evalRecordAccessFunction field =
         )
 
 
-evalRecordUpdate : Env -> Node String -> List (Node Expression.RecordSetter) -> EvalResult Value
+evalRecordUpdate : Env -> Node String -> List (Node Expression.RecordSetter) -> PartialResult
 evalRecordUpdate env (Node _ name) setters =
     case evalExpression env (fakeNode <| Expression.FunctionOrValue [] name) of
         Err e ->
-            Err e
+            PartialErr e
 
         Ok (Value.Record fields) ->
             Result.MyExtra.combineFoldl
@@ -927,16 +937,17 @@ evalRecordUpdate env (Node _ name) setters =
                 (Ok fields)
                 setters
                 |> Result.map Value.Record
+                |> PartialResult.fromValue
 
         Ok _ ->
-            Err <| typeError env "Trying to update fields on a value which is not a record"
+            PartialErr <| typeError env "Trying to update fields on a value which is not a record"
 
 
-evalOperator : Env -> String -> EvalResult Value
+evalOperator : Env -> String -> PartialResult
 evalOperator env opName =
     case Dict.get opName Core.operators of
         Nothing ->
-            Err <| nameError env opName
+            PartialErr <| nameError env opName
 
         Just kernelFunction ->
             PartiallyApplied
@@ -950,7 +961,7 @@ evalOperator env opName =
                         , fakeNode <| Expression.FunctionOrValue [] "r"
                         ]
                 )
-                |> Ok
+                |> PartialValue
 
 
 isVariant : String -> Bool
@@ -963,43 +974,47 @@ isVariant name =
             Unicode.isUpper first
 
 
-evalCase : Env -> Expression.CaseBlock -> EvalResult ( Env, Node Expression )
+evalCase : Env -> Expression.CaseBlock -> PartialResult
 evalCase env { expression, cases } =
     case evalExpression env expression of
         Err e ->
-            Err e
+            PartialErr e
 
         Ok exprValue ->
-            cases
-                |> Result.MyExtra.combineFoldl
-                    (\( pattern, result ) acc ->
-                        case acc of
-                            Just _ ->
-                                Ok acc
+            let
+                result : Result EvalError (Maybe PartialResult)
+                result =
+                    cases
+                        |> Result.MyExtra.combineFoldl
+                            (\( pattern, result2 ) acc ->
+                                case acc of
+                                    Just _ ->
+                                        Ok acc
 
-                            Nothing ->
-                                case match env pattern exprValue of
-                                    Err e ->
-                                        Err e
+                                    Nothing ->
+                                        case match env pattern exprValue of
+                                            Err e ->
+                                                Err e
 
-                                    Ok Nothing ->
-                                        Ok Nothing
+                                            Ok Nothing ->
+                                                Ok Nothing
 
-                                    Ok (Just additionalEnv) ->
-                                        ( Env.with additionalEnv env, result )
-                                            |> Just
-                                            |> Ok
-                    )
-                    (Ok Nothing)
-                |> Result.andThen
-                    (\result ->
-                        case result of
-                            Nothing ->
-                                Err <| typeError env <| "Missing case branch for " ++ Value.toString exprValue
+                                            Ok (Just additionalEnv) ->
+                                                PartialExpression (Env.with additionalEnv env) result2
+                                                    |> Just
+                                                    |> Ok
+                            )
+                            (Ok Nothing)
+            in
+            case result of
+                Ok Nothing ->
+                    PartialErr <| typeError env <| "Missing case branch for " ++ Value.toString exprValue
 
-                            Just res ->
-                                Ok res
-                    )
+                Ok (Just res) ->
+                    res
+
+                Err e ->
+                    PartialErr e
 
 
 match : Env -> Node Pattern -> Value -> EvalResult (Maybe EnvValues)
