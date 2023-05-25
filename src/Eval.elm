@@ -748,6 +748,7 @@ evalLetBlock env letBlock =
                                 Ok (Just patternEnv) ->
                                     Ok (Env.with patternEnv acc)
 
+        newEnv : Result EvalError Env
         newEnv =
             sortedDeclarations
                 |> mapSortError env
