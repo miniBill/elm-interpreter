@@ -7,7 +7,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern
 import FastDict as Dict exposing (Dict)
-import Kernel.Array
+import Kernel.JsArray
 import Kernel.List
 import Kernel.String
 import Kernel.Utils
@@ -93,10 +93,11 @@ functions evalFunction =
 
     -- Elm.Kernel.JsArray
     , ( [ "Elm", "Kernel", "JsArray" ]
-      , [ ( "appendN", three int (jsArray anything) (jsArray anything) to (jsArray anything) Kernel.Array.appendN )
+      , [ ( "appendN", three int (jsArray anything) (jsArray anything) to (jsArray anything) Kernel.JsArray.appendN )
         , ( "empty", zero to (jsArray anything) Array.empty )
-        , ( "initialize", threeWithError int int (function evalFunction int anything) to (jsArray anything) Kernel.Array.initialize )
-        , ( "initializeFromList", two int (list anything) to (tuple (jsArray anything) (list anything)) Kernel.Array.initializeFromList )
+        , ( "foldr", threeWithError (function2 evalFunction anything anything to anything) anything (jsArray anything) to anything Kernel.JsArray.foldr )
+        , ( "initialize", threeWithError int int (function evalFunction int to anything) to (jsArray anything) Kernel.JsArray.initialize )
+        , ( "initializeFromList", two int (list anything) to (tuple (jsArray anything) (list anything)) Kernel.JsArray.initializeFromList )
         , ( "length", one (jsArray anything) to int Array.length )
         ]
       )
@@ -105,8 +106,8 @@ functions evalFunction =
     , ( [ "Elm", "Kernel", "List" ]
       , [ ( "cons", two anything (list anything) to (list anything) (::) )
         , ( "fromArray", one anything to anything identity )
-        , ( "sortBy", twoWithError (function evalFunction anything anything) (list anything) to (list anything) Kernel.List.sortBy )
-        , ( "sortWith", twoWithError (function evalFunction anything (function evalFunction anything order)) (list anything) to (list anything) Kernel.List.sortWith )
+        , ( "sortBy", twoWithError (function evalFunction anything to anything) (list anything) to (list anything) Kernel.List.sortBy )
+        , ( "sortWith", twoWithError (function2 evalFunction anything anything to order) (list anything) to (list anything) Kernel.List.sortWith )
         , ( "toArray", one anything to anything identity )
         ]
       )
@@ -360,9 +361,10 @@ jsArray selector =
 function :
     EvalFunction
     -> OutSelector from xf
+    -> To
     -> InSelector to xt
     -> InSelector (from -> EvalResult to) {}
-function evalFunctionWith inSelector outSelector =
+function evalFunctionWith inSelector _ outSelector =
     let
         fromValue : Value -> Maybe (from -> EvalResult to)
         fromValue value =
@@ -389,6 +391,17 @@ function evalFunctionWith inSelector outSelector =
     { name = inSelector.name ++ " -> " ++ outSelector.name
     , fromValue = fromValue
     }
+
+
+function2 :
+    EvalFunction
+    -> OutSelector a xa
+    -> OutSelector b xb
+    -> To
+    -> InSelector to xt
+    -> InSelector (a -> EvalResult (b -> EvalResult to)) {}
+function2 evalFunction in1Selector in2Selector _ outSelector =
+    function evalFunction in1Selector to (function evalFunction in2Selector to outSelector)
 
 
 tuple : Selector a -> Selector b -> Selector ( a, b )

@@ -1,4 +1,4 @@
-module Kernel.Array exposing (appendN, initialize, initializeFromList)
+module Kernel.JsArray exposing (appendN, foldr, initialize, initializeFromList)
 
 import Array exposing (Array)
 import List.Extra
@@ -41,3 +41,23 @@ initialize _ len offset f =
     List.range offset (offset + len - 1)
         |> Result.Extra.combineMap f
         |> Result.map Array.fromList
+
+
+foldr : Env -> (Value -> EvalResult (Value -> EvalResult Value)) -> Value -> Array Value -> EvalResult Value
+foldr _ f init arr =
+    Array.foldr
+        (\e racc ->
+            case racc of
+                Err err ->
+                    Err err
+
+                Ok acc ->
+                    case f e of
+                        Ok g ->
+                            g acc
+
+                        Err err ->
+                            Err err
+        )
+        (Ok init)
+        arr

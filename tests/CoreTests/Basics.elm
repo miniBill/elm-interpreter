@@ -4,7 +4,7 @@ import Array
 import Dict
 import Set
 import Test exposing (Test, describe)
-import Utils exposing (evalTest, evalTest_)
+import TestUtils exposing (evalTest, evalTest_)
 import Value exposing (Value(..))
 
 

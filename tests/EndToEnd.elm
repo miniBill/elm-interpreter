@@ -4,7 +4,7 @@ import Elm.Syntax.Expression as Expression
 import Eval
 import Expect
 import Test exposing (Test, describe, test)
-import Utils exposing (evalTest, evalTest_)
+import TestUtils exposing (evalTest, evalTest_, slowTest)
 import Value exposing (Value(..))
 
 
@@ -78,7 +78,7 @@ standardLibraryTest =
 
 tailCallTest : Test
 tailCallTest =
-    Utils.slowTest <|
+    slowTest <|
         \i ->
             describe "Tail call"
                 [ evalTest "Inline"
