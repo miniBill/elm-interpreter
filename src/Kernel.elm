@@ -16,7 +16,7 @@ import Value exposing (Env, EvalResult, Value(..), typeError)
 
 
 type alias EvalFunction =
-    (() -> Env)
+    Env
     -> List Value
     -> List (Node Pattern.Pattern)
     -> Node Expression
@@ -380,7 +380,7 @@ function evalFunctionWith inSelector outSelector =
                                             Ok ov
 
                                         Nothing ->
-                                            typeError (localEnv ()) <| "Could not convert output from " ++ Value.toString out ++ " to " ++ outSelector.name
+                                            typeError localEnv <| "Could not convert output from " ++ Value.toString out ++ " to " ++ outSelector.name
                         )
 
                 _ ->
