@@ -439,7 +439,12 @@ evalExpression env (Node _ expression) =
             evalExpression env child
 
         Expression.LetExpression letBlock ->
-            evalLet env letBlock
+            case evalLetBlock env letBlock of
+                Err e ->
+                    Err e
+
+                Ok newEnv ->
+                    evalExpression newEnv letBlock.expression
 
         Expression.CaseExpression caseExpr ->
             evalCase env caseExpr
@@ -664,8 +669,8 @@ evalOperator env opName =
                 |> Ok
 
 
-evalLet : Env -> Expression.LetBlock -> EvalResult Value
-evalLet env letBlock =
+evalLetBlock : Env -> Expression.LetBlock -> EvalResult Env
+evalLetBlock env letBlock =
     let
         envDefs : Set String
         envDefs =
@@ -872,7 +877,6 @@ evalLet env letBlock =
     sortedDeclarations
         |> mapSortError env
         |> Result.andThen (Result.MyExtra.combineFoldl addDeclaration (Ok env))
-        |> Result.andThen (\newEnv -> evalExpression newEnv letBlock.expression)
 
 
 isVariant : String -> Bool
