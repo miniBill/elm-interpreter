@@ -1,4 +1,4 @@
-module Utils exposing (evalTest, evalTest_, skipSlowTests)
+module Utils exposing (evalTest, evalTest_, slowTest)
 
 import Eval
 import Expect
@@ -41,7 +41,7 @@ evalTest name expression toValue a =
                     v |> Expect.equal (Ok result)
 
 
-skipSlowTests : Test -> Test
-skipSlowTests test =
-    -- Test.skip test
-    test
+slowTest : (Int -> Test) -> Test
+slowTest test =
+    -- Change this to 10 to make it fast
+    test 100000

@@ -78,14 +78,15 @@ standardLibraryTest =
 
 tailCallTest : Test
 tailCallTest =
-    Utils.skipSlowTests <|
-        describe "Tail call"
-            [ evalTest "Inline"
-                "let boom x = if x <= 0 then False else boom (x - 1) in boom 100000"
-                Bool
-                False
-            , evalTestModule "As module"
-                """module TailCall exposing (boom)
+    Utils.slowTest <|
+        \i ->
+            describe "Tail call"
+                [ evalTest "Inline"
+                    ("let boom x = if x <= 0 then False else boom (x - 1) in boom " ++ String.fromInt i)
+                    Bool
+                    False
+                , evalTestModule "As module"
+                    ("""module TailCall exposing (boom)
 
 boom : Int -> Bool
 boom x =
@@ -99,10 +100,10 @@ boom x =
 
 main : Bool
 main =
-    boom 100000"""
-                Bool
-                False
-            ]
+    boom """ ++ String.fromInt i)
+                    Bool
+                    False
+                ]
 
 
 closureTest : Test
