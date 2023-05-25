@@ -11,7 +11,7 @@ appendN n dest source =
     let
         itemsToCopy : Int
         itemsToCopy =
-            min (Array.length source) (n - Array.length dest)
+            n - Array.length dest
     in
     Array.append
         dest
