@@ -1,0 +1,137 @@
+module Eval.Module exposing (eval, trace)
+
+import Core
+import Elm.Parser
+import Elm.Processing
+import Elm.Syntax.Declaration exposing (Declaration(..))
+import Elm.Syntax.Expression exposing (Expression)
+import Elm.Syntax.File exposing (File)
+import Elm.Syntax.Module exposing (Module(..))
+import Elm.Syntax.ModuleName exposing (ModuleName)
+import Elm.Syntax.Node as Node exposing (Node(..))
+import Elm.Writer
+import Env
+import Eval.Expression
+import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation, Error(..))
+import FastDict as Dict
+import Result.MyExtra
+import Syntax exposing (fakeNode)
+import Value exposing (Env, Value, unsupported)
+
+
+eval : String -> Expression -> Result Error Value
+eval source expression =
+    traceOrEvalModule { trace = False } source expression
+        |> Tuple.first
+
+
+trace : String -> Expression -> ( Result Error Value, List CallTree )
+trace source expression =
+    traceOrEvalModule { trace = True } source expression
+
+
+traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, List CallTree )
+traceOrEvalModule cfg source expression =
+    let
+        maybeEnv : Result Error Env
+        maybeEnv =
+            source
+                |> Elm.Parser.parse
+                |> Result.mapError ParsingError
+                |> Result.map
+                    (\rawFile ->
+                        let
+                            context : Elm.Processing.ProcessContext
+                            context =
+                                Elm.Processing.init
+                        in
+                        Elm.Processing.process context rawFile
+                    )
+                |> Result.andThen buildInitialEnv
+    in
+    case maybeEnv of
+        Err e ->
+            ( Err e, [] )
+
+        Ok env ->
+            let
+                callTreeContinuation : CallTreeContinuation
+                callTreeContinuation children res =
+                    [ CallNode "module"
+                        { moduleName = []
+                        , name =
+                            fakeNode expression
+                                |> Elm.Writer.writeExpression
+                                |> Elm.Writer.write
+                        }
+                        { args = []
+                        , children = children
+                        , result = res
+                        }
+                    ]
+
+                ( result, callTrees ) =
+                    Eval.Expression.evalExpression
+                        { trace = cfg.trace
+                        , callTreeContinuation = callTreeContinuation
+                        }
+                        env
+                        (fakeNode expression)
+            in
+            ( Result.mapError Types.EvalError result
+            , callTreeContinuation callTrees result
+            )
+
+
+buildInitialEnv : File -> Result Error Env
+buildInitialEnv file =
+    let
+        moduleName : ModuleName
+        moduleName =
+            case Node.value file.moduleDefinition of
+                NormalModule normal ->
+                    Node.value normal.moduleName
+
+                PortModule port_ ->
+                    Node.value port_.moduleName
+
+                EffectModule effect ->
+                    Node.value effect.moduleName
+
+        coreEnv : Env
+        coreEnv =
+            { currentModule = moduleName
+            , callStack = []
+            , functions = Core.functions
+            , values = Dict.empty
+            }
+
+        addDeclaration : Node Declaration -> Env -> Result Error Env
+        addDeclaration (Node _ decl) env =
+            case decl of
+                FunctionDeclaration function ->
+                    let
+                        (Node _ implementation) =
+                            function.declaration
+                    in
+                    Ok (Env.addFunction moduleName implementation env)
+
+                PortDeclaration _ ->
+                    Err <| Types.EvalError <| unsupported env "Port declaration"
+
+                InfixDeclaration _ ->
+                    Err <| Types.EvalError <| unsupported env "Infix declaration"
+
+                Destructuring _ _ ->
+                    Err <| Types.EvalError <| unsupported env "Top level destructuring"
+
+                AliasDeclaration _ ->
+                    Ok env
+
+                CustomTypeDeclaration _ ->
+                    Ok env
+    in
+    file.declarations
+        |> Result.MyExtra.combineFoldl
+            addDeclaration
+            (Ok coreEnv)

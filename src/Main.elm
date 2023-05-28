@@ -7,6 +7,8 @@ import Element.Font as Font
 import Element.Input as Input
 import Elm.Syntax.Expression as Expression
 import Eval
+import Eval.Expression
+import Eval.Module
 import Eval.Types exposing (CallTree(..), Error(..))
 import Parser
 import Syntax
@@ -206,14 +208,14 @@ update msg model =
                 ( result, traced ) =
                     if trace then
                         if String.startsWith "module " model.input then
-                            Eval.traceModule model.input (Expression.FunctionOrValue [] "main")
+                            Eval.Module.trace model.input (Expression.FunctionOrValue [] "main")
 
                         else
                             Eval.trace model.input
 
                     else
                         ( if String.startsWith "module " model.input then
-                            Eval.evalModule model.input (Expression.FunctionOrValue [] "main")
+                            Eval.Module.eval model.input (Expression.FunctionOrValue [] "main")
 
                           else
                             Eval.eval model.input
