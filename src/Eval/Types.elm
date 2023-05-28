@@ -1,4 +1,4 @@
-module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, Eval2, Eval3, Eval4, PartialEval, PartialEval2, PartialEval3, PartialResult(..), map)
+module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, Eval2, Eval3, Eval4, PartialEval, PartialEval2, PartialEval3, PartialResult(..), combineMap, map)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
@@ -40,6 +40,27 @@ map f ( x, y ) =
     ( Result.map f x, y )
 
 
+combineMap : Eval2 (Eval a b) (List a) (List b)
+combineMap cfg env f xs =
+    List.foldr
+        (\el ( lacc, callTrees ) ->
+            case lacc of
+                Err _ ->
+                    ( lacc, callTrees )
+
+                Ok acc ->
+                    let
+                        ( g, callTree ) =
+                            f cfg env el
+                    in
+                    ( Result.map (\h -> h :: acc) g
+                    , callTree ++ callTrees
+                    )
+        )
+        ( Ok [], [] )
+        xs
+
+
 type alias Config =
     { trace : Bool
     , callTreeContinuation : CallTreeContinuation
@@ -47,7 +68,7 @@ type alias Config =
 
 
 type alias CallTreeContinuation =
-    List CallTree -> EvalResult Value -> CallTree
+    List CallTree -> EvalResult Value -> List CallTree
 
 
 type CallTree

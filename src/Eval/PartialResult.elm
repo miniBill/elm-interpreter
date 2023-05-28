@@ -1,9 +1,6 @@
-module Eval.PartialResult exposing
-    ( fromValue
-    , mapCombine
-    )
+module Eval.PartialResult exposing (fromValue)
 
-import Eval.Types exposing (CallTree, Eval, Eval2, PartialResult(..))
+import Eval.Types exposing (CallTree, PartialResult(..))
 import Value exposing (EvalResult, Value)
 
 
@@ -15,24 +12,3 @@ fromValue ( result, callTrees ) =
 
         Ok value ->
             PartialValue callTrees value
-
-
-mapCombine : Eval2 (Eval a b) (List a) (List b)
-mapCombine cfg env f xs =
-    List.foldr
-        (\el ( lacc, callTrees ) ->
-            case lacc of
-                Err _ ->
-                    ( lacc, callTrees )
-
-                Ok acc ->
-                    let
-                        ( g, callTree ) =
-                            f cfg env el
-                    in
-                    ( Result.map (\h -> h :: acc) g
-                    , callTree ++ callTrees
-                    )
-        )
-        ( Ok [], [] )
-        xs

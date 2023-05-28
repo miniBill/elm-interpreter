@@ -2,7 +2,6 @@ module Kernel.List exposing (sortBy, sortWith)
 
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
-import Eval.PartialResult as PartialResult
 import Eval.Types as Types exposing (Eval, Eval2)
 import Kernel.Utils
 import Value exposing (Value)
@@ -11,7 +10,7 @@ import Value exposing (Value)
 sortBy : Eval2 (Eval Value Value) (List Value) (List Value)
 sortBy cfg env toComparable list =
     list
-        |> PartialResult.mapCombine cfg
+        |> Types.combineMap cfg
             env
             (\icfg ienv value ->
                 Types.map

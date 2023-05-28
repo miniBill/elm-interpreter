@@ -87,9 +87,9 @@ traceOrEvalModule cfg source expression =
 
         Ok env ->
             let
-                callTreeContinuation : List CallTree -> EvalResult Value -> CallTree
+                callTreeContinuation : CallTreeContinuation
                 callTreeContinuation children res =
-                    CallNode "module"
+                    [ CallNode "module"
                         { moduleName = []
                         , name =
                             fakeNode expression
@@ -100,6 +100,7 @@ traceOrEvalModule cfg source expression =
                         , children = children
                         , result = res
                         }
+                    ]
 
                 ( result, callTrees ) =
                     evalExpression
@@ -110,7 +111,7 @@ traceOrEvalModule cfg source expression =
                         (fakeNode expression)
             in
             ( Result.mapError Types.EvalError result
-            , [ callTreeContinuation callTrees result ]
+            , callTreeContinuation callTrees result
             )
 
 
@@ -535,22 +536,7 @@ call cfg maybeQualifiedName values callTrees =
 
 combineEval : Eval (List (Node Expression)) (List Value)
 combineEval cfg env expressions =
-    expressions
-        |> List.foldr
-            (\expression ( vacc, ctacc ) ->
-                case vacc of
-                    Err e ->
-                        ( Err e, ctacc )
-
-                    Ok values ->
-                        case evalExpression cfg env expression of
-                            ( Err e, callTrees ) ->
-                                ( Err e, callTrees ++ ctacc )
-
-                            ( Ok v, callTrees ) ->
-                                ( Ok (v :: values), callTrees ++ ctacc )
-            )
-            ( Ok [], [] )
+    Types.combineMap cfg env evalExpression expressions
 
 
 evalFunctionOrValue : PartialEval2 ModuleName String
@@ -877,15 +863,6 @@ evalLetBlock cfg env letBlock =
                 )
                 (Dict.keys env.values |> Set.fromList)
 
-        isFunction : Node Expression.LetDeclaration -> Bool
-        isFunction (Node _ d) =
-            case d of
-                Expression.LetFunction { declaration } ->
-                    List.length (Node.value declaration).arguments > 0
-
-                _ ->
-                    False
-
         sortedDeclarations : Result TopologicalSort.SortError (List (Node Expression.LetDeclaration))
         sortedDeclarations =
             letBlock.declarations
@@ -895,7 +872,7 @@ evalLetBlock cfg env letBlock =
                         , declaration = declaration
                         , defVars = declarationDefinedVariables declaration
                         , refVars = Set.diff (declarationFreeVariables declaration) envDefs
-                        , cycleAllowed = isFunction declaration
+                        , cycleAllowed = isLetDeclarationFunction declaration
                         }
                     )
                 |> TopologicalSort.sort
@@ -905,43 +882,6 @@ evalLetBlock cfg env letBlock =
                     , cycleAllowed = .cycleAllowed
                     }
                 |> Result.map (List.map .declaration >> List.reverse)
-
-        addDeclaration : Node Expression.LetDeclaration -> Env -> List CallTree -> ( EvalResult Env, List CallTree )
-        addDeclaration ((Node _ letDeclaration) as node) acc callTrees =
-            case letDeclaration of
-                Expression.LetFunction { declaration } ->
-                    case declaration of
-                        Node _ ({ name, expression } as implementation) ->
-                            if isFunction node then
-                                ( Ok <| Env.addFunction acc.currentModule implementation acc, callTrees )
-
-                            else
-                                case evalExpression cfg acc expression of
-                                    ( Err e, callTree ) ->
-                                        ( Err e, callTree ++ callTrees )
-
-                                    ( Ok value, callTree ) ->
-                                        ( Ok <| Env.addValue (Node.value name) value acc, callTree ++ callTrees )
-
-                Expression.LetDestructuring letPattern letExpression ->
-                    case evalExpression cfg acc letExpression of
-                        ( Err e, callTree ) ->
-                            ( Err e, callTree ++ callTrees )
-
-                        ( Ok letValue, callTree ) ->
-                            case match acc letPattern letValue of
-                                Err e ->
-                                    ( Err e, callTree ++ callTrees )
-
-                                Ok Nothing ->
-                                    ( Err <| typeError acc "Could not match pattern inside let"
-                                    , callTree ++ callTrees
-                                    )
-
-                                Ok (Just patternEnv) ->
-                                    ( Ok (Env.with patternEnv acc)
-                                    , callTree ++ callTrees
-                                    )
 
         newEnv : ( Result EvalError Env, List CallTree )
         newEnv =
@@ -957,6 +897,8 @@ evalLetBlock cfg env letBlock =
                     )
 
                 Ok sd ->
+                    -- We can't use combineMap and need to fold
+                    -- because we need to change the environment for each call
                     List.foldl
                         (\declaration acc ->
                             case acc of
@@ -964,7 +906,11 @@ evalLetBlock cfg env letBlock =
                                     acc
 
                                 ( Ok e, callTrees ) ->
-                                    addDeclaration declaration e callTrees
+                                    let
+                                        ( res, callTree ) =
+                                            addLetDeclaration cfg e declaration
+                                    in
+                                    ( res, callTree ++ callTrees )
                         )
                         ( Ok env, [] )
                         sd
@@ -975,6 +921,52 @@ evalLetBlock cfg env letBlock =
 
         ( Ok ne, callTrees ) ->
             PartialExpression ne letBlock.expression <| \children -> cfg.callTreeContinuation (callTrees ++ children)
+
+
+isLetDeclarationFunction : Node Expression.LetDeclaration -> Bool
+isLetDeclarationFunction (Node _ d) =
+    case d of
+        Expression.LetFunction { declaration } ->
+            List.length (Node.value declaration).arguments > 0
+
+        _ ->
+            False
+
+
+addLetDeclaration : Eval (Node Expression.LetDeclaration) Env
+addLetDeclaration cfg acc ((Node _ letDeclaration) as node) =
+    case letDeclaration of
+        Expression.LetFunction { declaration } ->
+            case declaration of
+                Node _ ({ name, expression } as implementation) ->
+                    if isLetDeclarationFunction node then
+                        ( Ok <| Env.addFunction acc.currentModule implementation acc, [] )
+
+                    else
+                        case evalExpression cfg acc expression of
+                            ( Err e, callTree ) ->
+                                ( Err e, callTree )
+
+                            ( Ok value, callTree ) ->
+                                ( Ok <| Env.addValue (Node.value name) value acc, callTree )
+
+        Expression.LetDestructuring letPattern letExpression ->
+            case evalExpression cfg acc letExpression of
+                ( Err e, callTree ) ->
+                    ( Err e, callTree )
+
+                ( Ok letValue, callTree ) ->
+                    case match acc letPattern letValue of
+                        Err e ->
+                            ( Err e, callTree )
+
+                        Ok Nothing ->
+                            ( Err <| typeError acc "Could not match pattern inside let"
+                            , callTree
+                            )
+
+                        Ok (Just patternEnv) ->
+                            ( Ok (Env.with patternEnv acc), callTree )
 
 
 declarationFreeVariables : Node Expression.LetDeclaration -> Set String
