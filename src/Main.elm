@@ -9,8 +9,9 @@ import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Writer
 import Eval
 import Eval.Module
-import Eval.Types exposing (CallTree(..), Error(..), PartialResult(..))
+import Eval.Types exposing (CallTree(..), Error(..), PartialResult(..), TraceLine)
 import Parser
+import Rope
 import Syntax
 import Value exposing (EvalErrorKind(..))
 
@@ -24,7 +25,7 @@ type alias Model =
     { input : String
     , output : Result String String
     , callTree : List CallTree
-    , trace : List ( Expression, PartialResult )
+    , trace : List TraceLine
     }
 
 
@@ -204,7 +205,7 @@ partialResultToString result =
         PartialValue ( Ok v, _, _ ) ->
             Value.toString v
 
-        PartialExpression _ _ _ ->
+        PartialExpression _ _ _ _ ->
             Debug.todo "branch 'PartialExpression _ _ _' not implemented"
 
         PartialValue ( Err e, _, _ ) ->
@@ -235,7 +236,7 @@ update msg model =
 
         Eval tracing ->
             let
-                ( result, callTree, trace ) =
+                ( result, callTree, traceLines ) =
                     if tracing then
                         if String.startsWith "module " model.input then
                             Eval.Module.trace model.input (Expression.FunctionOrValue [] "main")
@@ -250,13 +251,13 @@ update msg model =
                           else
                             Eval.eval model.input
                         , []
-                        , []
+                        , Rope.empty
                         )
             in
             { model
                 | output = resultToString result
                 , callTree = callTree
-                , trace = trace
+                , trace = Rope.toList traceLines
             }
 
 
