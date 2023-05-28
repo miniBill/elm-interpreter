@@ -1,7 +1,7 @@
 module Main exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, column, el, fill, padding, paragraph, row, spacing, text, textColumn, width)
+import Element exposing (Element, column, fill, padding, paragraph, row, spacing, text, textColumn, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -21,7 +21,7 @@ type Msg
 type alias Model =
     { input : String
     , output : Result String String
-    , trace : Maybe CallTree
+    , trace : List CallTree
     }
 
 
@@ -100,31 +100,54 @@ innerView model =
                     |> String.split "\n"
                     |> List.map (\line -> paragraph [] [ text line ])
                     |> textColumn [ Font.family [ Font.monospace ] ]
-        , case model.trace of
-            Nothing ->
-                Element.none
+        , if List.isEmpty model.trace then
+            Element.none
 
-            Just trace ->
-                el [ Font.family [ Font.monospace ] ] <| viewTrace trace
+          else
+            column
+                [ Font.family [ Font.monospace ]
+                , spacing 10
+                ]
+                (List.map viewTrace model.trace)
         ]
 
 
 viewTrace : CallTree -> Element msg
-viewTrace (CallNode name { args, children, result }) =
+viewTrace (CallNode kind name { args, children, result }) =
     let
+        maybeParens : String -> String
+        maybeParens s =
+            case String.uncons s of
+                Just ( '[', _ ) ->
+                    s
+
+                Just ( '(', _ ) ->
+                    s
+
+                Just ( '{', _ ) ->
+                    s
+
+                Nothing ->
+                    s
+
+                Just _ ->
+                    if String.contains " " s then
+                        "(" ++ s ++ ")"
+
+                    else
+                        s
+
+        from : String
+        from =
+            (Syntax.qualifiedNameToString name
+                :: List.map (maybeParens << Value.toString) args
+            )
+                |> String.join " "
+
         nameRow : Element msg
         nameRow =
-            text <|
-                Syntax.qualifiedNameToString name
-                    ++ (if List.isEmpty args then
-                            " = "
-
-                        else
-                            " : "
-                                ++ String.join " -> " (List.map Value.toString args)
-                                ++ " -> "
-                       )
-                    ++ resultString
+            (from ++ " = " ++ resultString ++ " [" ++ kind ++ "]")
+                |> text
 
         resultString : String
         resultString =
@@ -168,7 +191,7 @@ init =
 in
 boom 100000"""
     , output = Ok ""
-    , trace = Nothing
+    , trace = []
     }
 
 
@@ -182,13 +205,11 @@ update msg model =
             let
                 ( result, traced ) =
                     if trace then
-                        (if String.startsWith "module " model.input then
+                        if String.startsWith "module " model.input then
                             Eval.traceModule model.input (Expression.FunctionOrValue [] "main")
 
-                         else
+                        else
                             Eval.trace model.input
-                        )
-                            |> Tuple.mapSecond Just
 
                     else
                         ( if String.startsWith "module " model.input then
@@ -196,7 +217,7 @@ update msg model =
 
                           else
                             Eval.eval model.input
-                        , Nothing
+                        , []
                         )
             in
             { model

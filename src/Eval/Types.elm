@@ -52,6 +52,7 @@ type alias CallTreeContinuation =
 
 type CallTree
     = CallNode
+        String
         QualifiedNameRef
         { args : List Value
         , result : EvalResult Value
