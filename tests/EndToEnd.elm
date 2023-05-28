@@ -2,6 +2,7 @@ module EndToEnd exposing (suite)
 
 import Elm.Syntax.Expression as Expression
 import Eval
+import Eval.Module
 import Expect
 import Test exposing (Test, describe, test)
 import TestUtils exposing (evalTest, evalTest_, slowTest)
@@ -247,5 +248,5 @@ evalTestModule : String -> String -> (a -> Value) -> a -> Test
 evalTestModule name expression toValue a =
     test name <|
         \_ ->
-            Eval.evalModule expression (Expression.FunctionOrValue [] "main")
+            Eval.Module.eval expression (Expression.FunctionOrValue [] "main")
                 |> Expect.equal (Ok (toValue a))

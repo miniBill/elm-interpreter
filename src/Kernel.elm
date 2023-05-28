@@ -475,7 +475,7 @@ one :
     -> (a -> out)
     -> ( Int, List Value -> Eval Value )
 one firstSelector _ output f =
-    oneWithError firstSelector To output (\_ _ v -> ( Ok (f v), [] ))
+    oneWithError firstSelector To output (\v _ _ -> ( Ok (f v), [] ))
 
 
 oneWithError :
@@ -519,7 +519,7 @@ two :
     -> (a -> b -> out)
     -> ( Int, List Value -> Eval Value )
 two firstSelector secondSelector _ output f =
-    twoWithError firstSelector secondSelector To output (\_ _ l r -> ( Ok (f l r), [] ))
+    twoWithError firstSelector secondSelector To output (\l r _ _ -> ( Ok (f l r), [] ))
 
 
 twoWithError :
@@ -578,7 +578,7 @@ three :
     -> (a -> b -> c -> out)
     -> ( Int, List Value -> Eval Value )
 three firstSelector secondSelector thirdSelector _ output f =
-    threeWithError firstSelector secondSelector thirdSelector To output (\_ _ l m r -> ( Ok (f l m r), [] ))
+    threeWithError firstSelector secondSelector thirdSelector To output (\l m r _ _ -> ( Ok (f l m r), [] ))
 
 
 threeWithError :

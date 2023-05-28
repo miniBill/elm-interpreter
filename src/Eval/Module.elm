@@ -72,11 +72,11 @@ traceOrEvalModule cfg source expression =
 
                 ( result, callTrees ) =
                     Eval.Expression.evalExpression
+                        (fakeNode expression)
                         { trace = cfg.trace
                         , callTreeContinuation = callTreeContinuation
                         }
                         env
-                        (fakeNode expression)
             in
             ( Result.mapError Types.EvalError result
             , callTreeContinuation callTrees result
