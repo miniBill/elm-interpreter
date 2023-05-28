@@ -1,12 +1,13 @@
 module Main exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, column, fill, padding, paragraph, row, spacing, text, textColumn, width)
+import Element exposing (Element, column, el, fill, padding, paragraph, row, spacing, text, textColumn, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Elm.Syntax.Expression as Expression
-import Eval exposing (CallTree, Error(..))
+import Eval
+import Eval.Types exposing (CallTree(..), Error(..))
 import Parser
 import Syntax
 import Value exposing (EvalErrorKind(..))
@@ -95,7 +96,56 @@ innerView model =
                     |> String.split "\n"
                     |> List.map (\line -> paragraph [] [ text line ])
                     |> textColumn [ Font.family [ Font.monospace ] ]
+        , case model.trace of
+            Nothing ->
+                Element.none
+
+            Just trace ->
+                el [ Font.family [ Font.monospace ] ] <| viewTrace trace
         ]
+
+
+viewTrace : CallTree -> Element msg
+viewTrace (CallNode name { args, children, result }) =
+    let
+        nameRow : Element msg
+        nameRow =
+            text <|
+                Syntax.qualifiedNameToString name
+                    ++ " : "
+                    ++ String.join " -> " (List.map Value.toString args)
+                    ++ " -> "
+                    ++ resultString
+
+        resultString : String
+        resultString =
+            case result of
+                Ok v ->
+                    Value.toString v
+
+                Err e ->
+                    evalErrorToString e
+
+        childrenRows : List (Element msg)
+        childrenRows =
+            List.map viewTrace children
+    in
+    (nameRow :: childrenRows)
+        |> column
+            [ Border.widthEach
+                { top = 0
+                , left = 1
+                , right = 0
+                , bottom = 0
+                }
+            , Element.paddingEach
+                { top = 0
+                , bottom = 0
+                , left = 10
+                , right = 0
+                }
+            , spacing 10
+            ]
 
 
 init : Model
@@ -141,15 +191,19 @@ update msg model =
                         )
             in
             { model
-                | output =
-                    case result of
-                        Err e ->
-                            Err <| errorToString e
-
-                        Ok value ->
-                            Ok <| Value.toString value
+                | output = resultToString result
                 , trace = traced
             }
+
+
+resultToString : Result Error Value.Value -> Result String String
+resultToString result =
+    case result of
+        Err e ->
+            Err <| errorToString e
+
+        Ok value ->
+            Ok <| Value.toString value
 
 
 errorToString : Error -> String
@@ -158,20 +212,25 @@ errorToString err =
         ParsingError deadEnds ->
             "Parsing error: " ++ Parser.deadEndsToString deadEnds
 
-        EvalError { callStack, error } ->
-            let
-                messageWithType : String
-                messageWithType =
-                    case error of
-                        TypeError message ->
-                            "Type error: " ++ message
+        EvalError evalError ->
+            evalErrorToString evalError
 
-                        Unsupported message ->
-                            "Unsupported: " ++ message
 
-                        NameError name ->
-                            "Name error: " ++ name ++ " not found"
-            in
-            messageWithType
-                ++ "\nCall stack:\n - "
-                ++ String.join "\n - " (List.reverse <| List.map Syntax.qualifiedNameToString callStack)
+evalErrorToString : Value.EvalError -> String
+evalErrorToString { callStack, error } =
+    let
+        messageWithType : String
+        messageWithType =
+            case error of
+                TypeError message ->
+                    "Type error: " ++ message
+
+                Unsupported message ->
+                    "Unsupported: " ++ message
+
+                NameError name ->
+                    "Name error: " ++ name ++ " not found"
+    in
+    messageWithType
+        ++ "\nCall stack:\n - "
+        ++ String.join "\n - " (List.reverse <| List.map Syntax.qualifiedNameToString callStack)

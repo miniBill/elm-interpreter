@@ -195,8 +195,9 @@ toArray value =
                         treeToArray : Value -> List Value -> Maybe (List Value)
                         treeToArray node acc =
                             case node of
-                                -- JsArray arr ->
-                                --     Just (Array.toList arr ++ acc)
+                                JsArray arr ->
+                                    Just (Array.toList arr ++ acc)
+
                                 _ ->
                                     Debug.todo ("treeToArray " ++ Debug.toString node)
                     in
