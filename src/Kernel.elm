@@ -559,7 +559,7 @@ twoWithError firstSelector secondSelector _ output f =
                             Just second ->
                                 Tuple.mapFirst
                                     (Result.map output.toValue)
-                                    (f cfg env first second)
+                                    (f first second cfg env)
 
             [] ->
                 ( err "zero", [] )
