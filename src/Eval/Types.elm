@@ -135,7 +135,7 @@ This is needed because to get TCO we need to return an expression, rather than c
 
 -}
 type PartialResult
-    = PartialExpression Env (Node Expression) CallTreeContinuation TraceContinuation
+    = PartialExpression (Node Expression) Config Env
     | PartialValue (EvalResult Value)
 
 
@@ -152,16 +152,19 @@ failPartial e =
 andThenPartial : (a -> PartialResult) -> EvalResult a -> PartialResult
 andThenPartial f x =
     case x of
-        ( Err e, callTrees, expressions ) ->
-            PartialValue ( Err e, callTrees, expressions )
+        ( Err e, callTrees, traceLines ) ->
+            PartialValue ( Err e, callTrees, traceLines )
 
-        ( Ok w, callTrees, expressions ) ->
+        ( Ok w, callTrees, traceLines ) ->
             case f w of
                 PartialValue y ->
                     PartialValue <| map2 (\_ vy -> vy) x y
 
-                PartialExpression env expr cont e ->
-                    PartialExpression env
+                PartialExpression expr newConfig newEnv ->
+                    PartialExpression
                         expr
-                        (\children result -> cont (callTrees ++ children) result)
-                        (\n -> Rope.appendTo (e n) expressions)
+                        { newConfig
+                            | callTreeContinuation = \children result -> newConfig.callTreeContinuation (callTrees ++ children) result
+                            , traceContinuation = \trace -> Rope.appendTo traceLines trace
+                        }
+                        newEnv

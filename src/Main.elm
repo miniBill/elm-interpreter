@@ -205,8 +205,8 @@ partialResultToString result =
         PartialValue ( Ok v, _, _ ) ->
             Value.toString v
 
-        PartialExpression _ _ _ _ ->
-            Debug.todo "branch 'PartialExpression _ _ _' not implemented"
+        PartialExpression expr _ _ ->
+            Elm.Writer.write <| Elm.Writer.writeExpression expr
 
         PartialValue ( Err e, _, _ ) ->
             errorToString (EvalError e)

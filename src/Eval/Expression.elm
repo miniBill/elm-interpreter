@@ -51,7 +51,7 @@ evalExpression (Node _ expression) cfg env =
                     evalShortCircuitAnd l r cfg env
 
                 Expression.OperatorApplication opName _ l r ->
-                    partialExpression
+                    PartialExpression
                         (fakeNode <|
                             Expression.Application
                                 [ fakeNode <| Expression.Operator opName
@@ -87,7 +87,7 @@ evalExpression (Node _ expression) cfg env =
                     evalTuple exprs cfg env
 
                 Expression.ParenthesizedExpression child ->
-                    PartialExpression env child cfg.callTreeContinuation identity
+                    PartialExpression child cfg env
 
                 Expression.LetExpression letBlock ->
                     evalLetBlock letBlock cfg env
@@ -115,28 +115,27 @@ evalExpression (Node _ expression) cfg env =
 
                 Expression.GLSLExpression _ ->
                     Types.failPartial <| unsupported env "GLSL not supported"
+
+        _ =
+            Debug.log "evalExpression"
+                { expression = expression
+
+                -- , result = result
+                }
     in
     case result of
         PartialValue ( v, callTrees, expressions ) ->
-            ( v, callTrees, expressions |> Rope.append ( expression, result ) )
+            ( v
+            , callTrees
+            , expressions
+                |> Rope.append ( expression, result )
+            )
 
-        PartialExpression newEnv next callTreeContinuation traceContinuation ->
-            let
-                _ =
-                    Debug.todo
-            in
+        PartialExpression next newConfig newEnv ->
             evalExpression
                 next
-                { cfg
-                    | callTreeContinuation = callTreeContinuation
-                    , traceContinuation = traceContinuation
-                }
+                newConfig
                 newEnv
-
-
-partialExpression : Node Expression -> PartialEval
-partialExpression expr cfg env =
-    PartialExpression env expr cfg.callTreeContinuation cfg.traceContinuation
 
 
 evalShortCircuitAnd : Node Expression -> Node Expression -> PartialEval
@@ -149,7 +148,7 @@ evalShortCircuitAnd l r cfg env =
                         Types.succeedPartial <| Bool False
 
                     Bool True ->
-                        partialExpression r cfg env
+                        PartialExpression r cfg env
 
                     v ->
                         Types.failPartial <| typeError env <| "&& applied to non-Bool " ++ Value.toString v
@@ -166,7 +165,7 @@ evalShortCircuitOr l r cfg env =
                         Types.succeedPartial <| Bool True
 
                     Bool False ->
-                        partialExpression r cfg env
+                        PartialExpression r cfg env
 
                     v ->
                         Types.failPartial <| typeError env <| "|| applied to non-Bool " ++ Value.toString v
@@ -180,7 +179,7 @@ evalTuple exprs cfg env =
             Types.succeedPartial Value.Unit
 
         [ c ] ->
-            partialExpression c cfg env
+            PartialExpression c cfg env
 
         [ l, r ] ->
             evalExpression l cfg env
@@ -241,7 +240,6 @@ evalApplication first rest cfg env =
                         if not (List.isEmpty leftover) then
                             -- Too many args, we split
                             PartialExpression
-                                env
                                 (fakeNode <|
                                     Expression.Application
                                         (fakeNode
@@ -249,8 +247,8 @@ evalApplication first rest cfg env =
                                             :: leftover
                                         )
                                 )
-                                cfg.callTreeContinuation
-                                cfg.traceContinuation
+                                cfg
+                                env
 
                         else
                             Types.combineMap evalExpression rest cfg env
@@ -260,10 +258,14 @@ evalApplication first rest cfg env =
                                             restLength : Int
                                             restLength =
                                                 List.length rest
+
+                                            args : List Value
+                                            args =
+                                                oldArgs ++ values
                                         in
                                         if oldArgsLength + restLength < patternsLength then
                                             -- Still not enough
-                                            Types.succeedPartial <| Value.PartiallyApplied localEnv (oldArgs ++ values) patterns maybeQualifiedName implementation
+                                            Types.succeedPartial <| Value.PartiallyApplied localEnv args patterns maybeQualifiedName implementation
 
                                         else
                                             -- Just right, we special case this for TCO
@@ -272,7 +274,7 @@ evalApplication first rest cfg env =
                                                 maybeNewEnvValues =
                                                     match env
                                                         (fakeNode <| ListPattern patterns)
-                                                        (List (oldArgs ++ values))
+                                                        (List args)
                                             in
                                             case maybeNewEnvValues of
                                                 Err e ->
@@ -328,11 +330,12 @@ evalApplication first rest cfg env =
                                                                                 |> PartialValue
 
                                                         _ ->
-                                                            PartialExpression
-                                                                (localEnv |> Env.with newEnvValues)
+                                                            call
+                                                                maybeQualifiedName
                                                                 implementation
-                                                                (call cfg maybeQualifiedName values)
-                                                                cfg.traceContinuation
+                                                                args
+                                                                cfg
+                                                                (localEnv |> Env.with newEnvValues)
                                     )
 
                     other ->
@@ -344,28 +347,33 @@ evalApplication first rest cfg env =
             )
 
 
-call : Config -> Maybe QualifiedNameRef -> List Value -> CallTreeContinuation
-call cfg maybeQualifiedName values =
+call : Maybe QualifiedNameRef -> Node Expression -> List Value -> PartialEval
+call maybeQualifiedName implementation values cfg env =
     case maybeQualifiedName of
         Just qualifiedName ->
-            \children result ->
-                cfg.callTreeContinuation
-                    (if cfg.trace then
-                        [ CallNode "call"
-                            qualifiedName
-                            { args = values
-                            , result = result
-                            , children = children
-                            }
-                        ]
+            PartialExpression implementation
+                { cfg
+                    | callTreeContinuation =
+                        \children result ->
+                            cfg.callTreeContinuation
+                                (if cfg.trace then
+                                    CallNode "call"
+                                        qualifiedName
+                                        { args = values
+                                        , result = result
+                                        , children = children
+                                        }
+                                        :: children
 
-                     else
-                        []
-                    )
-                    result
+                                 else
+                                    []
+                                )
+                                result
+                }
+                (Env.call qualifiedName.moduleName qualifiedName.name env)
 
         Nothing ->
-            cfg.callTreeContinuation
+            PartialExpression implementation cfg env
 
 
 evalFunctionOrValue : ModuleName -> String -> PartialEval
@@ -422,10 +430,7 @@ evalFunctionOrValue moduleName name cfg env =
             _ ->
                 case ( moduleName, Dict.get name env.values ) of
                     ( [], Just (PartiallyApplied localEnv [] [] maybeName implementation) ) ->
-                        PartialExpression localEnv
-                            implementation
-                            (call cfg maybeName [])
-                            identity
+                        call maybeName implementation [] cfg localEnv
 
                     ( [], Just value ) ->
                         Types.succeedPartial value
@@ -454,11 +459,7 @@ evalFunctionOrValue moduleName name cfg env =
                         case maybeFunction of
                             Just function ->
                                 if List.isEmpty function.arguments then
-                                    PartialExpression
-                                        (Env.call fixedModuleName name env)
-                                        function.expression
-                                        (call cfg (Just qualifiedNameRef) [])
-                                        cfg.traceContinuation
+                                    call (Just { moduleName = fixedModuleName, name = name }) function.expression [] cfg env
 
                                 else
                                     PartiallyApplied
@@ -485,10 +486,10 @@ evalIfBlock cond true false cfg env =
             (\condValue ->
                 case condValue of
                     Value.Bool True ->
-                        partialExpression true cfg env
+                        PartialExpression true cfg env
 
                     Value.Bool False ->
-                        partialExpression false cfg env
+                        PartialExpression false cfg env
 
                     _ ->
                         Types.failPartial <| typeError env "ifThenElse condition was not a boolean"
@@ -724,7 +725,7 @@ evalLetBlock letBlock cfg env =
     newEnv
         |> Types.andThenPartial
             (\ne ->
-                partialExpression letBlock.expression
+                PartialExpression letBlock.expression
                     cfg
                     ne
             )
@@ -1016,7 +1017,7 @@ evalCase { expression, cases } cfg env =
                                                     Ok Nothing
 
                                                 Ok (Just additionalEnv) ->
-                                                    partialExpression result2
+                                                    PartialExpression result2
                                                         cfg
                                                         (Env.with additionalEnv env)
                                                         |> Just
