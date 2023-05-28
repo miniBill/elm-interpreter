@@ -494,12 +494,16 @@ evalApplication cfg env first rest =
                                                             in
                                                             PartialResult.fromValue
                                                                 ( kernelResult
-                                                                , [ CallNode qualifiedName
+                                                                , if cfg.trace then
+                                                                    [ CallNode qualifiedName
                                                                         { args = values
                                                                         , result = kernelResult
                                                                         , children = children
                                                                         }
-                                                                  ]
+                                                                    ]
+
+                                                                  else
+                                                                    []
                                                                 )
 
                                         _ ->
@@ -522,12 +526,17 @@ call cfg maybeQualifiedName values =
         Just qualifiedName ->
             \children result ->
                 cfg.callTreeContinuation
-                    [ CallNode qualifiedName
-                        { args = values
-                        , result = result
-                        , children = children
-                        }
-                    ]
+                    (if cfg.trace then
+                        [ CallNode qualifiedName
+                            { args = values
+                            , result = result
+                            , children = children
+                            }
+                        ]
+
+                     else
+                        []
+                    )
                     result
 
         Nothing ->
@@ -772,11 +781,8 @@ evalFunction cfg localEnv oldArgs patterns functionName implementation =
 
                     _ ->
                         evalExpression
-                            (case functionName of
-                                Nothing ->
-                                    cfg
-
-                                Just { moduleName, name } ->
+                            (case ( functionName, cfg.trace ) of
+                                ( Just { moduleName, name }, True ) ->
                                     { cfg
                                         | callTreeContinuation =
                                             \children result ->
@@ -792,6 +798,9 @@ evalFunction cfg localEnv oldArgs patterns functionName implementation =
                                                     ]
                                                     result
                                     }
+
+                                _ ->
+                                    cfg
                             )
                             (localEnv |> Env.with newEnvValues)
                             implementation
@@ -814,23 +823,33 @@ evalKernelFunction cfg env moduleName name =
                         let
                             ( result, callTrees ) =
                                 f cfg (Env.call moduleName name env) []
-
-                            callTree =
-                                CallNode
-                                    { moduleName = moduleName
-                                    , name = name
-                                    }
-                                    { args = []
-                                    , result = result
-                                    , children = []
-                                    }
                         in
-                        case result of
-                            Ok value ->
-                                PartialValue (callTree :: callTrees) value
+                        if cfg.trace then
+                            let
+                                callTree =
+                                    CallNode
+                                        { moduleName = moduleName
+                                        , name = name
+                                        }
+                                        { args = []
+                                        , result = result
+                                        , children = []
+                                        }
+                            in
+                            case result of
+                                Ok value ->
+                                    PartialValue (callTree :: callTrees) value
 
-                            Err e ->
-                                PartialErr (callTree :: callTrees) e
+                                Err e ->
+                                    PartialErr (callTree :: callTrees) e
+
+                        else
+                            case result of
+                                Ok value ->
+                                    PartialValue callTrees value
+
+                                Err e ->
+                                    PartialErr callTrees e
 
                     else
                         PartiallyApplied (Env.empty moduleName)
