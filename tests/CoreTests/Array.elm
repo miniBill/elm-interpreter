@@ -11,14 +11,13 @@ suite : Test
 suite =
     describe "Array"
         [ initTests
-
-        -- , isEmptyTests
-        -- , lengthTests
-        -- , getSetTests
-        -- , conversionTests
-        -- , transformTests
-        -- , sliceTests
-        -- , runtimeCrashTests
+        , isEmptyTests
+        , lengthTests
+        , getSetTests
+        , conversionTests
+        , transformTests
+        , sliceTests
+        , runtimeCrashTests
         ]
 
 

@@ -6,13 +6,13 @@ import Elm.Syntax.Expression as Expression exposing (Expression, LetDeclaration)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
+import Elm.Writer
 import Env
-import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation, Config, Eval, EvalResult, PartialEval, PartialResult(..))
+import Eval.Types as Types exposing (CallTree(..), Eval, EvalResult, PartialEval, PartialResult(..))
 import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
 import Result.MyExtra
-import Rope
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import TopologicalSort
@@ -22,6 +22,12 @@ import Value exposing (Env, EnvValues, EvalError, Value(..), nameError, typeErro
 
 evalExpression : Node Expression -> Eval Value
 evalExpression (Node _ expression) cfg env =
+    let
+        _ =
+            Debug.log "evalExpression"
+                { expression = Elm.Writer.write <| Elm.Writer.writeExpression <| fakeNode expression
+                }
+    in
     let
         result : PartialResult
         result =
@@ -118,17 +124,14 @@ evalExpression (Node _ expression) cfg env =
 
         _ =
             Debug.log "evalExpression"
-                { expression = expression
-
-                -- , result = result
+                { expression = Elm.Writer.write <| Elm.Writer.writeExpression <| fakeNode expression
+                , result = Types.partialResultToString result
                 }
     in
     case result of
-        PartialValue ( v, callTrees, expressions ) ->
+        PartialValue ( v, callTrees ) ->
             ( v
             , callTrees
-            , expressions
-                |> Rope.append ( expression, result )
             )
 
         PartialExpression next newConfig newEnv ->
@@ -308,7 +311,7 @@ evalApplication first rest cfg env =
 
                                                                         Just ( _, f ) ->
                                                                             let
-                                                                                ( kernelResult, children, expressions ) =
+                                                                                ( kernelResult, children ) =
                                                                                     f values
                                                                                         cfg
                                                                                         (Env.call moduleName name env)
@@ -325,7 +328,6 @@ evalApplication first rest cfg env =
 
                                                                               else
                                                                                 []
-                                                                            , expressions
                                                                             )
                                                                                 |> PartialValue
 
@@ -459,14 +461,14 @@ evalFunctionOrValue moduleName name cfg env =
                         case maybeFunction of
                             Just function ->
                                 if List.isEmpty function.arguments then
-                                    call (Just { moduleName = fixedModuleName, name = name }) function.expression [] cfg env
+                                    call (Just qualifiedNameRef) function.expression [] cfg env
 
                                 else
                                     PartiallyApplied
                                         (Env.call fixedModuleName name env)
                                         []
                                         function.arguments
-                                        (Just { moduleName = fixedModuleName, name = name })
+                                        (Just qualifiedNameRef)
                                         function.expression
                                         |> Types.succeedPartial
 
@@ -621,7 +623,7 @@ evalKernelFunction moduleName name cfg env =
                 Just ( argCount, f ) ->
                     if argCount == 0 then
                         let
-                            ( result, callTrees, expressions ) =
+                            ( result, callTrees ) =
                                 f [] cfg (Env.call moduleName name env)
                         in
                         if cfg.trace then
@@ -637,7 +639,7 @@ evalKernelFunction moduleName name cfg env =
                                         , children = []
                                         }
                             in
-                            PartialValue ( result, callTree :: callTrees, expressions )
+                            PartialValue ( result, callTree :: callTrees )
 
                         else
                             PartialValue <| Types.fromResult result

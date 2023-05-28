@@ -9,11 +9,10 @@ import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Writer
 import Eval
 import Eval.Module
-import Eval.Types exposing (CallTree(..), Error(..), PartialResult(..), TraceLine)
-import Parser
+import Eval.Types as Types exposing (CallTree(..), Error, PartialResult)
 import Rope
 import Syntax
-import Value exposing (EvalErrorKind(..))
+import Value
 
 
 type Msg
@@ -25,7 +24,6 @@ type alias Model =
     { input : String
     , output : Result String String
     , callTree : List CallTree
-    , trace : List TraceLine
     }
 
 
@@ -113,11 +111,6 @@ innerView model =
                 , spacing 10
                 ]
                 (List.map viewCallTree model.callTree)
-        , if List.isEmpty model.trace then
-            Element.none
-
-          else
-            column [ spacing 10 ] (List.map viewTraceLine model.trace)
         ]
 
 
@@ -165,7 +158,7 @@ viewCallTree (CallNode kind name { args, children, result }) =
                     Value.toString v
 
                 Err e ->
-                    evalErrorToString e
+                    Types.evalErrorToString e
 
         childrenRows : List (Element msg)
         childrenRows =
@@ -189,29 +182,6 @@ viewCallTree (CallNode kind name { args, children, result }) =
             ]
 
 
-viewTraceLine : ( Expression, PartialResult ) -> Element Msg
-viewTraceLine ( expr, res ) =
-    [ Elm.Writer.write <| Elm.Writer.writeExpression <| Syntax.fakeNode expr
-    , " => "
-    , partialResultToString res
-    ]
-        |> String.concat
-        |> text
-
-
-partialResultToString : PartialResult -> String
-partialResultToString result =
-    case result of
-        PartialValue ( Ok v, _, _ ) ->
-            Value.toString v
-
-        PartialExpression expr _ _ ->
-            Elm.Writer.write <| Elm.Writer.writeExpression expr
-
-        PartialValue ( Err e, _, _ ) ->
-            errorToString (EvalError e)
-
-
 init : Model
 init =
     { input = """let
@@ -224,7 +194,6 @@ in
 boom 100000"""
     , output = Ok ""
     , callTree = []
-    , trace = []
     }
 
 
@@ -236,7 +205,7 @@ update msg model =
 
         Eval tracing ->
             let
-                ( result, callTree, traceLines ) =
+                ( result, callTree ) =
                     if tracing then
                         if String.startsWith "module " model.input then
                             Eval.Module.trace model.input (Expression.FunctionOrValue [] "main")
@@ -251,13 +220,11 @@ update msg model =
                           else
                             Eval.eval model.input
                         , []
-                        , Rope.empty
                         )
             in
             { model
                 | output = resultToString result
                 , callTree = callTree
-                , trace = Rope.toList traceLines
             }
 
 
@@ -265,37 +232,7 @@ resultToString : Result Error Value.Value -> Result String String
 resultToString result =
     case result of
         Err e ->
-            Err <| errorToString e
+            Err <| Types.errorToString e
 
         Ok value ->
             Ok <| Value.toString value
-
-
-errorToString : Error -> String
-errorToString err =
-    case err of
-        ParsingError deadEnds ->
-            "Parsing error: " ++ Parser.deadEndsToString deadEnds
-
-        EvalError evalError ->
-            evalErrorToString evalError
-
-
-evalErrorToString : Value.EvalError -> String
-evalErrorToString { callStack, error } =
-    let
-        messageWithType : String
-        messageWithType =
-            case error of
-                TypeError message ->
-                    "Type error: " ++ message
-
-                Unsupported message ->
-                    "Unsupported: " ++ message
-
-                NameError name ->
-                    "Name error: " ++ name ++ " not found"
-    in
-    messageWithType
-        ++ "\nCall stack:\n - "
-        ++ String.join "\n - " (List.reverse <| List.map Syntax.qualifiedNameToString callStack)

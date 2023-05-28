@@ -2,8 +2,7 @@ module Eval exposing (eval, trace)
 
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Eval.Module
-import Eval.Types exposing (CallTree, Error, TraceLine)
-import Rope exposing (Rope)
+import Eval.Types exposing (CallTree, Error)
 import Value exposing (Value)
 
 
@@ -21,7 +20,7 @@ eval expressionSource =
     Eval.Module.eval source expression
 
 
-trace : String -> ( Result Error Value, List CallTree, Rope TraceLine )
+trace : String -> ( Result Error Value, List CallTree )
 trace expressionSource =
     let
         source : String

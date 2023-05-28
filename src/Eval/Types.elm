@@ -1,11 +1,12 @@
-module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), TraceContinuation, TraceLine, andThen, andThenPartial, combineMap, fail, failPartial, fromResult, map, map2, onValue, succeed, succeedPartial)
+module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, errorToString, evalErrorToString, fail, failPartial, fromResult, map, map2, onValue, partialResultToString, succeed, succeedPartial)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
+import Elm.Writer
 import Parser exposing (DeadEnd)
-import Rope exposing (Rope)
-import Value exposing (Env, EvalError, Value)
+import Syntax
+import Value exposing (Env, EvalError, EvalErrorKind(..), Value)
 
 
 type alias PartialEval =
@@ -19,58 +20,48 @@ type alias Eval out =
 type alias EvalResult out =
     ( Result EvalError out
     , List CallTree
-    , Rope TraceLine
-    )
-
-
-type alias TraceLine =
-    ( Expression
-    , PartialResult
     )
 
 
 onValue : (a -> Result EvalError out) -> EvalResult a -> EvalResult out
-onValue f ( x, callTrees, expressions ) =
+onValue f ( x, callTrees ) =
     ( Result.andThen f x
     , callTrees
-    , expressions
     )
 
 
 andThen : (a -> EvalResult b) -> EvalResult a -> EvalResult b
-andThen f ( v, callTrees, expressions ) =
+andThen f ( v, callTrees ) =
     case v of
         Err e ->
-            ( Err e, callTrees, expressions )
+            ( Err e, callTrees )
 
         Ok w ->
             let
-                ( y, fxCallTrees, fxExpressions ) =
+                ( y, fxCallTrees ) =
                     f w
             in
-            ( y, fxCallTrees ++ callTrees, Rope.appendTo expressions fxExpressions )
+            ( y, fxCallTrees ++ callTrees )
 
 
 map : (a -> out) -> EvalResult a -> EvalResult out
-map f ( x, callTrees, expressions ) =
+map f ( x, callTrees ) =
     ( Result.map f x
     , callTrees
-    , expressions
     )
 
 
 map2 : (a -> b -> out) -> EvalResult a -> EvalResult b -> EvalResult out
-map2 f ( lv, lc, le ) ( rv, rc, re ) =
+map2 f ( lv, lc ) ( rv, rc ) =
     ( Result.map2 f lv rv
     , lc ++ rc
-    , Rope.appendTo le re
     )
 
 
 combineMap : (a -> Eval b) -> List a -> Eval (List b)
 combineMap f xs cfg env =
     List.foldr
-        (\el (( listAcc, _, _ ) as acc) ->
+        (\el (( listAcc, _ ) as acc) ->
             case listAcc of
                 Err _ ->
                     acc
@@ -96,22 +87,17 @@ fail e =
 
 fromResult : Result EvalError a -> EvalResult a
 fromResult x =
-    ( x, [], Rope.empty )
+    ( x, [] )
 
 
 type alias Config =
     { trace : Bool
     , callTreeContinuation : CallTreeContinuation
-    , traceContinuation : TraceContinuation
     }
 
 
 type alias CallTreeContinuation =
     List CallTree -> Result EvalError Value -> List CallTree
-
-
-type alias TraceContinuation =
-    Rope TraceLine -> Rope TraceLine
 
 
 type CallTree
@@ -152,10 +138,10 @@ failPartial e =
 andThenPartial : (a -> PartialResult) -> EvalResult a -> PartialResult
 andThenPartial f x =
     case x of
-        ( Err e, callTrees, traceLines ) ->
-            PartialValue ( Err e, callTrees, traceLines )
+        ( Err e, callTrees ) ->
+            PartialValue ( Err e, callTrees )
 
-        ( Ok w, callTrees, traceLines ) ->
+        ( Ok w, callTrees ) ->
             case f w of
                 PartialValue y ->
                     PartialValue <| map2 (\_ vy -> vy) x y
@@ -165,6 +151,48 @@ andThenPartial f x =
                         expr
                         { newConfig
                             | callTreeContinuation = \children result -> newConfig.callTreeContinuation (callTrees ++ children) result
-                            , traceContinuation = \trace -> Rope.appendTo traceLines trace
                         }
                         newEnv
+
+
+partialResultToString : PartialResult -> String
+partialResultToString result =
+    case result of
+        PartialValue ( Ok v, _ ) ->
+            Value.toString v
+
+        PartialExpression expr _ _ ->
+            Elm.Writer.write (Elm.Writer.writeExpression expr)
+
+        PartialValue ( Err e, _ ) ->
+            errorToString (EvalError e)
+
+
+errorToString : Error -> String
+errorToString err =
+    case err of
+        ParsingError deadEnds ->
+            "Parsing error: " ++ Parser.deadEndsToString deadEnds
+
+        EvalError evalError ->
+            evalErrorToString evalError
+
+
+evalErrorToString : EvalError -> String
+evalErrorToString { callStack, error } =
+    let
+        messageWithType : String
+        messageWithType =
+            case error of
+                TypeError message ->
+                    "Type error: " ++ message
+
+                Unsupported message ->
+                    "Unsupported: " ++ message
+
+                NameError name ->
+                    "Name error: " ++ name ++ " not found"
+    in
+    messageWithType
+        ++ "\nCall stack:\n - "
+        ++ String.join "\n - " (List.reverse <| List.map Syntax.qualifiedNameToString callStack)
