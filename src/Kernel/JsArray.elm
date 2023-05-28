@@ -1,9 +1,9 @@
 module Kernel.JsArray exposing (appendN, foldr, initialize, initializeFromList)
 
 import Array exposing (Array)
-import Eval.Types exposing (CallTree, Config, Eval, Eval3)
+import Eval.Types exposing (Eval, Eval3)
 import List.Extra
-import Value exposing (EvalResult, Value)
+import Value exposing (Value)
 
 
 appendN : Int -> Array Value -> Array Value -> Array Value

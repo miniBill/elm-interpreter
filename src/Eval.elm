@@ -65,6 +65,7 @@ traceModule source expression =
 traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, CallTree )
 traceOrEvalModule cfg source expression =
     let
+        maybeEnv : Result Error Env
         maybeEnv =
             source
                 |> Elm.Parser.parse
@@ -83,7 +84,7 @@ traceOrEvalModule cfg source expression =
     case maybeEnv of
         Err e ->
             let
-                evalError : Value.EvalError
+                evalError : EvalError
                 evalError =
                     { currentModule = []
                     , callStack = []
@@ -410,10 +411,6 @@ evalApplication cfg env first rest =
                 oldArgsLength =
                     List.length oldArgs
 
-                restLength : Int
-                restLength =
-                    List.length rest
-
                 patternsLength : Int
                 patternsLength =
                     List.length patterns
@@ -438,6 +435,10 @@ evalApplication cfg env first rest =
 
                     ( Ok values, restCallTrees ) ->
                         let
+                            restLength : Int
+                            restLength =
+                                List.length rest
+
                             callTrees : List CallTree
                             callTrees =
                                 firstCallTree :: restCallTrees
@@ -1153,7 +1154,7 @@ evalRecordUpdate cfg env (Node _ name) setters =
         ( Err e, callTree ) ->
             PartialErr [ callTree ] e
 
-        ( Ok (Value.Record fields), callTree ) ->
+        ( Ok (Value.Record _), callTree ) ->
             let
                 ( fieldNames, fieldExpressions ) =
                     setters

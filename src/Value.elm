@@ -141,10 +141,10 @@ toExpression value =
             JsArray array ->
                 arrayToExpression "JsArray" (Array.toList array)
 
-            PartiallyApplied _ [] patterns (Just qualifiedName) implementation ->
+            PartiallyApplied _ [] _ (Just qualifiedName) _ ->
                 Expression.FunctionOrValue qualifiedName.moduleName qualifiedName.name
 
-            PartiallyApplied _ args patterns (Just qualifiedName) implementation ->
+            PartiallyApplied _ args _ (Just qualifiedName) _ ->
                 (fakeNode
                     (Expression.FunctionOrValue
                         qualifiedName.moduleName

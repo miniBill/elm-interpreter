@@ -6,14 +6,14 @@ import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern exposing (QualifiedNameRef)
-import Eval.Types exposing (CallTree, Config, Eval, Eval2, Eval3, Eval4)
+import Eval.Types exposing (Eval, Eval2, Eval3, Eval4)
 import FastDict as Dict exposing (Dict)
 import Kernel.JsArray
 import Kernel.List
 import Kernel.String
 import Kernel.Utils
 import Maybe.Extra
-import Value exposing (Env, EvalResult, Value(..), typeError)
+import Value exposing (EvalResult, Value(..), typeError)
 
 
 type alias EvalFunction =

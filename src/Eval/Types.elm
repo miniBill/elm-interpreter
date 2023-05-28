@@ -61,7 +61,7 @@ type CallTree
 
 type Error
     = ParsingError (List DeadEnd)
-    | EvalError Value.EvalError
+    | EvalError EvalError
 
 
 {-| Represent the result of a computation inside one of the branches of `evalExpression`.

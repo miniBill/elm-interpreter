@@ -40,7 +40,10 @@ innerView model =
         [ spacing 10
         , padding 10
         ]
-        [ Input.multiline [ width fill ]
+        [ Input.multiline
+            [ width fill
+            , Font.family [ Font.monospace ]
+            ]
             { spellcheck = False
             , text = model.input
             , onChange = Input
@@ -48,6 +51,7 @@ innerView model =
             , placeholder = Nothing
             }
         , let
+            toRun : String
             toRun =
                 if String.startsWith "module " model.input then
                     let
@@ -112,9 +116,14 @@ viewTrace (CallNode name { args, children, result }) =
         nameRow =
             text <|
                 Syntax.qualifiedNameToString name
-                    ++ " : "
-                    ++ String.join " -> " (List.map Value.toString args)
-                    ++ " -> "
+                    ++ (if List.isEmpty args then
+                            " = "
+
+                        else
+                            " : "
+                                ++ String.join " -> " (List.map Value.toString args)
+                                ++ " -> "
+                       )
                     ++ resultString
 
         resultString : String

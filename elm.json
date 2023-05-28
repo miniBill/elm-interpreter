@@ -12,7 +12,6 @@
             "elm/parser": "1.1.0",
             "elm-community/list-extra": "8.7.0",
             "elm-community/maybe-extra": "5.3.0",
-            "elm-community/result-extra": "2.4.0",
             "mdgriffith/elm-ui": "1.1.8",
             "miniBill/elm-fast-dict": "1.1.0",
             "miniBill/elm-unicode": "1.0.3",
