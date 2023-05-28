@@ -6,7 +6,7 @@ import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern exposing (QualifiedNameRef)
-import Eval.Types exposing (Eval, Eval2, Eval3, Eval4)
+import Eval.Types exposing (Eval)
 import FastDict as Dict exposing (Dict)
 import Kernel.JsArray
 import Kernel.List
@@ -17,15 +17,14 @@ import Value exposing (EvalResult, Value(..), typeError)
 
 
 type alias EvalFunction =
-    Eval4
-        (List Value)
-        (List (Node Pattern.Pattern))
-        (Maybe QualifiedNameRef)
-        (Node Expression)
-        Value
+    List Value
+    -> List (Node Pattern.Pattern)
+    -> Maybe QualifiedNameRef
+    -> Node Expression
+    -> Eval Value
 
 
-functions : EvalFunction -> Dict ModuleName (Dict String ( Int, Eval (List Value) Value ))
+functions : EvalFunction -> Dict ModuleName (Dict String ( Int, List Value -> Eval Value ))
 functions evalFunction =
     [ -- Elm.Kernel.Basics
       ( [ "Elm", "Kernel", "Basics" ]
@@ -132,7 +131,7 @@ functions evalFunction =
         -- , ( "foldl", one string to string String.foldl )
         -- , ( "foldr", one string to string String.foldr )
         , ( "fromList", one (list char) to string String.fromList )
-        , ( "fromNumber", oneWithError anything to string <| \_ env s -> ( Kernel.String.fromNumber env s, [] ) )
+        , ( "fromNumber", oneWithError anything to string <| \s _ env -> ( Kernel.String.fromNumber env s, [] ) )
         , ( "indexes", two string string to (list int) String.indexes )
         , ( "join", two string (list string) to string String.join )
         , ( "lines", one string to (list string) String.lines )
@@ -155,7 +154,7 @@ functions evalFunction =
         , ( "le", Kernel.Utils.comparison [ LT, EQ ] )
         , ( "lt", Kernel.Utils.comparison [ LT ] )
         , ( "equal", Kernel.Utils.comparison [ EQ ] )
-        , ( "compare", twoWithError anything anything to order <| \_ env l r -> ( Kernel.Utils.compare env l r, [] ) )
+        , ( "compare", twoWithError anything anything to order <| \l r _ env -> ( Kernel.Utils.compare l r env, [] ) )
         ]
       )
     ]
@@ -365,16 +364,16 @@ function :
     -> OutSelector from xf
     -> To
     -> InSelector to xt
-    -> InSelector (Eval from to) {}
+    -> InSelector (from -> Eval to) {}
 function evalFunctionWith inSelector _ outSelector =
     let
-        fromValue : Value -> Maybe (Eval from to)
+        fromValue : Value -> Maybe (from -> Eval to)
         fromValue value =
             case value of
                 PartiallyApplied localEnv oldArgs patterns maybeName implementation ->
                     Just
-                        (\cfg _ arg ->
-                            case evalFunctionWith cfg localEnv (oldArgs ++ [ inSelector.toValue arg ]) patterns maybeName implementation of
+                        (\arg cfg _ ->
+                            case evalFunctionWith (oldArgs ++ [ inSelector.toValue arg ]) patterns maybeName implementation cfg localEnv of
                                 ( Err e, callTree ) ->
                                     ( Err e, callTree )
 
@@ -408,7 +407,7 @@ function2 :
     -> OutSelector b xb
     -> To
     -> InSelector to xt
-    -> InSelector (Eval a (Eval b to)) {}
+    -> InSelector (a -> Eval (b -> Eval to)) {}
 function2 evalFunction in1Selector in2Selector _ outSelector =
     function evalFunction in1Selector to (function evalFunction in2Selector to outSelector)
 
@@ -430,10 +429,10 @@ tuple firstSelector secondSelector =
     }
 
 
-constant : OutSelector res x -> res -> ( Int, Eval (List Value) Value )
+constant : OutSelector res x -> res -> ( Int, List Value -> Eval Value )
 constant selector const =
     ( 0
-    , \_ env args ->
+    , \args _ env ->
         case args of
             [] ->
                 ( Ok <| selector.toValue const, [] )
@@ -447,7 +446,7 @@ zero :
     To
     -> OutSelector out ox
     -> out
-    -> ( Int, Eval (List Value) Value )
+    -> ( Int, List Value -> Eval Value )
 zero _ output f =
     zeroWithError To output (Ok f)
 
@@ -456,10 +455,10 @@ zeroWithError :
     To
     -> OutSelector out ox
     -> EvalResult out
-    -> ( Int, Eval (List Value) Value )
+    -> ( Int, List Value -> Eval Value )
 zeroWithError _ output f =
     ( 0
-    , \_ env args ->
+    , \args _ env ->
         case args of
             [] ->
                 ( Result.map output.toValue f, [] )
@@ -474,7 +473,7 @@ one :
     -> To
     -> OutSelector out ox
     -> (a -> out)
-    -> ( Int, Eval (List Value) Value )
+    -> ( Int, List Value -> Eval Value )
 one firstSelector _ output f =
     oneWithError firstSelector To output (\_ _ v -> ( Ok (f v), [] ))
 
@@ -483,11 +482,11 @@ oneWithError :
     InSelector a xa
     -> To
     -> OutSelector out xo
-    -> Eval a out
-    -> ( Int, Eval (List Value) Value )
+    -> (a -> Eval out)
+    -> ( Int, List Value -> Eval Value )
 oneWithError firstSelector _ output f =
     ( 1
-    , \cfg env args ->
+    , \args cfg env ->
         let
             err : String -> EvalResult value
             err got =
@@ -499,7 +498,7 @@ oneWithError firstSelector _ output f =
                     Just s ->
                         Tuple.mapFirst
                             (Result.map output.toValue)
-                            (f cfg env s)
+                            (f s cfg env)
 
                     Nothing ->
                         ( err (Value.toString arg), [] )
@@ -518,7 +517,7 @@ two :
     -> To
     -> OutSelector out xo
     -> (a -> b -> out)
-    -> ( Int, Eval (List Value) Value )
+    -> ( Int, List Value -> Eval Value )
 two firstSelector secondSelector _ output f =
     twoWithError firstSelector secondSelector To output (\_ _ l r -> ( Ok (f l r), [] ))
 
@@ -528,11 +527,11 @@ twoWithError :
     -> InSelector b xb
     -> To
     -> OutSelector out xo
-    -> Eval2 a b out
-    -> ( Int, Eval (List Value) Value )
+    -> (a -> b -> Eval out)
+    -> ( Int, List Value -> Eval Value )
 twoWithError firstSelector secondSelector _ output f =
     ( 2
-    , \cfg env args ->
+    , \args cfg env ->
         let
             typeError_ : String -> EvalResult value
             typeError_ msg =
@@ -577,7 +576,7 @@ three :
     -> To
     -> OutSelector out xo
     -> (a -> b -> c -> out)
-    -> ( Int, Eval (List Value) Value )
+    -> ( Int, List Value -> Eval Value )
 three firstSelector secondSelector thirdSelector _ output f =
     threeWithError firstSelector secondSelector thirdSelector To output (\_ _ l m r -> ( Ok (f l m r), [] ))
 
@@ -588,11 +587,11 @@ threeWithError :
     -> InSelector c xc
     -> To
     -> OutSelector out xo
-    -> Eval3 a b c out
-    -> ( Int, Eval (List Value) Value )
+    -> (a -> b -> c -> Eval out)
+    -> ( Int, List Value -> Eval Value )
 threeWithError firstSelector secondSelector thirdSelector _ output f =
     ( 3
-    , \cfg env args ->
+    , \args cfg env ->
         let
             err : String -> EvalResult value
             err got =
@@ -608,7 +607,7 @@ threeWithError firstSelector secondSelector thirdSelector _ output f =
                     ( Just first, Just second, Just third ) ->
                         Tuple.mapFirst
                             (Result.map output.toValue)
-                            (f cfg env first second third)
+                            (f first second third cfg env)
 
                     _ ->
                         ( err (String.join ", " (List.map Value.toString args)), [] )
@@ -624,10 +623,10 @@ threeWithError firstSelector secondSelector thirdSelector _ output f =
 twoNumbers :
     (Int -> Int -> Int)
     -> (Float -> Float -> Float)
-    -> ( Int, Eval (List Value) Value )
+    -> ( Int, List Value -> Eval Value )
 twoNumbers fInt fFloat =
     ( 2
-    , \_ env args ->
+    , \args _ env ->
         case args of
             [ Int li, Int ri ] ->
                 ( Ok <| Int (fInt li ri), [] )

@@ -1,11 +1,11 @@
 module Kernel.Utils exposing (append, compare, comparison)
 
-import Eval.Types exposing (Eval, Eval2)
+import Eval.Types exposing (Eval)
 import Value exposing (Env, EvalResult, Value(..), typeError)
 
 
-append : Eval2 Value Value Value
-append _ env l r =
+append : Value -> Value -> Eval Value
+append l r _ env =
     case ( l, r ) of
         ( String ls, String rs ) ->
             ( Ok <| String (ls ++ rs), [] )
@@ -19,8 +19,8 @@ append _ env l r =
             )
 
 
-compare : Env -> Value -> Value -> EvalResult Order
-compare env l r =
+compare : Value -> Value -> Env -> EvalResult Order
+compare l r env =
     let
         inner : comparable -> comparable -> EvalResult Order
         inner lv rv =
@@ -47,32 +47,32 @@ compare env l r =
             inner lv rv
 
         ( Tuple la lb, Tuple ra rb ) ->
-            compare env la ra
+            compare la ra env
                 |> Result.andThen
                     (\a ->
                         if a /= EQ then
                             Ok a
 
                         else
-                            compare env lb rb
+                            compare lb rb env
                     )
 
         ( Triple la lb lc, Triple ra rb rc ) ->
-            compare env la ra
+            compare la ra env
                 |> Result.andThen
                     (\a ->
                         if a /= EQ then
                             Ok a
 
                         else
-                            compare env lb rb
+                            compare lb rb env
                                 |> Result.andThen
                                     (\b ->
                                         if b /= EQ then
                                             Ok b
 
                                         else
-                                            compare env lc rc
+                                            compare lc rc env
                                     )
                     )
 
@@ -86,20 +86,20 @@ compare env l r =
             Ok EQ
 
         ( List (lh :: lt), List (rh :: rt) ) ->
-            compare env lh rh
+            compare lh rh env
                 |> Result.andThen
                     (\h ->
                         if h /= EQ then
                             Ok h
 
                         else
-                            compare env (List lt) (List rt)
+                            compare (List lt) (List rt) env
                     )
 
         _ ->
             case ( Value.toArray l, Value.toArray r ) of
                 ( Just la, Just ra ) ->
-                    compare env (List la) (List ra)
+                    compare (List la) (List ra) env
 
                 _ ->
                     Err <|
@@ -110,13 +110,13 @@ compare env l r =
                                 ++ Value.toString r
 
 
-comparison : List Order -> ( Int, Eval (List Value) Value )
+comparison : List Order -> ( Int, List Value -> Eval Value )
 comparison orders =
     ( 2
-    , \_ env args ->
+    , \args _ env ->
         case args of
             [ l, r ] ->
-                ( Result.map (\result -> Bool (List.member result orders)) <| compare env l r
+                ( Result.map (\result -> Bool (List.member result orders)) <| compare l r env
                 , []
                 )
 

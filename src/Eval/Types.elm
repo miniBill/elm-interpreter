@@ -1,4 +1,4 @@
-module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, Eval2, Eval3, Eval4, PartialEval, PartialEval2, PartialEval3, PartialResult(..), combineMap, map)
+module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, PartialEval, PartialResult(..), combineMap, map)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
@@ -7,32 +7,12 @@ import Parser exposing (DeadEnd)
 import Value exposing (Env, EvalError, EvalResult, Value)
 
 
-type alias PartialEval a =
-    Config -> Env -> a -> PartialResult
+type alias PartialEval =
+    Config -> Env -> PartialResult
 
 
-type alias PartialEval2 a b =
-    Config -> Env -> a -> b -> PartialResult
-
-
-type alias PartialEval3 a b c =
-    Config -> Env -> a -> b -> c -> PartialResult
-
-
-type alias Eval a out =
-    Config -> Env -> a -> ( EvalResult out, List CallTree )
-
-
-type alias Eval2 a b out =
-    Config -> Env -> a -> b -> ( EvalResult out, List CallTree )
-
-
-type alias Eval3 a b c out =
-    Config -> Env -> a -> b -> c -> ( EvalResult out, List CallTree )
-
-
-type alias Eval4 a b c d out =
-    Config -> Env -> a -> b -> c -> d -> ( EvalResult out, List CallTree )
+type alias Eval out =
+    Config -> Env -> ( EvalResult out, List CallTree )
 
 
 map : (a -> b) -> ( EvalResult a, List CallTree ) -> ( EvalResult b, List CallTree )
@@ -40,8 +20,8 @@ map f ( x, y ) =
     ( Result.map f x, y )
 
 
-combineMap : Eval2 (Eval a b) (List a) (List b)
-combineMap cfg env f xs =
+combineMap : (a -> Eval b) -> List a -> Eval (List b)
+combineMap f xs cfg env =
     List.foldr
         (\el ( lacc, callTrees ) ->
             case lacc of
@@ -51,7 +31,7 @@ combineMap cfg env f xs =
                 Ok acc ->
                     let
                         ( g, callTree ) =
-                            f cfg env el
+                            f el cfg env
                     in
                     ( Result.map (\h -> h :: acc) g
                     , callTree ++ callTrees

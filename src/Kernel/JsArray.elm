@@ -1,7 +1,7 @@
 module Kernel.JsArray exposing (appendN, foldr, initialize, initializeFromList)
 
 import Array exposing (Array)
-import Eval.Types exposing (Eval, Eval3)
+import Eval.Types exposing (Eval)
 import List.Extra
 import Value exposing (Value)
 
@@ -36,8 +36,8 @@ case. This is an optimization that has proved useful in the `Array` module.
     initialize 3 5 identity == [ 5, 6, 7 ]
 
 -}
-initialize : Eval3 Int Int (Eval Int Value) (Array Value)
-initialize cfg env len offset f =
+initialize : Int -> Int -> (Int -> Eval Value) -> Eval (Array Value)
+initialize len offset f cfg env =
     List.range offset (offset + len - 1)
         |> List.foldr
             (\e ( racc, callTrees ) ->
@@ -46,7 +46,7 @@ initialize cfg env len offset f =
                         ( racc, callTrees )
 
                     Ok acc ->
-                        case f cfg env e of
+                        case f e cfg env of
                             ( Err err, fCallTree ) ->
                                 ( Err err, fCallTree ++ callTrees )
 
@@ -57,8 +57,8 @@ initialize cfg env len offset f =
         |> Tuple.mapFirst (Result.map Array.fromList)
 
 
-foldr : Eval3 (Eval Value (Eval Value Value)) Value (Array Value) Value
-foldr cfg env f init arr =
+foldr : (Value -> Eval (Value -> Eval Value)) -> Value -> Array Value -> Eval Value
+foldr f init arr cfg env =
     Array.foldr
         (\e ( racc, callTrees ) ->
             case racc of
@@ -66,9 +66,9 @@ foldr cfg env f init arr =
                     ( racc, callTrees )
 
                 Ok acc ->
-                    case f cfg env e of
+                    case f e cfg env of
                         ( Ok g, fCallTree ) ->
-                            case g cfg env acc of
+                            case g acc cfg env of
                                 ( Err err, gCallTree ) ->
                                     ( Err err, gCallTree ++ fCallTree ++ callTrees )
 

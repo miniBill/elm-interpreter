@@ -2,26 +2,27 @@ module Kernel.List exposing (sortBy, sortWith)
 
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
-import Eval.Types as Types exposing (Eval, Eval2)
+import Eval.Types as Types exposing (Eval)
 import Kernel.Utils
 import Value exposing (Value)
 
 
-sortBy : Eval2 (Eval Value Value) (List Value) (List Value)
-sortBy cfg env toComparable list =
-    list
-        |> Types.combineMap cfg
-            env
-            (\icfg ienv value ->
-                Types.map
-                    (Tuple.pair value)
-                    (toComparable icfg ienv value)
-            )
+sortBy : (Value -> Eval Value) -> List Value -> Eval (List Value)
+sortBy toComparable list cfg env =
+    Types.combineMap
+        (\value icfg ienv ->
+            Types.map
+                (Tuple.pair value)
+                (toComparable value icfg ienv)
+        )
+        list
+        cfg
+        env
         |> Tuple.mapFirst
             (Result.map
                 (List.sortWith
                     (\( _, lc ) ( _, rc ) ->
-                        case Kernel.Utils.compare env lc rc of
+                        case Kernel.Utils.compare lc rc env of
                             Err e ->
                                 handleErr e
 
@@ -33,17 +34,17 @@ sortBy cfg env toComparable list =
             )
 
 
-sortWith : Eval2 (Eval Value (Eval Value Order)) (List Value) (List Value)
-sortWith cfg env compare list =
+sortWith : (Value -> Eval (Value -> Eval Order)) -> List Value -> Eval (List Value)
+sortWith compare list cfg env =
     ( list
         |> List.sortWith
             (\lv rv ->
-                case compare cfg env lv of
+                case compare lv cfg env of
                     ( Err e, _ ) ->
                         handleErr e
 
                     ( Ok k, _ ) ->
-                        case k cfg env rv of
+                        case k rv cfg env of
                             ( Err e, _ ) ->
                                 handleErr e
 
