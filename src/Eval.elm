@@ -1,11 +1,8 @@
 module Eval exposing (eval, trace)
 
-import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Expression as Expression exposing (Expression)
-import Elm.Syntax.Module exposing (Module(..))
-import Elm.Syntax.Node exposing (Node(..))
 import Eval.Module
-import Eval.Types exposing (CallTree(..), Error(..))
+import Eval.Types exposing (CallTree, Error)
 import Value exposing (Value)
 
 

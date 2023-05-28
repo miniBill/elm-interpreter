@@ -7,7 +7,6 @@ import Element.Font as Font
 import Element.Input as Input
 import Elm.Syntax.Expression as Expression
 import Eval
-import Eval.Expression
 import Eval.Module
 import Eval.Types exposing (CallTree(..), Error(..))
 import Parser
