@@ -458,7 +458,7 @@ zeroWithError _ output f =
     , \args _ env ->
         case args of
             [] ->
-                ( Result.map output.toValue f, [], [] )
+                Types.fromResult <| Result.map output.toValue f
 
             _ ->
                 Types.fail <| typeError env <| "Expected zero args, got more"

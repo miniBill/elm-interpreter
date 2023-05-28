@@ -12,9 +12,10 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Writer
 import Env
 import Eval.Expression
-import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation, Error(..), PartialResult)
+import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation, Error(..), TraceLine)
 import FastDict as Dict
 import Result.MyExtra
+import Rope exposing (Rope)
 import Syntax exposing (fakeNode)
 import Value exposing (Env, Value, unsupported)
 
@@ -28,12 +29,12 @@ eval source expression =
     result
 
 
-trace : String -> Expression -> ( Result Error Value, List CallTree, List ( Expression, PartialResult ) )
+trace : String -> Expression -> ( Result Error Value, List CallTree, Rope TraceLine )
 trace source expression =
     traceOrEvalModule { trace = True } source expression
 
 
-traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, List CallTree, List ( Expression, PartialResult ) )
+traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, List CallTree, Rope TraceLine )
 traceOrEvalModule cfg source expression =
     let
         maybeEnv : Result Error Env
@@ -54,7 +55,7 @@ traceOrEvalModule cfg source expression =
     in
     case maybeEnv of
         Err e ->
-            ( Err e, [], [] )
+            ( Err e, [], Rope.empty )
 
         Ok env ->
             let
@@ -73,17 +74,18 @@ traceOrEvalModule cfg source expression =
                         }
                     ]
 
-                ( result, callTrees, expressions ) =
+                ( result, callTrees, traceLines ) =
                     Eval.Expression.evalExpression
                         (fakeNode expression)
                         { trace = cfg.trace
                         , callTreeContinuation = callTreeContinuation
+                        , traceContinuation = identity
                         }
                         env
             in
             ( Result.mapError Types.EvalError result
             , callTreeContinuation callTrees result
-            , expressions
+            , traceLines
             )
 
 

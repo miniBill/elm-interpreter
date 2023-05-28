@@ -6,9 +6,10 @@ import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Elm.Syntax.Expression as Expression exposing (Expression)
+import Elm.Writer
 import Eval
 import Eval.Module
-import Eval.Types exposing (CallTree(..), Error(..), PartialResult)
+import Eval.Types exposing (CallTree(..), Error(..), PartialResult(..))
 import Parser
 import Syntax
 import Value exposing (EvalErrorKind(..))
@@ -110,12 +111,17 @@ innerView model =
                 [ Font.family [ Font.monospace ]
                 , spacing 10
                 ]
-                (List.map viewTrace model.callTree)
+                (List.map viewCallTree model.callTree)
+        , if List.isEmpty model.trace then
+            Element.none
+
+          else
+            column [ spacing 10 ] (List.map viewTraceLine model.trace)
         ]
 
 
-viewTrace : CallTree -> Element msg
-viewTrace (CallNode kind name { args, children, result }) =
+viewCallTree : CallTree -> Element msg
+viewCallTree (CallNode kind name { args, children, result }) =
     let
         maybeParens : String -> String
         maybeParens s =
@@ -162,7 +168,7 @@ viewTrace (CallNode kind name { args, children, result }) =
 
         childrenRows : List (Element msg)
         childrenRows =
-            List.map viewTrace children
+            List.map viewCallTree children
     in
     (nameRow :: childrenRows)
         |> column
@@ -180,6 +186,29 @@ viewTrace (CallNode kind name { args, children, result }) =
                 }
             , spacing 10
             ]
+
+
+viewTraceLine : ( Expression, PartialResult ) -> Element Msg
+viewTraceLine ( expr, res ) =
+    [ Elm.Writer.write <| Elm.Writer.writeExpression <| Syntax.fakeNode expr
+    , " => "
+    , partialResultToString res
+    ]
+        |> String.concat
+        |> text
+
+
+partialResultToString : PartialResult -> String
+partialResultToString result =
+    case result of
+        PartialValue ( Ok v, _, _ ) ->
+            Value.toString v
+
+        PartialExpression _ _ _ ->
+            Debug.todo "branch 'PartialExpression _ _ _' not implemented"
+
+        PartialValue ( Err e, _, _ ) ->
+            errorToString (EvalError e)
 
 
 init : Model

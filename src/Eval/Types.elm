@@ -1,9 +1,10 @@
-module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, fail, failPartial, map, map2, onValue, succeed, succeedPartial)
+module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), TraceContinuation, TraceLine, andThen, andThenPartial, combineMap, fail, failPartial, fromResult, map, map2, onValue, succeed, succeedPartial)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import Parser exposing (DeadEnd)
+import Rope exposing (Rope)
 import Value exposing (Env, EvalError, Value)
 
 
@@ -16,7 +17,16 @@ type alias Eval out =
 
 
 type alias EvalResult out =
-    ( Result EvalError out, List CallTree, List ( Expression, PartialResult ) )
+    ( Result EvalError out
+    , List CallTree
+    , Rope TraceLine
+    )
+
+
+type alias TraceLine =
+    ( Expression
+    , PartialResult
+    )
 
 
 onValue : (a -> Result EvalError out) -> EvalResult a -> EvalResult out
@@ -38,7 +48,7 @@ andThen f ( v, callTrees, expressions ) =
                 ( y, fxCallTrees, fxExpressions ) =
                     f w
             in
-            ( y, fxCallTrees ++ callTrees, fxExpressions ++ expressions )
+            ( y, fxCallTrees ++ callTrees, Rope.appendTo expressions fxExpressions )
 
 
 map : (a -> out) -> EvalResult a -> EvalResult out
@@ -53,7 +63,7 @@ map2 : (a -> b -> out) -> EvalResult a -> EvalResult b -> EvalResult out
 map2 f ( lv, lc, le ) ( rv, rc, re ) =
     ( Result.map2 f lv rv
     , lc ++ rc
-    , le ++ re
+    , Rope.appendTo le re
     )
 
 
@@ -76,22 +86,32 @@ combineMap f xs cfg env =
 
 succeed : a -> EvalResult a
 succeed x =
-    ( Ok x, [], [] )
+    fromResult <| Ok x
 
 
 fail : EvalError -> EvalResult a
-fail x =
-    ( Err x, [], [] )
+fail e =
+    fromResult <| Err e
+
+
+fromResult : Result EvalError a -> EvalResult a
+fromResult x =
+    ( x, [], Rope.empty )
 
 
 type alias Config =
     { trace : Bool
     , callTreeContinuation : CallTreeContinuation
+    , traceContinuation : TraceContinuation
     }
 
 
 type alias CallTreeContinuation =
     List CallTree -> Result EvalError Value -> List CallTree
+
+
+type alias TraceContinuation =
+    Rope TraceLine -> Rope TraceLine
 
 
 type CallTree
@@ -115,7 +135,7 @@ This is needed because to get TCO we need to return an expression, rather than c
 
 -}
 type PartialResult
-    = PartialExpression Env (Node Expression) CallTreeContinuation
+    = PartialExpression Env (Node Expression) CallTreeContinuation TraceContinuation
     | PartialValue (EvalResult Value)
 
 
@@ -130,19 +150,18 @@ failPartial e =
 
 
 andThenPartial : (a -> PartialResult) -> EvalResult a -> PartialResult
-andThenPartial f (( vx, callTrees, expressions ) as x) =
-    case vx of
-        Err e ->
+andThenPartial f x =
+    case x of
+        ( Err e, callTrees, expressions ) ->
             PartialValue ( Err e, callTrees, expressions )
 
-        Ok w ->
+        ( Ok w, callTrees, expressions ) ->
             case f w of
                 PartialValue y ->
                     PartialValue <| map2 (\_ vy -> vy) x y
 
-                PartialExpression env expr cont ->
-                    let
-                        _ =
-                            Debug.todo
-                    in
-                    PartialExpression env expr cont
+                PartialExpression env expr cont e ->
+                    PartialExpression env
+                        expr
+                        (\children result -> cont (callTrees ++ children) result)
+                        (\n -> Rope.appendTo (e n) expressions)

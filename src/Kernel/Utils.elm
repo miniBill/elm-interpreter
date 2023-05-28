@@ -1,7 +1,7 @@
-module Kernel.Utils exposing (append, compare, comparison)
+module Kernel.Utils exposing (append, compare, comparison, innerCompare)
 
-import Eval.Types as Types exposing (Eval, EvalResult)
-import Value exposing (Value(..), typeError)
+import Eval.Types as Types exposing (Eval)
+import Value exposing (EvalError, Value(..), typeError)
 
 
 append : Value -> Value -> Eval Value
@@ -18,11 +18,16 @@ append l r _ env =
 
 
 compare : Value -> Value -> Eval Order
-compare l r cfg env =
+compare l r _ env =
+    Types.fromResult (innerCompare l r env)
+
+
+innerCompare : Value -> Value -> Value.Env -> Result EvalError Order
+innerCompare l r env =
     let
-        inner : comparable -> comparable -> EvalResult Order
+        inner : comparable -> comparable -> Result EvalError Order
         inner lv rv =
-            Types.succeed <| Basics.compare lv rv
+            Ok <| Basics.compare lv rv
     in
     case ( l, r ) of
         -- TODO: Implement all cases
@@ -45,62 +50,62 @@ compare l r cfg env =
             inner lv rv
 
         ( Tuple la lb, Tuple ra rb ) ->
-            compare la ra cfg env
-                |> Types.andThen
+            innerCompare la ra env
+                |> Result.andThen
                     (\a ->
                         if a /= EQ then
-                            Types.succeed a
+                            Ok a
 
                         else
-                            compare lb rb cfg env
+                            innerCompare lb rb env
                     )
 
         ( Triple la lb lc, Triple ra rb rc ) ->
-            compare la ra cfg env
-                |> Types.andThen
+            innerCompare la ra env
+                |> Result.andThen
                     (\a ->
                         if a /= EQ then
-                            Types.succeed a
+                            Ok a
 
                         else
-                            compare lb rb cfg env
-                                |> Types.andThen
+                            innerCompare lb rb env
+                                |> Result.andThen
                                     (\b ->
                                         if b /= EQ then
-                                            Types.succeed b
+                                            Ok b
 
                                         else
-                                            compare lc rc cfg env
+                                            innerCompare lc rc env
                                     )
                     )
 
         ( List [], List (_ :: _) ) ->
-            Types.succeed LT
+            Ok LT
 
         ( List (_ :: _), List [] ) ->
-            Types.succeed GT
+            Ok GT
 
         ( List [], List [] ) ->
-            Types.succeed EQ
+            Ok EQ
 
         ( List (lh :: lt), List (rh :: rt) ) ->
-            compare lh rh cfg env
-                |> Types.andThen
+            innerCompare lh rh env
+                |> Result.andThen
                     (\h ->
                         if h /= EQ then
-                            Types.succeed h
+                            Ok h
 
                         else
-                            compare (List lt) (List rt) cfg env
+                            innerCompare (List lt) (List rt) env
                     )
 
         _ ->
             case ( Value.toArray l, Value.toArray r ) of
                 ( Just la, Just ra ) ->
-                    compare (List la) (List ra) cfg env
+                    innerCompare (List la) (List ra) env
 
                 _ ->
-                    Types.fail <|
+                    Err <|
                         typeError env <|
                             "Comparison not yet implemented for "
                                 ++ Value.toString l

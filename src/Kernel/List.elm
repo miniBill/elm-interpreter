@@ -4,6 +4,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import Eval.Types as Types exposing (Eval)
 import Kernel.Utils
+import Rope
 import Value exposing (Value)
 
 
@@ -21,15 +22,11 @@ sortBy toComparable list cfg env =
         |> Types.map
             (List.sortWith
                 (\( _, lc ) ( _, rc ) ->
-                    case Kernel.Utils.compare lc rc cfg env of
-                        ( Err e, _, _ ) ->
+                    case Kernel.Utils.innerCompare lc rc env of
+                        Err e ->
                             handleErr e
 
-                        ( Ok res, _, _ ) ->
-                            let
-                                _ =
-                                    Debug.todo
-                            in
+                        Ok res ->
                             res
                 )
                 >> List.map Tuple.first
@@ -63,7 +60,7 @@ sortWith compare list cfg env =
         _ =
             Debug.todo
       in
-      []
+      Rope.empty
     )
 
 
