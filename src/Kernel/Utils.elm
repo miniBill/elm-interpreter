@@ -1,19 +1,22 @@
 module Kernel.Utils exposing (append, compare, comparison)
 
+import Eval.Types exposing (Eval, Eval2)
 import Value exposing (Env, EvalResult, Value(..), typeError)
 
 
-append : Env -> Value -> Value -> EvalResult Value
-append env l r =
+append : Eval2 Value Value Value
+append _ env l r =
     case ( l, r ) of
         ( String ls, String rs ) ->
-            Ok <| String (ls ++ rs)
+            ( Ok <| String (ls ++ rs), [] )
 
         ( List ll, List rl ) ->
-            Ok <| List (ll ++ rl)
+            ( Ok <| List (ll ++ rl), [] )
 
         _ ->
-            Err <| typeError env <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
+            ( Err <| typeError env <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
+            , []
+            )
 
 
 compare : Env -> Value -> Value -> EvalResult Order
@@ -107,14 +110,16 @@ compare env l r =
                                 ++ Value.toString r
 
 
-comparison : List Order -> ( Int, Env -> List Value -> EvalResult Value )
+comparison : List Order -> ( Int, Eval (List Value) Value )
 comparison orders =
     ( 2
-    , \env args ->
+    , \_ env args ->
         case args of
             [ l, r ] ->
-                Result.map (\result -> Bool (List.member result orders)) <| compare env l r
+                ( Result.map (\result -> Bool (List.member result orders)) <| compare env l r
+                , []
+                )
 
             _ ->
-                Err <| typeError env "Comparison needs exactly two arguments"
+                ( Err <| typeError env "Comparison needs exactly two arguments", [] )
     )

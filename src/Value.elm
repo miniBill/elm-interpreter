@@ -21,7 +21,7 @@ type Value
     | Triple Value Value Value
     | Record (Dict String Value)
     | Custom QualifiedNameRef (List Value)
-    | PartiallyApplied Env (List Value) (List (Node Pattern)) (Node Expression)
+    | PartiallyApplied Env (List Value) (List (Node Pattern)) (Maybe QualifiedNameRef) (Node Expression)
     | JsArray (Array Value)
     | List (List Value)
 
@@ -141,13 +141,26 @@ toExpression value =
             JsArray array ->
                 arrayToExpression "JsArray" (Array.toList array)
 
-            PartiallyApplied _ [] patterns implementation ->
+            PartiallyApplied _ [] patterns (Just qualifiedName) implementation ->
+                Expression.FunctionOrValue qualifiedName.moduleName qualifiedName.name
+
+            PartiallyApplied _ args patterns (Just qualifiedName) implementation ->
+                (fakeNode
+                    (Expression.FunctionOrValue
+                        qualifiedName.moduleName
+                        qualifiedName.name
+                    )
+                    :: List.map toExpression args
+                )
+                    |> Expression.Application
+
+            PartiallyApplied _ [] patterns Nothing implementation ->
                 Expression.LambdaExpression
                     { args = patterns
                     , expression = implementation
                     }
 
-            PartiallyApplied _ args patterns implementation ->
+            PartiallyApplied _ args patterns Nothing implementation ->
                 (fakeNode
                     (Expression.LambdaExpression
                         { args = patterns
@@ -182,9 +195,8 @@ toArray value =
                         treeToArray : Value -> List Value -> Maybe (List Value)
                         treeToArray node acc =
                             case node of
-                                JsArray arr ->
-                                    Just (Array.toList arr ++ acc)
-
+                                -- JsArray arr ->
+                                --     Just (Array.toList arr ++ acc)
                                 _ ->
                                     Debug.todo ("treeToArray " ++ Debug.toString node)
                     in

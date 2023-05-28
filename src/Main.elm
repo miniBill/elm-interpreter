@@ -1,12 +1,12 @@
 module Main exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, column, fill, padding, paragraph, spacing, text, textColumn, width)
+import Element exposing (Element, column, fill, padding, paragraph, row, spacing, text, textColumn, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Elm.Syntax.Expression as Expression
-import Eval exposing (Error(..))
+import Eval exposing (CallTree, Error(..))
 import Parser
 import Syntax
 import Value exposing (EvalErrorKind(..))
@@ -14,12 +14,13 @@ import Value exposing (EvalErrorKind(..))
 
 type Msg
     = Input String
-    | Eval
+    | Eval Bool
 
 
 type alias Model =
     { input : String
     , output : Result String String
+    , trace : Maybe CallTree
     }
 
 
@@ -45,12 +46,8 @@ innerView model =
             , label = Input.labelAbove [] <| text "Input"
             , placeholder = Nothing
             }
-        , Input.button
-            [ padding 10
-            , Border.width 1
-            ]
-            { onPress = Just Eval
-            , label =
+        , let
+            toRun =
                 if String.startsWith "module " model.input then
                     let
                         moduleName : Maybe String
@@ -65,14 +62,30 @@ innerView model =
                     in
                     case moduleName of
                         Nothing ->
-                            text "Eval main"
+                            "main"
 
                         Just name ->
-                            text <| "Eval " ++ name ++ ".main"
+                            name ++ ".main"
 
                 else
-                    text "Eval"
-            }
+                    ""
+          in
+          row [ spacing 10 ]
+            [ Input.button
+                [ padding 10
+                , Border.width 1
+                ]
+                { onPress = Just (Eval False)
+                , label = text <| "Eval " ++ toRun
+                }
+            , Input.button
+                [ padding 10
+                , Border.width 1
+                ]
+                { onPress = Just (Eval True)
+                , label = text <| "Trace " ++ toRun
+                }
+            ]
         , case model.output of
             Ok output ->
                 paragraph [] [ text output ]
@@ -96,6 +109,7 @@ init =
 in
 boom 100000"""
     , output = Ok ""
+    , trace = Nothing
     }
 
 
@@ -105,24 +119,36 @@ update msg model =
         Input input ->
             { model | input = input }
 
-        Eval ->
+        Eval trace ->
+            let
+                ( result, traced ) =
+                    if trace then
+                        (if String.startsWith "module " model.input then
+                            Eval.traceModule model.input (Expression.FunctionOrValue [] "main")
+
+                         else
+                            Eval.trace model.input
+                        )
+                            |> Tuple.mapSecond Just
+
+                    else
+                        ( if String.startsWith "module " model.input then
+                            Eval.evalModule model.input (Expression.FunctionOrValue [] "main")
+
+                          else
+                            Eval.eval model.input
+                        , Nothing
+                        )
+            in
             { model
                 | output =
-                    let
-                        result : Result Error Value.Value
-                        result =
-                            if String.startsWith "module " model.input then
-                                Eval.evalModule model.input (Expression.FunctionOrValue [] "main")
-
-                            else
-                                Eval.eval model.input
-                    in
                     case result of
                         Err e ->
                             Err <| errorToString e
 
                         Ok value ->
                             Ok <| Value.toString value
+                , trace = traced
             }
 
 

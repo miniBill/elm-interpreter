@@ -1,6 +1,7 @@
 module TestUtils exposing (evalExpect, evalTest, evalTest_, list, slowTest)
 
 import Eval
+import Eval.Types exposing (Error(..))
 import Expect
 import Syntax
 import Test exposing (Test, test)
@@ -31,7 +32,7 @@ evalExpect expression toValue a =
             (Float <| toFloat i)
                 |> Expect.equal result
 
-        ( Err (Eval.EvalError e), _ ) ->
+        ( Err (EvalError e), _ ) ->
             Expect.fail <|
                 Debug.toString e.error
                     ++ "\nCall stack:\n - "

@@ -1,28 +1,38 @@
-module Eval.PartialResult exposing (PartialResult(..), fromValue)
+module Eval.PartialResult exposing
+    ( fromValue
+    , mapCombine
+    )
 
-{-| -}
-
-import Elm.Syntax.Expression exposing (Expression)
-import Elm.Syntax.Node exposing (Node)
-import Value exposing (Env, EvalError, Value)
-
-
-{-| Represent the result of a computation inside one of the branches of `evalExpression`.
-
-This is needed because to get TCO we need to return an expression, rather than calling `evalExpression` recursively.
-
--}
-type PartialResult
-    = PartialExpression Env (Node Expression)
-    | PartialValue Value
-    | PartialErr EvalError
+import Eval.Types exposing (CallTree, Eval, Eval2, PartialResult(..))
+import Value exposing (EvalResult, Value)
 
 
-fromValue : Result EvalError Value -> PartialResult
-fromValue result =
+fromValue : ( EvalResult Value, List CallTree ) -> PartialResult
+fromValue ( result, callTrees ) =
     case result of
         Err e ->
-            PartialErr e
+            PartialErr callTrees e
 
         Ok value ->
-            PartialValue value
+            PartialValue callTrees value
+
+
+mapCombine : Eval2 (Eval a b) (List a) (List b)
+mapCombine cfg env f xs =
+    List.foldr
+        (\el ( lacc, callTrees ) ->
+            case lacc of
+                Err _ ->
+                    ( lacc, callTrees )
+
+                Ok acc ->
+                    let
+                        ( g, callTree ) =
+                            f cfg env el
+                    in
+                    ( Result.map (\h -> h :: acc) g
+                    , callTree ++ callTrees
+                    )
+        )
+        ( Ok [], [] )
+        xs

@@ -5,7 +5,8 @@ import Bitwise
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
-import Elm.Syntax.Pattern as Pattern
+import Elm.Syntax.Pattern as Pattern exposing (QualifiedNameRef)
+import Eval.Types exposing (CallTree, Config, Eval, Eval2, Eval4)
 import FastDict as Dict exposing (Dict)
 import Kernel.JsArray
 import Kernel.List
@@ -16,14 +17,15 @@ import Value exposing (Env, EvalResult, Value(..), typeError)
 
 
 type alias EvalFunction =
-    Env
-    -> List Value
-    -> List (Node Pattern.Pattern)
-    -> Node Expression
-    -> EvalResult Value
+    Eval4
+        (List Value)
+        (List (Node Pattern.Pattern))
+        (Maybe QualifiedNameRef)
+        (Node Expression)
+        Value
 
 
-functions : EvalFunction -> Dict ModuleName (Dict String ( Int, Env -> List Value -> EvalResult Value ))
+functions : EvalFunction -> Dict ModuleName (Dict String ( Int, Eval (List Value) Value ))
 functions evalFunction =
     [ -- Elm.Kernel.Basics
       ( [ "Elm", "Kernel", "Basics" ]
@@ -130,7 +132,7 @@ functions evalFunction =
         -- , ( "foldl", one string to string String.foldl )
         -- , ( "foldr", one string to string String.foldr )
         , ( "fromList", one (list char) to string String.fromList )
-        , ( "fromNumber", oneWithError anything to string Kernel.String.fromNumber )
+        , ( "fromNumber", oneWithError anything to string <| \_ env s -> ( Kernel.String.fromNumber env s, [] ) )
         , ( "indexes", two string string to (list int) String.indexes )
         , ( "join", two string (list string) to string String.join )
         , ( "lines", one string to (list string) String.lines )
@@ -153,7 +155,7 @@ functions evalFunction =
         , ( "le", Kernel.Utils.comparison [ LT, EQ ] )
         , ( "lt", Kernel.Utils.comparison [ LT ] )
         , ( "equal", Kernel.Utils.comparison [ EQ ] )
-        , ( "compare", twoWithError anything anything to order Kernel.Utils.compare )
+        , ( "compare", twoWithError anything anything to order <| \_ env l r -> ( Kernel.Utils.compare env l r, [] ) )
         ]
       )
     ]
@@ -363,26 +365,33 @@ function :
     -> OutSelector from xf
     -> To
     -> InSelector to xt
-    -> InSelector (from -> EvalResult to) {}
+    -> InSelector (Eval from to) {}
 function evalFunctionWith inSelector _ outSelector =
     let
-        fromValue : Value -> Maybe (from -> EvalResult to)
+        fromValue : Value -> Maybe (Eval from to)
         fromValue value =
             case value of
-                PartiallyApplied localEnv oldArgs patterns implementation ->
+                PartiallyApplied localEnv oldArgs patterns maybeName implementation ->
                     Just
-                        (\arg ->
-                            case evalFunctionWith localEnv (oldArgs ++ [ inSelector.toValue arg ]) patterns implementation of
-                                Err e ->
-                                    Err e
+                        (\cfg _ arg ->
+                            case evalFunctionWith cfg localEnv (oldArgs ++ [ inSelector.toValue arg ]) patterns maybeName implementation of
+                                ( Err e, callTree ) ->
+                                    ( Err e, callTree )
 
-                                Ok out ->
+                                ( Ok out, callTree ) ->
                                     case outSelector.fromValue out of
                                         Just ov ->
-                                            Ok ov
+                                            ( Ok ov, callTree )
 
                                         Nothing ->
-                                            Err <| typeError localEnv <| "Could not convert output from " ++ Value.toString out ++ " to " ++ outSelector.name
+                                            ( Err <|
+                                                typeError localEnv <|
+                                                    "Could not convert output from "
+                                                        ++ Value.toString out
+                                                        ++ " to "
+                                                        ++ outSelector.name
+                                            , callTree
+                                            )
                         )
 
                 _ ->
@@ -399,7 +408,7 @@ function2 :
     -> OutSelector b xb
     -> To
     -> InSelector to xt
-    -> InSelector (a -> EvalResult (b -> EvalResult to)) {}
+    -> InSelector (Eval a (Eval b to)) {}
 function2 evalFunction in1Selector in2Selector _ outSelector =
     function evalFunction in1Selector to (function evalFunction in2Selector to outSelector)
 
@@ -421,16 +430,16 @@ tuple firstSelector secondSelector =
     }
 
 
-constant : OutSelector res x -> res -> ( Int, Env -> List Value -> EvalResult Value )
+constant : OutSelector res x -> res -> ( Int, Eval (List Value) Value )
 constant selector const =
     ( 0
-    , \env args ->
+    , \_ env args ->
         case args of
             [] ->
-                Ok <| selector.toValue const
+                ( Ok <| selector.toValue const, [] )
 
             _ ->
-                Err <| typeError env <| "Didn't expect any args"
+                ( Err <| typeError env <| "Didn't expect any args", [] )
     )
 
 
@@ -438,7 +447,7 @@ zero :
     To
     -> OutSelector out ox
     -> out
-    -> ( Int, Env -> List Value -> EvalResult Value )
+    -> ( Int, Eval (List Value) Value )
 zero _ output f =
     zeroWithError To output (Ok f)
 
@@ -447,16 +456,16 @@ zeroWithError :
     To
     -> OutSelector out ox
     -> EvalResult out
-    -> ( Int, Env -> List Value -> EvalResult Value )
+    -> ( Int, Eval (List Value) Value )
 zeroWithError _ output f =
     ( 0
-    , \env args ->
+    , \_ env args ->
         case args of
             [] ->
-                Result.map output.toValue f
+                ( Result.map output.toValue f, [] )
 
             _ ->
-                Err <| typeError env <| "Expected zero args, got more"
+                ( Err <| typeError env <| "Expected zero args, got more", [] )
     )
 
 
@@ -465,20 +474,20 @@ one :
     -> To
     -> OutSelector out ox
     -> (a -> out)
-    -> ( Int, Env -> List Value -> EvalResult Value )
+    -> ( Int, Eval (List Value) Value )
 one firstSelector _ output f =
-    oneWithError firstSelector To output (\_ v -> Ok (f v))
+    oneWithError firstSelector To output (\_ _ v -> ( Ok (f v), [] ))
 
 
 oneWithError :
     InSelector a xa
     -> To
     -> OutSelector out xo
-    -> (Env -> a -> EvalResult out)
-    -> ( Int, Env -> List Value -> EvalResult Value )
+    -> Eval a out
+    -> ( Int, Eval (List Value) Value )
 oneWithError firstSelector _ output f =
     ( 1
-    , \env args ->
+    , \cfg env args ->
         let
             err : String -> EvalResult value
             err got =
@@ -488,16 +497,18 @@ oneWithError firstSelector _ output f =
             [ arg ] ->
                 case firstSelector.fromValue arg of
                     Just s ->
-                        Result.map output.toValue <| f env s
+                        Tuple.mapFirst
+                            (Result.map output.toValue)
+                            (f cfg env s)
 
                     Nothing ->
-                        err <| Value.toString arg
+                        ( err (Value.toString arg), [] )
 
             [] ->
-                err "zero"
+                ( err "zero", [] )
 
             _ ->
-                err "more"
+                ( err "more", [] )
     )
 
 
@@ -507,9 +518,9 @@ two :
     -> To
     -> OutSelector out xo
     -> (a -> b -> out)
-    -> ( Int, Env -> List Value -> EvalResult Value )
+    -> ( Int, Eval (List Value) Value )
 two firstSelector secondSelector _ output f =
-    twoWithError firstSelector secondSelector To output (\_ l r -> Ok (f l r))
+    twoWithError firstSelector secondSelector To output (\_ _ l r -> ( Ok (f l r), [] ))
 
 
 twoWithError :
@@ -517,11 +528,11 @@ twoWithError :
     -> InSelector b xb
     -> To
     -> OutSelector out xo
-    -> (Env -> a -> b -> EvalResult out)
-    -> ( Int, Env -> List Value -> EvalResult Value )
+    -> Eval2 a b out
+    -> ( Int, Eval (List Value) Value )
 twoWithError firstSelector secondSelector _ output f =
     ( 2
-    , \env args ->
+    , \cfg env args ->
         let
             typeError_ : String -> EvalResult value
             typeError_ msg =
@@ -539,21 +550,23 @@ twoWithError firstSelector secondSelector _ output f =
             [ firstArg, secondArg ] ->
                 case firstSelector.fromValue firstArg of
                     Nothing ->
-                        typeError_ <| "Expected the first argument to be " ++ firstSelector.name ++ ", got " ++ Value.toString firstArg
+                        ( typeError_ <| "Expected the first argument to be " ++ firstSelector.name ++ ", got " ++ Value.toString firstArg, [] )
 
                     Just first ->
                         case secondSelector.fromValue secondArg of
                             Nothing ->
-                                typeError_ <| "Expected the second argument to be " ++ secondSelector.name ++ ", got " ++ Value.toString secondArg
+                                ( typeError_ <| "Expected the second argument to be " ++ secondSelector.name ++ ", got " ++ Value.toString secondArg, [] )
 
                             Just second ->
-                                Result.map output.toValue <| f env first second
+                                Tuple.mapFirst
+                                    (Result.map output.toValue)
+                                    (f cfg env first second)
 
             [] ->
-                err "zero"
+                ( err "zero", [] )
 
             _ ->
-                err <| String.join ", " <| List.map Value.toString args
+                ( err (String.join ", " <| List.map Value.toString args), [] )
     )
 
 
@@ -564,9 +577,9 @@ three :
     -> To
     -> OutSelector out xo
     -> (a -> b -> c -> out)
-    -> ( Int, Env -> List Value -> EvalResult Value )
+    -> ( Int, Eval (List Value) Value )
 three firstSelector secondSelector thirdSelector _ output f =
-    threeWithError firstSelector secondSelector thirdSelector To output (\_ l m r -> Ok (f l m r))
+    threeWithError firstSelector secondSelector thirdSelector To output (\_ _ l m r -> ( Ok (f l m r), [] ))
 
 
 threeWithError :
@@ -575,11 +588,11 @@ threeWithError :
     -> InSelector c xc
     -> To
     -> OutSelector out xo
-    -> (Env -> a -> b -> c -> EvalResult out)
-    -> ( Int, Env -> List Value -> EvalResult Value )
+    -> (Config -> Env -> a -> b -> c -> ( EvalResult out, List CallTree ))
+    -> ( Int, Eval (List Value) Value )
 threeWithError firstSelector secondSelector thirdSelector _ output f =
     ( 3
-    , \env args ->
+    , \cfg env args ->
         let
             err : String -> EvalResult value
             err got =
@@ -593,39 +606,41 @@ threeWithError firstSelector secondSelector thirdSelector _ output f =
             [ firstArg, secondArg, thirdArg ] ->
                 case ( firstSelector.fromValue firstArg, secondSelector.fromValue secondArg, thirdSelector.fromValue thirdArg ) of
                     ( Just first, Just second, Just third ) ->
-                        Result.map output.toValue <| f env first second third
+                        Tuple.mapFirst
+                            (Result.map output.toValue)
+                            (f cfg env first second third)
 
                     _ ->
-                        err <| String.join ", " (List.map Value.toString args)
+                        ( err (String.join ", " (List.map Value.toString args)), [] )
 
             [] ->
-                err "zero"
+                ( err "zero", [] )
 
             _ ->
-                err <| "[ " ++ String.join ", " (List.map Value.toString args) ++ " ]"
+                ( err ("[ " ++ String.join ", " (List.map Value.toString args) ++ " ]"), [] )
     )
 
 
 twoNumbers :
     (Int -> Int -> Int)
     -> (Float -> Float -> Float)
-    -> ( Int, Env -> List Value -> EvalResult Value )
+    -> ( Int, Eval (List Value) Value )
 twoNumbers fInt fFloat =
     ( 2
-    , \env args ->
+    , \_ env args ->
         case args of
             [ Int li, Int ri ] ->
-                Ok <| Int (fInt li ri)
+                ( Ok <| Int (fInt li ri), [] )
 
             [ Int li, Float rf ] ->
-                Ok <| Float (fFloat (toFloat li) rf)
+                ( Ok <| Float (fFloat (toFloat li) rf), [] )
 
             [ Float lf, Int ri ] ->
-                Ok <| Float (fFloat lf (toFloat ri))
+                ( Ok <| Float (fFloat lf (toFloat ri)), [] )
 
             [ Float lf, Float rf ] ->
-                Ok <| Float (fFloat lf rf)
+                ( Ok <| Float (fFloat lf rf), [] )
 
             _ ->
-                Err <| typeError env "Expected two numbers"
+                ( Err <| typeError env "Expected two numbers", [] )
     )
