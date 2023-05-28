@@ -1,4 +1,4 @@
-module TestUtils exposing (evalExpect, evalTest, evalTest_, slowTest)
+module TestUtils exposing (evalExpect, evalTest, evalTest_, list, slowTest)
 
 import Eval
 import Expect
@@ -50,3 +50,8 @@ slowTest : (Int -> Test) -> Test
 slowTest test =
     -- Change this to 10 to make it fast
     test 10
+
+
+list : (a -> Value) -> List a -> Value
+list f xs =
+    List (List.map f xs)

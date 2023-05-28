@@ -4,7 +4,7 @@ import Array
 import Dict
 import Set
 import Test exposing (Test, describe)
-import TestUtils exposing (evalTest, evalTest_)
+import TestUtils exposing (evalTest, evalTest_, list)
 import Value exposing (Value(..))
 
 
@@ -150,7 +150,7 @@ suite =
                 , evalTest_ "isInfinite (1/0)" Bool <| isInfinite (1 / 0)
                 , evalTest_ "isInfinite 1" Bool <| isInfinite 1
                 , evalTest_ "\"hello\" ++ \"world\"" String <| "hello" ++ "world"
-                , evalTest_ "[1, 1, 2] ++ [3, 5, 8]" List <| List.map Int <| [ 1, 1, 2 ] ++ [ 3, 5, 8 ]
+                , evalTest_ "[1, 1, 2] ++ [3, 5, 8]" (list Int) <| [ 1, 1, 2 ] ++ [ 3, 5, 8 ]
                 , evalTest_ "Tuple.first (1, 2)" Int <| Tuple.first ( 1, 2 )
                 , evalTest_ "Tuple.second (1, 2)" Int <| Tuple.second ( 1, 2 )
                 ]
@@ -175,7 +175,7 @@ suite =
                             [ { foo = "NaS", bar = "baz" } ]
                                 |> List.map (.foo >> String.reverse)
                         """
-                        (List << List.map String)
+                        (list String)
                       <|
                         ([ { foo = "NaS", bar = "baz" } ]
                             |> List.map (.foo >> String.reverse)

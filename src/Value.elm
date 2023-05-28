@@ -186,11 +186,7 @@ toArray value =
                                     Just (Array.toList arr ++ acc)
 
                                 _ ->
-                                    let
-                                        _ =
-                                            Debug.log "treeToArray" { node = node }
-                                    in
-                                    Debug.todo "treeToArray"
+                                    Debug.todo ("treeToArray " ++ Debug.toString node)
                     in
                     case tail of
                         JsArray tailArray ->
