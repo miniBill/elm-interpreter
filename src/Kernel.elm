@@ -6,7 +6,7 @@ import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern exposing (QualifiedNameRef)
-import Eval.Types exposing (CallTree, Config, Eval, Eval2, Eval4)
+import Eval.Types exposing (CallTree, Config, Eval, Eval2, Eval3, Eval4)
 import FastDict as Dict exposing (Dict)
 import Kernel.JsArray
 import Kernel.List
@@ -588,7 +588,7 @@ threeWithError :
     -> InSelector c xc
     -> To
     -> OutSelector out xo
-    -> (Config -> Env -> a -> b -> c -> ( EvalResult out, List CallTree ))
+    -> Eval3 a b c out
     -> ( Int, Eval (List Value) Value )
 threeWithError firstSelector secondSelector thirdSelector _ output f =
     ( 3

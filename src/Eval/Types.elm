@@ -1,4 +1,4 @@
-module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, Eval2, Eval3, Eval4, PartialEval, PartialResult(..), map)
+module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, Eval2, Eval3, Eval4, PartialEval, PartialEval2, PartialEval3, PartialResult(..), map)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
@@ -9,6 +9,14 @@ import Value exposing (Env, EvalError, EvalResult, Value)
 
 type alias PartialEval a =
     Config -> Env -> a -> PartialResult
+
+
+type alias PartialEval2 a b =
+    Config -> Env -> a -> b -> PartialResult
+
+
+type alias PartialEval3 a b c =
+    Config -> Env -> a -> b -> c -> PartialResult
 
 
 type alias Eval a out =

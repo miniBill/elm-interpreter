@@ -14,7 +14,7 @@ import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Elm.Writer
 import Env
 import Eval.PartialResult as PartialResult
-import Eval.Types as Types exposing (CallTree(..), Config, Error(..), Eval, PartialEval, PartialResult(..))
+import Eval.Types as Types exposing (CallTree(..), Config, Error(..), Eval, PartialEval, PartialEval2, PartialEval3, PartialResult(..))
 import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
@@ -289,7 +289,7 @@ evalExpression cfg env (Node _ expression) =
                 next
 
 
-evalShortCircuitAnd : Config -> Env -> Node Expression -> Node Expression -> PartialResult
+evalShortCircuitAnd : PartialEval2 (Node Expression) (Node Expression)
 evalShortCircuitAnd cfg env l r =
     let
         ( value, callTree ) =
@@ -309,7 +309,7 @@ evalShortCircuitAnd cfg env l r =
             PartialErr [ callTree ] <| typeError env <| "&& applied to non-Bool " ++ Value.toString v
 
 
-evalShortCircuitOr : Config -> Env -> Node Expression -> Node Expression -> PartialResult
+evalShortCircuitOr : PartialEval2 (Node Expression) (Node Expression)
 evalShortCircuitOr cfg env l r =
     let
         ( value, callTree ) =
@@ -329,7 +329,7 @@ evalShortCircuitOr cfg env l r =
             PartialErr [ callTree ] <| typeError env <| "|| applied to non-Bool " ++ Value.toString v
 
 
-evalTuple : Config -> Env -> List (Node Expression) -> PartialResult
+evalTuple : PartialEval (List (Node Expression))
 evalTuple cfg env exprs =
     case exprs of
         [] ->
@@ -543,7 +543,7 @@ call cfg maybeQualifiedName values =
             cfg.callTreeContinuation
 
 
-combineEval : Config -> Env -> List (Node Expression) -> ( EvalResult (List Value), List CallTree )
+combineEval : Eval (List (Node Expression)) (List Value)
 combineEval cfg env expressions =
     expressions
         |> List.foldl
@@ -564,7 +564,7 @@ combineEval cfg env expressions =
         |> Types.map List.reverse
 
 
-evalFunctionOrValue : Config -> Env -> ModuleName -> String -> PartialResult
+evalFunctionOrValue : PartialEval2 ModuleName String
 evalFunctionOrValue cfg env moduleName name =
     let
         fixedModuleName : ModuleName
@@ -673,7 +673,7 @@ evalFunctionOrValue cfg env moduleName name =
                                     |> PartialErr []
 
 
-evalIfBlock : Config -> Env -> Node Expression -> Node Expression -> Node Expression -> PartialResult
+evalIfBlock : PartialEval3 (Node Expression) (Node Expression) (Node Expression)
 evalIfBlock cfg env cond true false =
     case evalExpression cfg env cond of
         ( Err e, callTree ) ->
@@ -807,7 +807,7 @@ evalFunction cfg localEnv oldArgs patterns functionName implementation =
                             |> Tuple.mapSecond List.singleton
 
 
-evalKernelFunction : Config -> Env -> ModuleName -> String -> PartialResult
+evalKernelFunction : PartialEval2 ModuleName String
 evalKernelFunction cfg env moduleName name =
     case Dict.get moduleName kernelFunctions of
         Nothing ->
@@ -876,7 +876,7 @@ evalNegation cfg env child =
             PartialErr [ callTree ] <| typeError env "Trying to negate a non-number"
 
 
-evalLetBlock : Config -> Env -> Expression.LetBlock -> PartialResult
+evalLetBlock : PartialEval Expression.LetBlock
 evalLetBlock cfg env letBlock =
     let
         envDefs : Set String
@@ -1113,7 +1113,7 @@ declarationDefinedVariables (Node _ letDeclaration) =
             patternDefinedVariables letPattern
 
 
-evalRecordAccess : Config -> Env -> Node Expression -> Node String -> PartialResult
+evalRecordAccess : PartialEval2 (Node Expression) (Node String)
 evalRecordAccess cfg env recordExpr (Node _ field) =
     case evalExpression cfg env recordExpr of
         ( Ok value, callTree ) ->
@@ -1147,7 +1147,7 @@ evalRecordAccessFunction field =
         )
 
 
-evalRecordUpdate : Config -> Env -> Node String -> List (Node Expression.RecordSetter) -> PartialResult
+evalRecordUpdate : PartialEval2 (Node String) (List (Node Expression.RecordSetter))
 evalRecordUpdate cfg env (Node _ name) setters =
     case evalExpression cfg env (fakeNode <| Expression.FunctionOrValue [] name) of
         ( Err e, callTree ) ->
@@ -1211,7 +1211,7 @@ isVariant name =
             Unicode.isUpper first
 
 
-evalCase : Config -> Env -> Expression.CaseBlock -> PartialResult
+evalCase : PartialEval Expression.CaseBlock
 evalCase cfg env { expression, cases } =
     case evalExpression cfg env expression of
         ( Err e, callTree ) ->
