@@ -5,10 +5,10 @@ import Element exposing (Element, column, fill, padding, paragraph, row, spacing
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
-import Elm.Syntax.Expression as Expression
+import Elm.Syntax.Expression as Expression exposing (Expression)
 import Eval
 import Eval.Module
-import Eval.Types exposing (CallTree(..), Error(..))
+import Eval.Types exposing (CallTree(..), Error(..), PartialResult)
 import Parser
 import Syntax
 import Value exposing (EvalErrorKind(..))
@@ -22,7 +22,8 @@ type Msg
 type alias Model =
     { input : String
     , output : Result String String
-    , trace : List CallTree
+    , callTree : List CallTree
+    , trace : List ( Expression, PartialResult )
     }
 
 
@@ -101,7 +102,7 @@ innerView model =
                     |> String.split "\n"
                     |> List.map (\line -> paragraph [] [ text line ])
                     |> textColumn [ Font.family [ Font.monospace ] ]
-        , if List.isEmpty model.trace then
+        , if List.isEmpty model.callTree then
             Element.none
 
           else
@@ -109,7 +110,7 @@ innerView model =
                 [ Font.family [ Font.monospace ]
                 , spacing 10
                 ]
-                (List.map viewTrace model.trace)
+                (List.map viewTrace model.callTree)
         ]
 
 
@@ -192,6 +193,7 @@ init =
 in
 boom 100000"""
     , output = Ok ""
+    , callTree = []
     , trace = []
     }
 
@@ -202,10 +204,10 @@ update msg model =
         Input input ->
             { model | input = input }
 
-        Eval trace ->
+        Eval tracing ->
             let
-                ( result, traced ) =
-                    if trace then
+                ( result, callTree, trace ) =
+                    if tracing then
                         if String.startsWith "module " model.input then
                             Eval.Module.trace model.input (Expression.FunctionOrValue [] "main")
 
@@ -219,11 +221,13 @@ update msg model =
                           else
                             Eval.eval model.input
                         , []
+                        , []
                         )
             in
             { model
                 | output = resultToString result
-                , trace = traced
+                , callTree = callTree
+                , trace = trace
             }
 
 

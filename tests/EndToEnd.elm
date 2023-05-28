@@ -1,7 +1,6 @@
 module EndToEnd exposing (suite)
 
 import Elm.Syntax.Expression as Expression
-import Eval
 import Eval.Module
 import Expect
 import Test exposing (Test, describe, test)

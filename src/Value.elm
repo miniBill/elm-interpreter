@@ -1,4 +1,4 @@
-module Value exposing (Env, EnvValues, EvalError, EvalErrorKind(..), EvalResult, Value(..), fromOrder, nameError, toArray, toOrder, toString, typeError, unsupported)
+module Value exposing (Env, EnvValues, EvalError, EvalErrorKind(..), Value(..), fromOrder, nameError, toArray, toOrder, toString, typeError, unsupported)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
@@ -36,10 +36,6 @@ type alias Env =
 
 type alias EnvValues =
     Dict String Value
-
-
-type alias EvalResult a =
-    Result EvalError a
 
 
 type alias EvalError =

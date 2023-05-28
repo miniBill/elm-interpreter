@@ -1,7 +1,7 @@
 module Kernel.JsArray exposing (appendN, foldr, initialize, initializeFromList)
 
 import Array exposing (Array)
-import Eval.Types exposing (Eval)
+import Eval.Types as Types exposing (Eval)
 import List.Extra
 import Value exposing (Value)
 
@@ -38,45 +38,21 @@ case. This is an optimization that has proved useful in the `Array` module.
 -}
 initialize : Int -> Int -> (Int -> Eval Value) -> Eval (Array Value)
 initialize len offset f cfg env =
-    List.range offset (offset + len - 1)
-        |> List.foldr
-            (\e ( racc, callTrees ) ->
-                case racc of
-                    Err _ ->
-                        ( racc, callTrees )
-
-                    Ok acc ->
-                        case f e cfg env of
-                            ( Err err, fCallTree ) ->
-                                ( Err err, fCallTree ++ callTrees )
-
-                            ( Ok g, fCallTree ) ->
-                                ( Ok (g :: acc), fCallTree ++ callTrees )
-            )
-            ( Ok [], [] )
-        |> Tuple.mapFirst (Result.map Array.fromList)
+    Types.combineMap f (List.range offset (offset + len - 1)) cfg env
+        |> Types.map Array.fromList
 
 
 foldr : (Value -> Eval (Value -> Eval Value)) -> Value -> Array Value -> Eval Value
 foldr f init arr cfg env =
     Array.foldr
-        (\e ( racc, callTrees ) ->
-            case racc of
+        (\e (( resultAcc, _, _ ) as acc) ->
+            case resultAcc of
                 Err _ ->
-                    ( racc, callTrees )
+                    acc
 
-                Ok acc ->
-                    case f e cfg env of
-                        ( Ok g, fCallTree ) ->
-                            case g acc cfg env of
-                                ( Err err, gCallTree ) ->
-                                    ( Err err, gCallTree ++ fCallTree ++ callTrees )
-
-                                ( Ok h, gCallTree ) ->
-                                    ( Ok h, gCallTree ++ fCallTree ++ callTrees )
-
-                        ( Err err, fCallTree ) ->
-                            ( Err err, fCallTree ++ callTrees )
+                Ok _ ->
+                    Types.map2 Tuple.pair (f e cfg env) acc
+                        |> Types.andThen (\( g, y ) -> g y cfg env)
         )
-        ( Ok init, [] )
+        (Types.succeed init)
         arr

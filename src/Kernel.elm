@@ -6,14 +6,14 @@ import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern exposing (QualifiedNameRef)
-import Eval.Types exposing (Eval)
+import Eval.Types as Types exposing (Eval, EvalResult)
 import FastDict as Dict exposing (Dict)
 import Kernel.JsArray
 import Kernel.List
 import Kernel.String
 import Kernel.Utils
 import Maybe.Extra
-import Value exposing (EvalResult, Value(..), typeError)
+import Value exposing (EvalError, Value(..), typeError)
 
 
 type alias EvalFunction =
@@ -131,7 +131,7 @@ functions evalFunction =
         -- , ( "foldl", one string to string String.foldl )
         -- , ( "foldr", one string to string String.foldr )
         , ( "fromList", one (list char) to string String.fromList )
-        , ( "fromNumber", oneWithError anything to string <| \s _ env -> ( Kernel.String.fromNumber env s, [] ) )
+        , ( "fromNumber", oneWithError anything to string Kernel.String.fromNumber )
         , ( "indexes", two string string to (list int) String.indexes )
         , ( "join", two string (list string) to string String.join )
         , ( "lines", one string to (list string) String.lines )
@@ -154,7 +154,7 @@ functions evalFunction =
         , ( "le", Kernel.Utils.comparison [ LT, EQ ] )
         , ( "lt", Kernel.Utils.comparison [ LT ] )
         , ( "equal", Kernel.Utils.comparison [ EQ ] )
-        , ( "compare", twoWithError anything anything to order <| \l r _ env -> ( Kernel.Utils.compare l r env, [] ) )
+        , ( "compare", twoWithError anything anything to order Kernel.Utils.compare )
         ]
       )
     ]
@@ -373,24 +373,21 @@ function evalFunctionWith inSelector _ outSelector =
                 PartiallyApplied localEnv oldArgs patterns maybeName implementation ->
                     Just
                         (\arg cfg _ ->
-                            case evalFunctionWith (oldArgs ++ [ inSelector.toValue arg ]) patterns maybeName implementation cfg localEnv of
-                                ( Err e, callTree ) ->
-                                    ( Err e, callTree )
+                            evalFunctionWith (oldArgs ++ [ inSelector.toValue arg ]) patterns maybeName implementation cfg localEnv
+                                |> Types.onValue
+                                    (\out ->
+                                        case outSelector.fromValue out of
+                                            Just ov ->
+                                                Ok ov
 
-                                ( Ok out, callTree ) ->
-                                    case outSelector.fromValue out of
-                                        Just ov ->
-                                            ( Ok ov, callTree )
-
-                                        Nothing ->
-                                            ( Err <|
-                                                typeError localEnv <|
-                                                    "Could not convert output from "
-                                                        ++ Value.toString out
-                                                        ++ " to "
-                                                        ++ outSelector.name
-                                            , callTree
-                                            )
+                                            Nothing ->
+                                                Err <|
+                                                    typeError localEnv <|
+                                                        "Could not convert output from "
+                                                            ++ Value.toString out
+                                                            ++ " to "
+                                                            ++ outSelector.name
+                                    )
                         )
 
                 _ ->
@@ -435,10 +432,10 @@ constant selector const =
     , \args _ env ->
         case args of
             [] ->
-                ( Ok <| selector.toValue const, [] )
+                Types.succeed <| selector.toValue const
 
             _ ->
-                ( Err <| typeError env <| "Didn't expect any args", [] )
+                Types.fail <| typeError env <| "Didn't expect any args"
     )
 
 
@@ -454,17 +451,17 @@ zero _ output f =
 zeroWithError :
     To
     -> OutSelector out ox
-    -> EvalResult out
+    -> Result EvalError out
     -> ( Int, List Value -> Eval Value )
 zeroWithError _ output f =
     ( 0
     , \args _ env ->
         case args of
             [] ->
-                ( Result.map output.toValue f, [] )
+                ( Result.map output.toValue f, [], [] )
 
             _ ->
-                ( Err <| typeError env <| "Expected zero args, got more", [] )
+                Types.fail <| typeError env <| "Expected zero args, got more"
     )
 
 
@@ -475,7 +472,7 @@ one :
     -> (a -> out)
     -> ( Int, List Value -> Eval Value )
 one firstSelector _ output f =
-    oneWithError firstSelector To output (\v _ _ -> ( Ok (f v), [] ))
+    oneWithError firstSelector To output (\v _ _ -> Types.succeed (f v))
 
 
 oneWithError :
@@ -490,24 +487,23 @@ oneWithError firstSelector _ output f =
         let
             err : String -> EvalResult value
             err got =
-                Err <| typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
+                Types.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
         in
         case args of
             [ arg ] ->
                 case firstSelector.fromValue arg of
                     Just s ->
-                        Tuple.mapFirst
-                            (Result.map output.toValue)
-                            (f s cfg env)
+                        f s cfg env
+                            |> Types.map output.toValue
 
                     Nothing ->
-                        ( err (Value.toString arg), [] )
+                        err (Value.toString arg)
 
             [] ->
-                ( err "zero", [] )
+                err "zero"
 
             _ ->
-                ( err "more", [] )
+                err "more"
     )
 
 
@@ -519,7 +515,7 @@ two :
     -> (a -> b -> out)
     -> ( Int, List Value -> Eval Value )
 two firstSelector secondSelector _ output f =
-    twoWithError firstSelector secondSelector To output (\l r _ _ -> ( Ok (f l r), [] ))
+    twoWithError firstSelector secondSelector To output (\l r _ _ -> Types.succeed (f l r))
 
 
 twoWithError :
@@ -535,7 +531,7 @@ twoWithError firstSelector secondSelector _ output f =
         let
             typeError_ : String -> EvalResult value
             typeError_ msg =
-                Err (typeError env msg)
+                Types.fail (typeError env msg)
 
             err : String -> EvalResult value
             err got =
@@ -549,23 +545,22 @@ twoWithError firstSelector secondSelector _ output f =
             [ firstArg, secondArg ] ->
                 case firstSelector.fromValue firstArg of
                     Nothing ->
-                        ( typeError_ <| "Expected the first argument to be " ++ firstSelector.name ++ ", got " ++ Value.toString firstArg, [] )
+                        typeError_ <| "Expected the first argument to be " ++ firstSelector.name ++ ", got " ++ Value.toString firstArg
 
                     Just first ->
                         case secondSelector.fromValue secondArg of
                             Nothing ->
-                                ( typeError_ <| "Expected the second argument to be " ++ secondSelector.name ++ ", got " ++ Value.toString secondArg, [] )
+                                typeError_ <| "Expected the second argument to be " ++ secondSelector.name ++ ", got " ++ Value.toString secondArg
 
                             Just second ->
-                                Tuple.mapFirst
-                                    (Result.map output.toValue)
-                                    (f first second cfg env)
+                                f first second cfg env
+                                    |> Types.map output.toValue
 
             [] ->
-                ( err "zero", [] )
+                err "zero"
 
             _ ->
-                ( err (String.join ", " <| List.map Value.toString args), [] )
+                err (String.join ", " <| List.map Value.toString args)
     )
 
 
@@ -578,7 +573,7 @@ three :
     -> (a -> b -> c -> out)
     -> ( Int, List Value -> Eval Value )
 three firstSelector secondSelector thirdSelector _ output f =
-    threeWithError firstSelector secondSelector thirdSelector To output (\l m r _ _ -> ( Ok (f l m r), [] ))
+    threeWithError firstSelector secondSelector thirdSelector To output (\l m r _ _ -> Types.succeed (f l m r))
 
 
 threeWithError :
@@ -596,27 +591,26 @@ threeWithError firstSelector secondSelector thirdSelector _ output f =
             err : String -> EvalResult value
             err got =
                 if firstSelector.name == secondSelector.name && secondSelector.name == thirdSelector.name then
-                    Err <| typeError env <| "Expected three " ++ firstSelector.name ++ "s, got " ++ got
+                    Types.fail <| typeError env <| "Expected three " ++ firstSelector.name ++ "s, got " ++ got
 
                 else
-                    Err <| typeError env <| "Expected one " ++ firstSelector.name ++ ", one " ++ secondSelector.name ++ " and one " ++ thirdSelector.name ++ ", got " ++ got
+                    Types.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", one " ++ secondSelector.name ++ " and one " ++ thirdSelector.name ++ ", got " ++ got
         in
         case args of
             [ firstArg, secondArg, thirdArg ] ->
                 case ( firstSelector.fromValue firstArg, secondSelector.fromValue secondArg, thirdSelector.fromValue thirdArg ) of
                     ( Just first, Just second, Just third ) ->
-                        Tuple.mapFirst
-                            (Result.map output.toValue)
-                            (f first second third cfg env)
+                        f first second third cfg env
+                            |> Types.map output.toValue
 
                     _ ->
-                        ( err (String.join ", " (List.map Value.toString args)), [] )
+                        err (String.join ", " (List.map Value.toString args))
 
             [] ->
-                ( err "zero", [] )
+                err "zero"
 
             _ ->
-                ( err ("[ " ++ String.join ", " (List.map Value.toString args) ++ " ]"), [] )
+                err ("[ " ++ String.join ", " (List.map Value.toString args) ++ " ]")
     )
 
 
@@ -629,17 +623,17 @@ twoNumbers fInt fFloat =
     , \args _ env ->
         case args of
             [ Int li, Int ri ] ->
-                ( Ok <| Int (fInt li ri), [] )
+                Types.succeed <| Int (fInt li ri)
 
             [ Int li, Float rf ] ->
-                ( Ok <| Float (fFloat (toFloat li) rf), [] )
+                Types.succeed <| Float (fFloat (toFloat li) rf)
 
             [ Float lf, Int ri ] ->
-                ( Ok <| Float (fFloat lf (toFloat ri)), [] )
+                Types.succeed <| Float (fFloat lf (toFloat ri))
 
             [ Float lf, Float rf ] ->
-                ( Ok <| Float (fFloat lf rf), [] )
+                Types.succeed <| Float (fFloat lf rf)
 
             _ ->
-                ( Err <| typeError env "Expected two numbers", [] )
+                Types.fail <| typeError env "Expected two numbers"
     )

@@ -12,7 +12,7 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Writer
 import Env
 import Eval.Expression
-import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation, Error(..))
+import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation, Error(..), PartialResult)
 import FastDict as Dict
 import Result.MyExtra
 import Syntax exposing (fakeNode)
@@ -21,16 +21,19 @@ import Value exposing (Env, Value, unsupported)
 
 eval : String -> Expression -> Result Error Value
 eval source expression =
-    traceOrEvalModule { trace = False } source expression
-        |> Tuple.first
+    let
+        ( result, _, _ ) =
+            traceOrEvalModule { trace = False } source expression
+    in
+    result
 
 
-trace : String -> Expression -> ( Result Error Value, List CallTree )
+trace : String -> Expression -> ( Result Error Value, List CallTree, List ( Expression, PartialResult ) )
 trace source expression =
     traceOrEvalModule { trace = True } source expression
 
 
-traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, List CallTree )
+traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, List CallTree, List ( Expression, PartialResult ) )
 traceOrEvalModule cfg source expression =
     let
         maybeEnv : Result Error Env
@@ -51,7 +54,7 @@ traceOrEvalModule cfg source expression =
     in
     case maybeEnv of
         Err e ->
-            ( Err e, [] )
+            ( Err e, [], [] )
 
         Ok env ->
             let
@@ -70,7 +73,7 @@ traceOrEvalModule cfg source expression =
                         }
                     ]
 
-                ( result, callTrees ) =
+                ( result, callTrees, expressions ) =
                     Eval.Expression.evalExpression
                         (fakeNode expression)
                         { trace = cfg.trace
@@ -80,6 +83,7 @@ traceOrEvalModule cfg source expression =
             in
             ( Result.mapError Types.EvalError result
             , callTreeContinuation callTrees result
+            , expressions
             )
 
 

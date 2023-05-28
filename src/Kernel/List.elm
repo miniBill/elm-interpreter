@@ -18,19 +18,21 @@ sortBy toComparable list cfg env =
         list
         cfg
         env
-        |> Tuple.mapFirst
-            (Result.map
-                (List.sortWith
-                    (\( _, lc ) ( _, rc ) ->
-                        case Kernel.Utils.compare lc rc env of
-                            Err e ->
-                                handleErr e
+        |> Types.map
+            (List.sortWith
+                (\( _, lc ) ( _, rc ) ->
+                    case Kernel.Utils.compare lc rc cfg env of
+                        ( Err e, _, _ ) ->
+                            handleErr e
 
-                            Ok res ->
-                                res
-                    )
-                    >> List.map Tuple.first
+                        ( Ok res, _, _ ) ->
+                            let
+                                _ =
+                                    Debug.todo
+                            in
+                            res
                 )
+                >> List.map Tuple.first
             )
 
 
@@ -40,18 +42,23 @@ sortWith compare list cfg env =
         |> List.sortWith
             (\lv rv ->
                 case compare lv cfg env of
-                    ( Err e, _ ) ->
+                    ( Err e, _, _ ) ->
                         handleErr e
 
-                    ( Ok k, _ ) ->
+                    ( Ok k, _, _ ) ->
                         case k rv cfg env of
-                            ( Err e, _ ) ->
+                            ( Err e, _, _ ) ->
                                 handleErr e
 
-                            ( Ok res, _ ) ->
+                            ( Ok res, _, _ ) ->
                                 res
             )
         |> Ok
+    , let
+        _ =
+            Debug.todo
+      in
+      []
     , let
         _ =
             Debug.todo

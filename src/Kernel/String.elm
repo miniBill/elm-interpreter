@@ -1,16 +1,17 @@
 module Kernel.String exposing (fromNumber)
 
-import Value exposing (Env, EvalResult, Value(..), typeError)
+import Eval.Types as Types exposing (Eval)
+import Value exposing (Value(..), typeError)
 
 
-fromNumber : Env -> Value -> EvalResult String
-fromNumber env s =
+fromNumber : Value -> Eval String
+fromNumber s _ env =
     case s of
         Int i ->
-            Ok <| String.fromInt i
+            Types.succeed <| String.fromInt i
 
         Float f ->
-            Ok <| String.fromFloat f
+            Types.succeed <| String.fromFloat f
 
         _ ->
-            Err <| typeError env <| "Cannot convert " ++ Value.toString s ++ " to a number"
+            Types.fail <| typeError env <| "Cannot convert " ++ Value.toString s ++ " to a number"
