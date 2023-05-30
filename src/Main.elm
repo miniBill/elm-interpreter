@@ -1,7 +1,7 @@
 module Main exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, IndexedColumn, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, rgb, row, shrink, spacing, text, textColumn, width)
+import Element exposing (Element, IndexedColumn, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, rgb, row, shrink, spacing, text, textColumn, width)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
@@ -219,10 +219,16 @@ viewLogLines logLines =
                     |> String.split "\n"
                     |> List.map
                         (\line ->
-                            el
-                                [ htmlAttribute <| Html.Attributes.style "white-space" "pre"
-                                ]
-                                (text line)
+                            if String.isEmpty line then
+                                el [ height <| px 10 ] Element.none
+
+                            else if line == "==>" || row < 0 then
+                                el [ Font.bold ] (text line)
+
+                            else
+                                el
+                                    [ htmlAttribute <| Html.Attributes.style "white-space" "pre" ]
+                                    (text line)
                         )
                     |> textColumn
                         [ if modBy 2 row == 0 then
