@@ -226,10 +226,10 @@ viewLogLines logLines =
                         )
                     |> textColumn
                         [ if modBy 2 row == 0 then
-                            Background.color <| rgb 0.9 0.9 0.9
+                            Background.color <| rgb 0.85 0.85 0.9
 
                           else
-                            Background.color <| rgb 0.8 0.8 0.8
+                            Background.color <| rgb 0.75 0.75 0.8
                         , paddingEach
                             { left =
                                 if column == 0 then
