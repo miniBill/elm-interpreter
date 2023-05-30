@@ -126,19 +126,23 @@ evalExpression (Node _ expression) cfg env =
             ( v
             , Rope.empty
               --TODO: fix call trees cfg.callTreeContinuation callTrees v
-            , cfg.logContinuation
-                (logLines
-                    |> Rope.prepend
-                        { stack = env.callStack
-                        , message = expressionToString expression
-                        , env = relevantEnv env expression
-                        }
-                    |> Rope.append
-                        { stack = env.callStack
-                        , message = expressionToString expression ++ " = " ++ Types.partialResultToString result
-                        , env = relevantEnv env expression
-                        }
-                )
+            , if cfg.trace then
+                cfg.logContinuation
+                    (logLines
+                        |> Rope.prepend
+                            { stack = env.callStack
+                            , message = expressionToString expression
+                            , env = relevantEnv env expression
+                            }
+                        |> Rope.append
+                            { stack = env.callStack
+                            , message = expressionToString expression ++ " = " ++ Types.partialResultToString result
+                            , env = relevantEnv env expression
+                            }
+                    )
+
+              else
+                Rope.empty
             )
 
         PartialExpression next newConfig newEnv ->
@@ -147,19 +151,23 @@ evalExpression (Node _ expression) cfg env =
                     evalExpression next
                         { newConfig
                             | logContinuation =
-                                \ll ->
-                                    ll
-                                        |> Rope.prepend
-                                            { stack = env.callStack
-                                            , message = expressionToString expression ++ " = " ++ expressionToString (Node.value next)
-                                            , env = relevantEnv env expression
-                                            }
-                                        |> Rope.prepend
-                                            { stack = env.callStack
-                                            , message = expressionToString expression
-                                            , env = relevantEnv env expression
-                                            }
-                                        |> cfg.logContinuation
+                                if cfg.trace then
+                                    \ll ->
+                                        ll
+                                            |> Rope.prepend
+                                                { stack = env.callStack
+                                                , message = expressionToString expression ++ " = " ++ expressionToString (Node.value next)
+                                                , env = relevantEnv env expression
+                                                }
+                                            |> Rope.prepend
+                                                { stack = env.callStack
+                                                , message = expressionToString expression
+                                                , env = relevantEnv env expression
+                                                }
+                                            |> cfg.logContinuation
+
+                                else
+                                    identity
                         }
                         newEnv
             in

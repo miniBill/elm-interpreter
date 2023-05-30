@@ -1,7 +1,7 @@
 module Main exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, IndexedColumn, column, el, fill, height, padding, paddingEach, paragraph, rgb, row, shrink, spacing, text, textColumn, width)
+import Element exposing (Element, IndexedColumn, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, rgb, row, shrink, spacing, text, textColumn, width)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
@@ -11,6 +11,7 @@ import Eval
 import Eval.Module
 import Eval.Types as Types exposing (CallTree(..), Error, LogLine)
 import FastDict as Dict
+import Html.Attributes
 import List.Extra
 import Rope
 import Syntax
@@ -98,7 +99,11 @@ innerView model =
             ]
         , case model.output of
             Ok output ->
-                paragraph [] [ text output ]
+                paragraph
+                    [ Font.family [ Font.monospace ]
+                    , htmlAttribute <| Html.Attributes.style "max-width" "calc(100vw - 20px)"
+                    ]
+                    [ text output ]
 
             Err e ->
                 e
@@ -199,41 +204,43 @@ viewLogLines logLines =
         let
             cell : Int -> Int -> String -> Element msg
             cell row column c =
-                el
-                    [ if modBy 2 row == 0 then
-                        Background.color <| rgb 0.9 0.9 0.9
+                c
+                    |> String.split "\n"
+                    |> List.map
+                        (\line ->
+                            el
+                                [ htmlAttribute <| Html.Attributes.style "white-`space" "pre"
+                                ]
+                                (text line)
+                        )
+                    |> textColumn
+                        [ if modBy 2 row == 0 then
+                            Background.color <| rgb 0.9 0.9 0.9
 
-                      else
-                        Background.color <| rgb 0.8 0.8 0.8
-                    , paddingEach
-                        { left =
-                            if column == 0 then
-                                5
+                          else
+                            Background.color <| rgb 0.8 0.8 0.8
+                        , paddingEach
+                            { left =
+                                if column == 0 then
+                                    5
 
-                            else
-                                20
-                        , right =
-                            if column == List.length rawColumns - 1 then
-                                5
+                                else
+                                    20
+                            , right =
+                                if column == List.length rawColumns - 1 then
+                                    5
 
-                            else
-                                20
-                        , top = 5
-                        , bottom = 5
-                        }
-                    , height fill
-                    ]
-                    (text <|
-                        if String.isEmpty c then
-                            " "
+                                else
+                                    20
+                            , top = 5
+                            , bottom = 5
+                            }
+                        , height fill
+                        ]
 
-                        else
-                            c
-                    )
-
-            rawColumns : List { header : Element msg, view : LogLine -> String, width : Element.Length }
+            rawColumns : List { header : String, view : LogLine -> String }
             rawColumns =
-                [ { header = text "Stack"
+                [ { header = "Stack"
                   , view =
                         \logLine ->
                             logLine.stack
@@ -249,9 +256,8 @@ viewLogLines logLines =
                                             name ++ "*" ++ String.fromInt (1 + List.length tail)
                                     )
                                 |> String.join "\n"
-                  , width = shrink
                   }
-                , { header = text "Environment"
+                , { header = "Environment"
                   , view =
                         \logLine ->
                             logLine.env
@@ -261,28 +267,24 @@ viewLogLines logLines =
                                         k ++ " = " ++ prettify (String.length k) (Value.toString v)
                                     )
                                 |> String.join "\n"
-                  , width = shrink
                   }
-                , { header = text "Expression"
+                , { header = "Expression"
                   , view = \logLine -> String.trim logLine.message
-                  , width = shrink
                   }
                 ]
 
             columns : List (IndexedColumn LogLine msg)
             columns =
-                rawColumns
-                    |> List.indexedMap
-                        (\columnIndex column ->
-                            { header = column.header
-                            , view = \i logLine -> cell i columnIndex (column.view logLine)
-                            , width = column.width
-                            }
-                        )
+                List.indexedMap
+                    (\columnIndex column ->
+                        { header = text column.header
+                        , view = \i logLine -> cell i columnIndex (column.view logLine)
+                        , width = shrink
+                        }
+                    )
+                    rawColumns
         in
-        Element.indexedTable
-            [ Font.family [ Font.monospace ]
-            ]
+        Element.indexedTable [ Font.family [ Font.monospace ] ]
             { columns = columns
             , data = logLines
             }
