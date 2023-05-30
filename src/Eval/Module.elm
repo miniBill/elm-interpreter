@@ -12,9 +12,10 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Writer
 import Env
 import Eval.Expression
-import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation, Error(..))
+import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation, Error(..), LogLine)
 import FastDict as Dict
 import Result.MyExtra
+import Rope exposing (Rope)
 import Syntax exposing (fakeNode)
 import Value exposing (Env, Value, unsupported)
 
@@ -22,18 +23,18 @@ import Value exposing (Env, Value, unsupported)
 eval : String -> Expression -> Result Error Value
 eval source expression =
     let
-        ( result, _ ) =
+        ( result, _, _ ) =
             traceOrEvalModule { trace = False } source expression
     in
     result
 
 
-trace : String -> Expression -> ( Result Error Value, List CallTree )
+trace : String -> Expression -> ( Result Error Value, Rope CallTree, Rope LogLine )
 trace source expression =
     traceOrEvalModule { trace = True } source expression
 
 
-traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, List CallTree )
+traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, Rope CallTree, Rope LogLine )
 traceOrEvalModule cfg source expression =
     let
         maybeEnv : Result Error Env
@@ -54,13 +55,13 @@ traceOrEvalModule cfg source expression =
     in
     case maybeEnv of
         Err e ->
-            ( Err e, [] )
+            ( Err e, Rope.empty, Rope.empty )
 
         Ok env ->
             let
                 callTreeContinuation : CallTreeContinuation
                 callTreeContinuation children res =
-                    [ CallNode "module"
+                    CallNode "module"
                         { moduleName = []
                         , name =
                             fakeNode expression
@@ -71,18 +72,20 @@ traceOrEvalModule cfg source expression =
                         , children = children
                         , result = res
                         }
-                    ]
+                        |> Rope.singleton
 
-                ( result, callTrees ) =
+                ( result, callTrees, logLines ) =
                     Eval.Expression.evalExpression
                         (fakeNode expression)
                         { trace = cfg.trace
                         , callTreeContinuation = callTreeContinuation
+                        , logContinuation = identity
                         }
                         env
             in
             ( Result.mapError Types.EvalError result
             , callTreeContinuation callTrees result
+            , logLines
             )
 
 

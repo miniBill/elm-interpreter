@@ -45,8 +45,8 @@ initialize len offset f cfg env =
 foldr : (Value -> Eval (Value -> Eval Value)) -> Value -> Array Value -> Eval Value
 foldr f init arr cfg env =
     Array.foldr
-        (\e (( resultAcc, _ ) as acc) ->
-            case resultAcc of
+        (\e acc ->
+            case Types.toResult acc of
                 Err _ ->
                     acc
 

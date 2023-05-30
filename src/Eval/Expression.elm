@@ -13,6 +13,7 @@ import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
 import Result.MyExtra
+import Rope
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import TopologicalSort
@@ -129,9 +130,10 @@ evalExpression (Node _ expression) cfg env =
                 }
     in
     case result of
-        PartialValue ( v, callTrees ) ->
+        PartialValue ( v, callTrees, logLines ) ->
             ( v
-            , callTrees
+            , cfg.callTreeContinuation callTrees v
+            , cfg.logContinuation logLines
             )
 
         PartialExpression next newConfig newEnv ->
@@ -311,23 +313,24 @@ evalApplication first rest cfg env =
 
                                                                         Just ( _, f ) ->
                                                                             let
-                                                                                ( kernelResult, children ) =
+                                                                                ( kernelResult, children, logLines ) =
                                                                                     f values
                                                                                         cfg
                                                                                         (Env.call moduleName name env)
                                                                             in
                                                                             ( kernelResult
                                                                             , if cfg.trace then
-                                                                                [ CallNode "application"
+                                                                                CallNode "application"
                                                                                     qualifiedName
                                                                                     { args = values
                                                                                     , result = kernelResult
                                                                                     , children = children
                                                                                     }
-                                                                                ]
+                                                                                    |> Rope.singleton
 
                                                                               else
-                                                                                []
+                                                                                Rope.empty
+                                                                            , logLines
                                                                             )
                                                                                 |> PartialValue
 
@@ -359,16 +362,18 @@ call maybeQualifiedName implementation values cfg env =
                         \children result ->
                             cfg.callTreeContinuation
                                 (if cfg.trace then
-                                    CallNode "call"
-                                        qualifiedName
-                                        { args = values
-                                        , result = result
-                                        , children = children
-                                        }
-                                        :: children
+                                    children
+                                        |> Rope.prepend
+                                            (CallNode "call"
+                                                qualifiedName
+                                                { args = values
+                                                , result = result
+                                                , children = children
+                                                }
+                                            )
 
                                  else
-                                    []
+                                    Rope.empty
                                 )
                                 result
                 }
@@ -591,15 +596,16 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
                                         | callTreeContinuation =
                                             \children result ->
                                                 cfg.callTreeContinuation
-                                                    [ CallNode "evalFunction"
-                                                        { moduleName = moduleName
-                                                        , name = name
-                                                        }
-                                                        { args = oldArgs
-                                                        , result = result
-                                                        , children = children
-                                                        }
-                                                    ]
+                                                    (Rope.singleton <|
+                                                        CallNode "evalFunction"
+                                                            { moduleName = moduleName
+                                                            , name = name
+                                                            }
+                                                            { args = oldArgs
+                                                            , result = result
+                                                            , children = children
+                                                            }
+                                                    )
                                                     result
                                     }
 
@@ -623,7 +629,7 @@ evalKernelFunction moduleName name cfg env =
                 Just ( argCount, f ) ->
                     if argCount == 0 then
                         let
-                            ( result, callTrees ) =
+                            ( result, callTrees, logLines ) =
                                 f [] cfg (Env.call moduleName name env)
                         in
                         if cfg.trace then
@@ -636,10 +642,10 @@ evalKernelFunction moduleName name cfg env =
                                         }
                                         { args = []
                                         , result = result
-                                        , children = []
+                                        , children = callTrees
                                         }
                             in
-                            PartialValue ( result, callTree :: callTrees )
+                            PartialValue ( result, Rope.singleton callTree, logLines )
 
                         else
                             PartialValue <| Types.fromResult result

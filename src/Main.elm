@@ -5,11 +5,10 @@ import Element exposing (Element, column, fill, padding, paragraph, row, spacing
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
-import Elm.Syntax.Expression as Expression exposing (Expression)
-import Elm.Writer
+import Elm.Syntax.Expression as Expression
 import Eval
 import Eval.Module
-import Eval.Types as Types exposing (CallTree(..), Error, PartialResult)
+import Eval.Types as Types exposing (CallTree(..), Error, LogLine)
 import Rope
 import Syntax
 import Value
@@ -24,6 +23,7 @@ type alias Model =
     { input : String
     , output : Result String String
     , callTree : List CallTree
+    , logLines : List LogLine
     }
 
 
@@ -162,7 +162,7 @@ viewCallTree (CallNode kind name { args, children, result }) =
 
         childrenRows : List (Element msg)
         childrenRows =
-            List.map viewCallTree children
+            List.map viewCallTree <| Rope.toList children
     in
     (nameRow :: childrenRows)
         |> column
@@ -194,6 +194,7 @@ in
 boom 100000"""
     , output = Ok ""
     , callTree = []
+    , logLines = []
     }
 
 
@@ -205,7 +206,7 @@ update msg model =
 
         Eval tracing ->
             let
-                ( result, callTree ) =
+                ( result, callTree, logLines ) =
                     if tracing then
                         if String.startsWith "module " model.input then
                             Eval.Module.trace model.input (Expression.FunctionOrValue [] "main")
@@ -219,12 +220,14 @@ update msg model =
 
                           else
                             Eval.eval model.input
-                        , []
+                        , Rope.empty
+                        , Rope.empty
                         )
             in
             { model
                 | output = resultToString result
-                , callTree = callTree
+                , callTree = Rope.toList callTree
+                , logLines = Rope.toList logLines
             }
 
 

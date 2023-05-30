@@ -4,6 +4,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import Eval.Types as Types exposing (Eval)
 import Kernel.Utils
+import Rope
 import Value exposing (Value)
 
 
@@ -37,16 +38,16 @@ sortWith compare list cfg env =
     ( list
         |> List.sortWith
             (\lv rv ->
-                case compare lv cfg env of
-                    ( Err e, _ ) ->
+                case Types.toResult (compare lv cfg env) of
+                    Err e ->
                         handleErr e
 
-                    ( Ok k, _ ) ->
-                        case k rv cfg env of
-                            ( Err e, _ ) ->
+                    Ok k ->
+                        case Types.toResult (k rv cfg env) of
+                            Err e ->
                                 handleErr e
 
-                            ( Ok res, _ ) ->
+                            Ok res ->
                                 res
             )
         |> Ok
@@ -54,7 +55,12 @@ sortWith compare list cfg env =
         _ =
             Debug.todo
       in
-      []
+      Rope.empty
+    , let
+        _ =
+            Debug.todo
+      in
+      Rope.empty
     )
 
 

@@ -1,10 +1,11 @@
-module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, errorToString, evalErrorToString, fail, failPartial, fromResult, map, map2, onValue, partialResultToString, succeed, succeedPartial)
+module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, EvalResult, LogContinuation, LogLine, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, errorToString, evalErrorToString, fail, failPartial, fromResult, map, map2, onValue, partialResultToString, succeed, succeedPartial, toResult)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import Elm.Writer
 import Parser exposing (DeadEnd)
+import Rope exposing (Rope)
 import Syntax
 import Value exposing (Env, EvalError, EvalErrorKind(..), Value)
 
@@ -19,49 +20,60 @@ type alias Eval out =
 
 type alias EvalResult out =
     ( Result EvalError out
-    , List CallTree
+    , Rope CallTree
+    , Rope LogLine
     )
 
 
+type alias LogLine =
+    String
+
+
 onValue : (a -> Result EvalError out) -> EvalResult a -> EvalResult out
-onValue f ( x, callTrees ) =
+onValue f ( x, callTrees, logs ) =
     ( Result.andThen f x
     , callTrees
+    , logs
     )
 
 
 andThen : (a -> EvalResult b) -> EvalResult a -> EvalResult b
-andThen f ( v, callTrees ) =
+andThen f ( v, callTrees, logs ) =
     case v of
         Err e ->
-            ( Err e, callTrees )
+            ( Err e, callTrees, logs )
 
         Ok w ->
             let
-                ( y, fxCallTrees ) =
+                ( y, fxCallTrees, fxLogs ) =
                     f w
             in
-            ( y, fxCallTrees ++ callTrees )
+            ( y
+            , Rope.appendTo callTrees fxCallTrees
+            , Rope.appendTo logs fxLogs
+            )
 
 
 map : (a -> out) -> EvalResult a -> EvalResult out
-map f ( x, callTrees ) =
+map f ( x, callTrees, logs ) =
     ( Result.map f x
     , callTrees
+    , logs
     )
 
 
 map2 : (a -> b -> out) -> EvalResult a -> EvalResult b -> EvalResult out
-map2 f ( lv, lc ) ( rv, rc ) =
+map2 f ( lv, lc, ll ) ( rv, rc, rl ) =
     ( Result.map2 f lv rv
-    , lc ++ rc
+    , Rope.appendTo lc rc
+    , Rope.appendTo ll rl
     )
 
 
 combineMap : (a -> Eval b) -> List a -> Eval (List b)
 combineMap f xs cfg env =
     List.foldr
-        (\el (( listAcc, _ ) as acc) ->
+        (\el (( listAcc, _, _ ) as acc) ->
             case listAcc of
                 Err _ ->
                     acc
@@ -87,17 +99,22 @@ fail e =
 
 fromResult : Result EvalError a -> EvalResult a
 fromResult x =
-    ( x, [] )
+    ( x, Rope.empty, Rope.empty )
 
 
 type alias Config =
     { trace : Bool
     , callTreeContinuation : CallTreeContinuation
+    , logContinuation : LogContinuation
     }
 
 
 type alias CallTreeContinuation =
-    List CallTree -> Result EvalError Value -> List CallTree
+    Rope CallTree -> Result EvalError Value -> Rope CallTree
+
+
+type alias LogContinuation =
+    Rope LogLine -> Rope LogLine
 
 
 type CallTree
@@ -106,7 +123,7 @@ type CallTree
         QualifiedNameRef
         { args : List Value
         , result : Result EvalError Value
-        , children : List CallTree
+        , children : Rope CallTree
         }
 
 
@@ -138,10 +155,10 @@ failPartial e =
 andThenPartial : (a -> PartialResult) -> EvalResult a -> PartialResult
 andThenPartial f x =
     case x of
-        ( Err e, callTrees ) ->
-            PartialValue ( Err e, callTrees )
+        ( Err e, callTrees, logs ) ->
+            PartialValue ( Err e, callTrees, logs )
 
-        ( Ok w, callTrees ) ->
+        ( Ok w, callTrees, logs ) ->
             case f w of
                 PartialValue y ->
                     PartialValue <| map2 (\_ vy -> vy) x y
@@ -150,22 +167,30 @@ andThenPartial f x =
                     PartialExpression
                         expr
                         { newConfig
-                            | callTreeContinuation = \children result -> newConfig.callTreeContinuation (callTrees ++ children) result
+                            | callTreeContinuation = \children result -> newConfig.callTreeContinuation (Rope.appendTo callTrees children) result
+                            , logContinuation = Rope.appendTo logs
                         }
                         newEnv
+
+
+toResult : EvalResult out -> Result EvalError out
+toResult ( res, _, _ ) =
+    res
 
 
 partialResultToString : PartialResult -> String
 partialResultToString result =
     case result of
-        PartialValue ( Ok v, _ ) ->
-            Value.toString v
+        PartialValue evalResult ->
+            case toResult evalResult of
+                Ok v ->
+                    Value.toString v
+
+                Err e ->
+                    errorToString (EvalError e)
 
         PartialExpression expr _ _ ->
             Elm.Writer.write (Elm.Writer.writeExpression expr)
-
-        PartialValue ( Err e, _ ) ->
-            errorToString (EvalError e)
 
 
 errorToString : Error -> String
