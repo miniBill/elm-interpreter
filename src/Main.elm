@@ -6,6 +6,7 @@ import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
+import Element.Lazy
 import Elm.Syntax.Expression as Expression
 import Eval
 import Eval.Module
@@ -97,30 +98,40 @@ innerView model =
                 , label = text <| "Trace " ++ toRun
                 }
             ]
-        , case model.output of
-            Ok output ->
-                paragraph
-                    [ Font.family [ Font.monospace ]
-                    , htmlAttribute <| Html.Attributes.style "max-width" "calc(100vw - 20px)"
-                    ]
-                    [ text output ]
-
-            Err e ->
-                e
-                    |> String.split "\n"
-                    |> List.map (\line -> paragraph [] [ text line ])
-                    |> textColumn [ Font.family [ Font.monospace ] ]
-        , if List.isEmpty model.callTree then
-            Element.none
-
-          else
-            column
-                [ Font.family [ Font.monospace ]
-                , spacing 10
-                ]
-                (List.map (viewCallTree 4) model.callTree)
-        , viewLogLines model.logLines
+        , Element.Lazy.lazy viewOutput model.output
+        , Element.Lazy.lazy viewCallTrees model.callTree
+        , Element.Lazy.lazy viewLogLines model.logLines
         ]
+
+
+viewOutput : Result String String -> Element Msg
+viewOutput output =
+    case output of
+        Ok o ->
+            paragraph
+                [ Font.family [ Font.monospace ]
+                , htmlAttribute <| Html.Attributes.style "max-width" "calc(100vw - 20px)"
+                ]
+                [ text o ]
+
+        Err e ->
+            e
+                |> String.split "\n"
+                |> List.map (\line -> paragraph [] [ text line ])
+                |> textColumn [ Font.family [ Font.monospace ] ]
+
+
+viewCallTrees : List CallTree -> Element Msg
+viewCallTrees callTree =
+    if List.isEmpty callTree then
+        Element.none
+
+    else
+        column
+            [ Font.family [ Font.monospace ]
+            , spacing 10
+            ]
+            (List.map (viewCallTree 4) callTree)
 
 
 viewCallTree : Int -> CallTree -> Element msg
@@ -209,7 +220,7 @@ viewLogLines logLines =
                     |> List.map
                         (\line ->
                             el
-                                [ htmlAttribute <| Html.Attributes.style "white-`space" "pre"
+                                [ htmlAttribute <| Html.Attributes.style "white-space" "pre"
                                 ]
                                 (text line)
                         )
@@ -264,7 +275,7 @@ viewLogLines logLines =
                                 |> Dict.toList
                                 |> List.map
                                     (\( k, v ) ->
-                                        k ++ " = " ++ prettify (String.length k) (Value.toString v)
+                                        k ++ " = " ++ Value.toString v
                                     )
                                 |> String.join "\n"
                   }
@@ -288,27 +299,6 @@ viewLogLines logLines =
             { columns = columns
             , data = logLines
             }
-
-
-prettify : Int -> String -> String
-prettify indent input =
-    if String.startsWith "{" input && String.endsWith "}" input then
-        let
-            joiner : String
-            joiner =
-                "\n" ++ String.repeat (indent + 3) " " ++ ", "
-
-            inner : String
-            inner =
-                input
-                    |> String.slice 1 -1
-                    |> String.split ", "
-                    |> String.join joiner
-        in
-        "{ " ++ inner ++ "\n}"
-
-    else
-        input
 
 
 init : Model
