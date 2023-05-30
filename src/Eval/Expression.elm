@@ -128,7 +128,7 @@ evalExpression (Node _ expression) cfg env =
         equal : String -> String -> String
         equal l r =
             if String.contains "\n" l || String.contains "\n" r then
-                l ++ "\n==>\n" ++ r
+                l ++ "\n\n==>\n\n" ++ r
 
             else
                 l ++ " ==> " ++ r
