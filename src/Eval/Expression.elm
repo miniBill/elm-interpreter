@@ -122,40 +122,63 @@ evalExpression (Node _ expression) cfg env =
             Elm.Writer.write <| Elm.Writer.writeExpression <| fakeNode expr
     in
     case result of
-        PartialValue ( v, callTrees, logLines ) ->
+        PartialValue ( v, _, logLines ) ->
             ( v
             , Rope.empty
-              -- cfg.callTreeContinuation callTrees v
+              --TODO: fix call trees cfg.callTreeContinuation callTrees v
             , cfg.logContinuation
                 (logLines
                     |> Rope.prepend
                         { stack = env.callStack
-                        , message = "evalExpression " ++ expressionToString expression
+                        , message = expressionToString expression
+                        , env = relevantEnv env expression
                         }
                     |> Rope.append
                         { stack = env.callStack
-                        , message = "evalExpression " ++ expressionToString expression ++ " = " ++ Types.partialResultToString result
+                        , message = expressionToString expression ++ " = " ++ Types.partialResultToString result
+                        , env = relevantEnv env expression
                         }
                 )
             )
 
         PartialExpression next newConfig newEnv ->
-            evalExpression
-                next
-                { newConfig
-                    | logContinuation =
-                        \logLines ->
-                            logLines
-                                |> Rope.prepend
-                                    { stack = env.callStack
-                                    , message = "evalExpression " ++ expressionToString expression
-                                    }
-                                |> Rope.append
-                                    { stack = env.callStack
-                                    , message = "evalExpression " ++ expressionToString expression ++ " = " ++ expressionToString (Node.value next)
-                                    }
-                }
-                newEnv
+            let
+                res =
+                    evalExpression next
+                        { newConfig
+                            | logContinuation =
+                                \ll ->
+                                    ll
+                                        |> Rope.prepend
+                                            { stack = env.callStack
+                                            , message = expressionToString expression ++ " = " ++ expressionToString (Node.value next)
+                                            , env = relevantEnv env expression
+                                            }
+                                        |> Rope.prepend
+                                            { stack = env.callStack
+                                            , message = expressionToString expression
+                                            , env = relevantEnv env expression
+                                            }
+                                        |> cfg.logContinuation
+                        }
+                        newEnv
+            in
+            res
+
+
+relevantEnv : Env -> Expression -> Dict String Value
+relevantEnv env expression =
+    freeVariables (fakeNode expression)
+        |> Set.foldl
+            (\var acc ->
+                case Dict.get var env.values of
+                    Nothing ->
+                        acc
+
+                    Just value ->
+                        Dict.insert var value acc
+            )
+            Dict.empty
 
 
 evalShortCircuitAnd : Node Expression -> Node Expression -> PartialEval

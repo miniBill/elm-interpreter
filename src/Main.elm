@@ -1,7 +1,8 @@
 module Main exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, column, fill, padding, paragraph, row, spacing, text, textColumn, width)
+import Element exposing (Element, IndexedColumn, column, el, fill, height, padding, paddingEach, paragraph, rgb, row, shrink, spacing, text, textColumn, width)
+import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -9,6 +10,8 @@ import Elm.Syntax.Expression as Expression
 import Eval
 import Eval.Module
 import Eval.Types as Types exposing (CallTree(..), Error, LogLine)
+import FastDict as Dict
+import List.Extra
 import Rope
 import Syntax
 import Value
@@ -111,15 +114,7 @@ innerView model =
                 , spacing 10
                 ]
                 (List.map (viewCallTree 4) model.callTree)
-        , if List.isEmpty model.logLines then
-            Element.none
-
-          else
-            column
-                [ Font.family [ Font.monospace ]
-                , spacing 10
-                ]
-                (List.map viewLogLine model.logLines)
+        , viewLogLines model.logLines
         ]
 
 
@@ -185,7 +180,7 @@ viewCallTree budget (CallNode kind name { args, children, result }) =
                     , right = 0
                     , bottom = 0
                     }
-                , Element.paddingEach
+                , paddingEach
                     { top = 0
                     , bottom = 0
                     , left = 10
@@ -195,14 +190,123 @@ viewCallTree budget (CallNode kind name { args, children, result }) =
                 ]
 
 
-viewLogLine : LogLine -> Element msg
-viewLogLine logLine =
-    let
-        context : String
-        context =
-            String.join " > " <| List.map Syntax.qualifiedNameToString logLine.stack
-    in
-    paragraph [] [ text <| context ++ " " ++ logLine.message ]
+viewLogLines : List LogLine -> Element msg
+viewLogLines logLines =
+    if List.isEmpty logLines then
+        Element.none
+
+    else
+        let
+            cell : Int -> Int -> String -> Element msg
+            cell row column c =
+                el
+                    [ if modBy 2 row == 0 then
+                        Background.color <| rgb 0.9 0.9 0.9
+
+                      else
+                        Background.color <| rgb 0.8 0.8 0.8
+                    , paddingEach
+                        { left =
+                            if column == 0 then
+                                5
+
+                            else
+                                20
+                        , right =
+                            if column == List.length rawColumns - 1 then
+                                5
+
+                            else
+                                20
+                        , top = 5
+                        , bottom = 5
+                        }
+                    , height fill
+                    ]
+                    (text <|
+                        if String.isEmpty c then
+                            " "
+
+                        else
+                            c
+                    )
+
+            rawColumns : List { header : Element msg, view : LogLine -> String, width : Element.Length }
+            rawColumns =
+                [ { header = text "Stack"
+                  , view =
+                        \logLine ->
+                            logLine.stack
+                                |> List.reverse
+                                |> List.map Syntax.qualifiedNameToString
+                                |> List.Extra.group
+                                |> List.map
+                                    (\( name, tail ) ->
+                                        if List.isEmpty tail then
+                                            name
+
+                                        else
+                                            name ++ "*" ++ String.fromInt (1 + List.length tail)
+                                    )
+                                |> String.join "\n"
+                  , width = shrink
+                  }
+                , { header = text "Environment"
+                  , view =
+                        \logLine ->
+                            logLine.env
+                                |> Dict.toList
+                                |> List.map
+                                    (\( k, v ) ->
+                                        k ++ " = " ++ prettify (String.length k) (Value.toString v)
+                                    )
+                                |> String.join "\n"
+                  , width = shrink
+                  }
+                , { header = text "Expression"
+                  , view = \logLine -> String.trim logLine.message
+                  , width = shrink
+                  }
+                ]
+
+            columns : List (IndexedColumn LogLine msg)
+            columns =
+                rawColumns
+                    |> List.indexedMap
+                        (\columnIndex column ->
+                            { header = column.header
+                            , view = \i logLine -> cell i columnIndex (column.view logLine)
+                            , width = column.width
+                            }
+                        )
+        in
+        Element.indexedTable
+            [ Font.family [ Font.monospace ]
+            ]
+            { columns = columns
+            , data = logLines
+            }
+
+
+prettify : Int -> String -> String
+prettify indent input =
+    if String.startsWith "{" input && String.endsWith "}" input then
+        let
+            joiner : String
+            joiner =
+                "\n" ++ String.repeat (indent + 3) " " ++ ", "
+
+            inner : String
+            inner =
+                input
+                    |> String.slice 1 -1
+                    |> String.split ", "
+                    |> String.join joiner
+        in
+        "{ " ++ inner ++ "\n}"
+
+    else
+        input
 
 
 init : Model

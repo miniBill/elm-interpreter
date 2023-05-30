@@ -4,6 +4,7 @@ import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import Elm.Writer
+import FastDict exposing (Dict)
 import Parser exposing (DeadEnd)
 import Rope exposing (Rope)
 import Syntax
@@ -28,6 +29,7 @@ type alias EvalResult out =
 type alias LogLine =
     { stack : List QualifiedNameRef
     , message : String
+    , env : Dict String Value
     }
 
 

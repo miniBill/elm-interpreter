@@ -74,7 +74,7 @@ traceOrEvalModule cfg source expression =
                         }
                         |> Rope.singleton
 
-                ( result, callTrees, logLines ) =
+                ( result, _, logLines ) =
                     Eval.Expression.evalExpression
                         (fakeNode expression)
                         { trace = cfg.trace
@@ -84,7 +84,8 @@ traceOrEvalModule cfg source expression =
                         env
             in
             ( Result.mapError Types.EvalError result
-            , callTreeContinuation callTrees result
+            , Rope.empty
+              -- TODO: fix call trees callTreeContinuation callTrees result
             , logLines
             )
 
