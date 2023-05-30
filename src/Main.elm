@@ -288,7 +288,7 @@ viewLogLines logLines =
             columns =
                 List.indexedMap
                     (\columnIndex column ->
-                        { header = text column.header
+                        { header = cell -1 columnIndex column.header
                         , view = \i logLine -> cell i columnIndex (column.view logLine)
                         , width = shrink
                         }
