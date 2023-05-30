@@ -120,6 +120,18 @@ evalExpression (Node _ expression) cfg env =
         expressionToString : Expression -> String
         expressionToString expr =
             Elm.Writer.write <| Elm.Writer.writeExpression <| fakeNode expr
+
+        expressionString : String
+        expressionString =
+            expressionToString expression
+
+        equal : String -> String -> String
+        equal l r =
+            if String.contains "\n" l || String.contains "\n" r then
+                l ++ "\n==>\n" ++ r
+
+            else
+                l ++ " ==> " ++ r
     in
     case result of
         PartialValue ( v, _, logLines ) ->
@@ -131,12 +143,12 @@ evalExpression (Node _ expression) cfg env =
                     (logLines
                         |> Rope.prepend
                             { stack = env.callStack
-                            , message = expressionToString expression
+                            , message = expressionString
                             , env = relevantEnv env expression
                             }
                         |> Rope.append
                             { stack = env.callStack
-                            , message = expressionToString expression ++ " = " ++ Types.partialResultToString result
+                            , message = equal expressionString (Types.partialResultToString result)
                             , env = relevantEnv env expression
                             }
                     )
@@ -156,12 +168,12 @@ evalExpression (Node _ expression) cfg env =
                                         ll
                                             |> Rope.prepend
                                                 { stack = env.callStack
-                                                , message = expressionToString expression ++ " = " ++ expressionToString (Node.value next)
+                                                , message = equal expressionString (expressionToString (Node.value next))
                                                 , env = relevantEnv env expression
                                                 }
                                             |> Rope.prepend
                                                 { stack = env.callStack
-                                                , message = expressionToString expression
+                                                , message = expressionString
                                                 , env = relevantEnv env expression
                                                 }
                                             |> cfg.logContinuation
