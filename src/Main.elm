@@ -110,76 +110,99 @@ innerView model =
                 [ Font.family [ Font.monospace ]
                 , spacing 10
                 ]
-                (List.map viewCallTree model.callTree)
+                (List.map (viewCallTree 4) model.callTree)
+        , if List.isEmpty model.logLines then
+            Element.none
+
+          else
+            column
+                [ Font.family [ Font.monospace ]
+                , spacing 10
+                ]
+                (List.map viewLogLine model.logLines)
         ]
 
 
-viewCallTree : CallTree -> Element msg
-viewCallTree (CallNode kind name { args, children, result }) =
-    let
-        maybeParens : String -> String
-        maybeParens s =
-            case String.uncons s of
-                Just ( '[', _ ) ->
-                    s
+viewCallTree : Int -> CallTree -> Element msg
+viewCallTree budget (CallNode kind name { args, children, result }) =
+    if budget <= 0 then
+        Element.none
 
-                Just ( '(', _ ) ->
-                    s
-
-                Just ( '{', _ ) ->
-                    s
-
-                Nothing ->
-                    s
-
-                Just _ ->
-                    if String.contains " " s then
-                        "(" ++ s ++ ")"
-
-                    else
+    else
+        let
+            maybeParens : String -> String
+            maybeParens s =
+                case String.uncons s of
+                    Just ( '[', _ ) ->
                         s
 
-        from : String
-        from =
-            (Syntax.qualifiedNameToString name
-                :: List.map (maybeParens << Value.toString) args
-            )
-                |> String.join " "
+                    Just ( '(', _ ) ->
+                        s
 
-        nameRow : Element msg
-        nameRow =
-            (from ++ " = " ++ resultString ++ " [" ++ kind ++ "]")
-                |> text
+                    Just ( '{', _ ) ->
+                        s
 
-        resultString : String
-        resultString =
-            case result of
-                Ok v ->
-                    Value.toString v
+                    Nothing ->
+                        s
 
-                Err e ->
-                    Types.evalErrorToString e
+                    Just _ ->
+                        if String.contains " " s then
+                            "(" ++ s ++ ")"
 
-        childrenRows : List (Element msg)
-        childrenRows =
-            List.map viewCallTree <| Rope.toList children
+                        else
+                            s
+
+            from : String
+            from =
+                (Syntax.qualifiedNameToString name
+                    :: List.map (maybeParens << Value.toString) args
+                )
+                    |> String.join " "
+
+            nameRow : Element msg
+            nameRow =
+                (from ++ " = " ++ resultString ++ " [" ++ kind ++ "]")
+                    |> text
+
+            resultString : String
+            resultString =
+                case result of
+                    Ok v ->
+                        Value.toString v
+
+                    Err e ->
+                        Types.evalErrorToString e
+
+            childrenRows : List (Element msg)
+            childrenRows =
+                List.map (viewCallTree (budget - 1)) <| Rope.toList children
+        in
+        (nameRow :: childrenRows)
+            |> column
+                [ Border.widthEach
+                    { top = 0
+                    , left = 1
+                    , right = 0
+                    , bottom = 0
+                    }
+                , Element.paddingEach
+                    { top = 0
+                    , bottom = 0
+                    , left = 10
+                    , right = 0
+                    }
+                , spacing 10
+                ]
+
+
+viewLogLine : LogLine -> Element msg
+viewLogLine logLine =
+    let
+        context : String
+        context =
+            String.join " > " <| List.map Syntax.qualifiedNameToString logLine.stack
     in
-    (nameRow :: childrenRows)
-        |> column
-            [ Border.widthEach
-                { top = 0
-                , left = 1
-                , right = 0
-                , bottom = 0
-                }
-            , Element.paddingEach
-                { top = 0
-                , bottom = 0
-                , left = 10
-                , right = 0
-                }
-            , spacing 10
-            ]
+    paragraph [] [ text <| context ++ " " ++ logLine.message ]
 
 
 init : Model

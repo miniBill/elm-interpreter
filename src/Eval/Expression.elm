@@ -24,12 +24,6 @@ import Value exposing (Env, EnvValues, EvalError, Value(..), nameError, typeErro
 evalExpression : Node Expression -> Eval Value
 evalExpression (Node _ expression) cfg env =
     let
-        _ =
-            Debug.log "evalExpression"
-                { expression = Elm.Writer.write <| Elm.Writer.writeExpression <| fakeNode expression
-                }
-    in
-    let
         result : PartialResult
         result =
             case expression of
@@ -123,23 +117,44 @@ evalExpression (Node _ expression) cfg env =
                 Expression.GLSLExpression _ ->
                     Types.failPartial <| unsupported env "GLSL not supported"
 
-        _ =
-            Debug.log "evalExpression"
-                { expression = Elm.Writer.write <| Elm.Writer.writeExpression <| fakeNode expression
-                , result = Types.partialResultToString result
-                }
+        expressionToString : Expression -> String
+        expressionToString expr =
+            Elm.Writer.write <| Elm.Writer.writeExpression <| fakeNode expr
     in
     case result of
         PartialValue ( v, callTrees, logLines ) ->
             ( v
-            , cfg.callTreeContinuation callTrees v
-            , cfg.logContinuation logLines
+            , Rope.empty
+              -- cfg.callTreeContinuation callTrees v
+            , cfg.logContinuation
+                (logLines
+                    |> Rope.prepend
+                        { stack = env.callStack
+                        , message = "evalExpression " ++ expressionToString expression
+                        }
+                    |> Rope.append
+                        { stack = env.callStack
+                        , message = "evalExpression " ++ expressionToString expression ++ " = " ++ Types.partialResultToString result
+                        }
+                )
             )
 
         PartialExpression next newConfig newEnv ->
             evalExpression
                 next
-                newConfig
+                { newConfig
+                    | logContinuation =
+                        \logLines ->
+                            logLines
+                                |> Rope.prepend
+                                    { stack = env.callStack
+                                    , message = "evalExpression " ++ expressionToString expression
+                                    }
+                                |> Rope.append
+                                    { stack = env.callStack
+                                    , message = "evalExpression " ++ expressionToString expression ++ " = " ++ expressionToString (Node.value next)
+                                    }
+                }
                 newEnv
 
 

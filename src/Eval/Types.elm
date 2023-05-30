@@ -26,7 +26,9 @@ type alias EvalResult out =
 
 
 type alias LogLine =
-    String
+    { stack : List QualifiedNameRef
+    , message : String
+    }
 
 
 onValue : (a -> Result EvalError out) -> EvalResult a -> EvalResult out
@@ -73,8 +75,8 @@ map2 f ( lv, lc, ll ) ( rv, rc, rl ) =
 combineMap : (a -> Eval b) -> List a -> Eval (List b)
 combineMap f xs cfg env =
     List.foldr
-        (\el (( listAcc, _, _ ) as acc) ->
-            case listAcc of
+        (\el acc ->
+            case toResult acc of
                 Err _ ->
                     acc
 
