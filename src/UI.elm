@@ -1,4 +1,4 @@
-module Main exposing (Model, Msg, main)
+module UI exposing (Model, Msg, main)
 
 import Browser
 import Element exposing (Element, IndexedColumn, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, rgb, row, shrink, spacing, text, textColumn, width)
