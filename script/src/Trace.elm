@@ -27,7 +27,7 @@ run =
         )
 
 
-logLine : Log.Line -> BackendTask FatalError value
+logLine : Log.Line -> BackendTask FatalError ()
 logLine line =
     Script.log line.message
 
