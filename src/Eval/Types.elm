@@ -1,10 +1,11 @@
-module Eval.Types exposing (CallTree(..), CallTreeContinuation, Config, Error(..), Eval, EvalResult, LogContinuation, LogLine, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, errorToString, evalErrorToString, fail, failPartial, fromResult, map, map2, onValue, partialResultToString, succeed, succeedPartial, toResult)
+module Eval.Types exposing (CallTree(..), CallTreeContinuation(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, errorToString, evalErrorToString, fail, failPartial, fromResult, map, map2, onValue, partialResultToString, succeed, succeedPartial, toResult)
 
 import Elm.Syntax.Expression exposing (Expression)
+import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import Elm.Writer
-import FastDict exposing (Dict)
+import Eval.Log as Log
 import Parser exposing (DeadEnd)
 import Rope exposing (Rope)
 import Syntax
@@ -22,15 +23,8 @@ type alias Eval out =
 type alias EvalResult out =
     ( Result EvalError out
     , Rope CallTree
-    , Rope LogLine
+    , Rope Log.Line
     )
-
-
-type alias LogLine =
-    { stack : List QualifiedNameRef
-    , message : String
-    , env : Dict String Value
-    }
 
 
 onValue : (a -> Result EvalError out) -> EvalResult a -> EvalResult out
@@ -109,16 +103,14 @@ fromResult x =
 type alias Config =
     { trace : Bool
     , callTreeContinuation : CallTreeContinuation
-    , logContinuation : LogContinuation
+    , logContinuation : Log.Continuation
     }
 
 
-type alias CallTreeContinuation =
-    Rope CallTree -> Result EvalError Value -> Rope CallTree
-
-
-type alias LogContinuation =
-    Rope LogLine -> Rope LogLine
+type CallTreeContinuation
+    = CTCModule ModuleName
+    | CTCWithMoreChildren (Rope CallTree) CallTreeContinuation
+    | CTCCall QualifiedNameRef (List Value) CallTreeContinuation
 
 
 type CallTree
@@ -171,8 +163,8 @@ andThenPartial f x =
                     PartialExpression
                         expr
                         { newConfig
-                            | callTreeContinuation = \children result -> newConfig.callTreeContinuation (Rope.appendTo callTrees children) result
-                            , logContinuation = Rope.appendTo logs
+                            | callTreeContinuation = CTCWithMoreChildren callTrees newConfig.callTreeContinuation
+                            , logContinuation = Log.AppendTo logs newConfig.logContinuation
                         }
                         newEnv
 

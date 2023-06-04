@@ -8,12 +8,13 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Elm.Writer
 import Env
-import Eval.Types as Types exposing (CallTree(..), Eval, EvalResult, PartialEval, PartialResult(..))
+import Eval.Log as Log
+import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation(..), Eval, EvalResult, PartialEval, PartialResult(..))
 import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
 import Result.MyExtra
-import Rope
+import Rope exposing (Rope)
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import TopologicalSort
@@ -139,51 +140,66 @@ evalExpression (Node _ expression) cfg env =
             , Rope.empty
               --TODO: fix call trees cfg.callTreeContinuation callTrees v
             , if cfg.trace then
-                cfg.logContinuation
-                    (logLines
-                        |> Rope.prepend
-                            { stack = env.callStack
-                            , message = expressionString
-                            , env = relevantEnv env expression
-                            }
-                        |> Rope.append
-                            { stack = env.callStack
-                            , message = equal expressionString (Types.partialResultToString result)
-                            , env = relevantEnv env expression
-                            }
-                    )
+                logLines
+                    |> Rope.prepend
+                        { stack = env.callStack
+                        , message = expressionString
+                        , env = relevantEnv env expression
+                        }
+                    |> Rope.append
+                        { stack = env.callStack
+                        , message = equal expressionString (Types.partialResultToString result)
+                        , env = relevantEnv env expression
+                        }
+                    |> applyContinuation cfg.logContinuation
 
               else
                 Rope.empty
             )
 
         PartialExpression next newConfig newEnv ->
-            let
-                res =
-                    evalExpression next
-                        { newConfig
-                            | logContinuation =
-                                if cfg.trace then
-                                    \ll ->
-                                        ll
-                                            |> Rope.prepend
-                                                { stack = env.callStack
-                                                , message = equal expressionString (expressionToString (Node.value next))
-                                                , env = relevantEnv env expression
-                                                }
-                                            |> Rope.prepend
-                                                { stack = env.callStack
-                                                , message = expressionString
-                                                , env = relevantEnv env expression
-                                                }
-                                            |> cfg.logContinuation
+            evalExpression next
+                { newConfig
+                    | logContinuation =
+                        if cfg.trace then
+                            cfg.logContinuation
+                                |> Log.Prepend
+                                    { stack = env.callStack
+                                    , message = equal expressionString (expressionToString (Node.value next))
+                                    , env = relevantEnv env expression
+                                    }
+                                |> Log.Append
+                                    { stack = env.callStack
+                                    , message = expressionString
+                                    , env = relevantEnv env expression
+                                    }
 
-                                else
-                                    identity
-                        }
-                        newEnv
-            in
-            res
+                        else
+                            Log.Done
+                }
+                newEnv
+
+
+applyContinuation : Log.Continuation -> Rope Log.Line -> Rope Log.Line
+applyContinuation k lines =
+    case k of
+        Log.Done ->
+            lines
+
+        Log.AppendTo before andThen ->
+            lines
+                |> Rope.appendTo before
+                |> applyContinuation andThen
+
+        Log.Prepend line andThen ->
+            lines
+                |> Rope.prepend line
+                |> applyContinuation andThen
+
+        Log.Append line andThen ->
+            lines
+                |> Rope.append line
+                |> applyContinuation andThen
 
 
 relevantEnv : Env -> Expression -> Dict String Value
@@ -417,23 +433,11 @@ call maybeQualifiedName implementation values cfg env =
             PartialExpression implementation
                 { cfg
                     | callTreeContinuation =
-                        \children result ->
-                            cfg.callTreeContinuation
-                                (if cfg.trace then
-                                    children
-                                        |> Rope.prepend
-                                            (CallNode "call"
-                                                qualifiedName
-                                                { args = values
-                                                , result = result
-                                                , children = children
-                                                }
-                                            )
+                        if cfg.trace then
+                            CTCCall qualifiedName values cfg.callTreeContinuation
 
-                                 else
-                                    Rope.empty
-                                )
-                                result
+                        else
+                            cfg.callTreeContinuation
                 }
                 (Env.call qualifiedName.moduleName qualifiedName.name env)
 
@@ -652,19 +656,12 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
                                 ( Just { moduleName, name }, True ) ->
                                     { cfg
                                         | callTreeContinuation =
-                                            \children result ->
+                                            CTCCall
+                                                { moduleName = moduleName
+                                                , name = name
+                                                }
+                                                oldArgs
                                                 cfg.callTreeContinuation
-                                                    (Rope.singleton <|
-                                                        CallNode "evalFunction"
-                                                            { moduleName = moduleName
-                                                            , name = name
-                                                            }
-                                                            { args = oldArgs
-                                                            , result = result
-                                                            , children = children
-                                                            }
-                                                    )
-                                                    result
                                     }
 
                                 _ ->

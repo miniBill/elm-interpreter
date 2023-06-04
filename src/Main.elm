@@ -9,8 +9,9 @@ import Element.Input as Input
 import Element.Lazy
 import Elm.Syntax.Expression as Expression
 import Eval
+import Eval.Log as Log
 import Eval.Module
-import Eval.Types as Types exposing (CallTree(..), Error, LogLine)
+import Eval.Types as Types exposing (CallTree(..), Error)
 import FastDict as Dict
 import Html.Attributes
 import List.Extra
@@ -28,7 +29,7 @@ type alias Model =
     { input : String
     , output : Result String String
     , callTree : List CallTree
-    , logLines : List LogLine
+    , logLines : List Log.Line
     }
 
 
@@ -206,7 +207,7 @@ viewCallTree budget (CallNode kind name { args, children, result }) =
                 ]
 
 
-viewLogLines : List LogLine -> Element msg
+viewLogLines : List Log.Line -> Element msg
 viewLogLines logLines =
     if List.isEmpty logLines then
         Element.none
@@ -255,7 +256,7 @@ viewLogLines logLines =
                         , height fill
                         ]
 
-            rawColumns : List { header : String, view : LogLine -> String }
+            rawColumns : List { header : String, view : Log.Line -> String }
             rawColumns =
                 [ { header = "Stack"
                   , view =
@@ -290,7 +291,7 @@ viewLogLines logLines =
                   }
                 ]
 
-            columns : List (IndexedColumn LogLine msg)
+            columns : List (IndexedColumn Log.Line msg)
             columns =
                 List.indexedMap
                     (\columnIndex column ->
@@ -309,14 +310,7 @@ viewLogLines logLines =
 
 init : Model
 init =
-    { input = """let
-    boom x =
-        if x <= 0 then
-            False
-        else
-            boom (x - 1)
-in
-boom 100000"""
+    { input = """List.sum [0, 1]"""
     , output = Ok ""
     , callTree = []
     , logLines = []

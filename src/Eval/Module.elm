@@ -9,10 +9,10 @@ import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Module exposing (Module(..))
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
-import Elm.Writer
 import Env
 import Eval.Expression
-import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation, Error(..), LogLine)
+import Eval.Log as Log
+import Eval.Types as Types exposing (CallTree, CallTreeContinuation(..), Error(..))
 import FastDict as Dict
 import Result.MyExtra
 import Rope exposing (Rope)
@@ -29,12 +29,12 @@ eval source expression =
     result
 
 
-trace : String -> Expression -> ( Result Error Value, Rope CallTree, Rope LogLine )
+trace : String -> Expression -> ( Result Error Value, Rope CallTree, Rope Log.Line )
 trace source expression =
     traceOrEvalModule { trace = True } source expression
 
 
-traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, Rope CallTree, Rope LogLine )
+traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, Rope CallTree, Rope Log.Line )
 traceOrEvalModule cfg source expression =
     let
         maybeEnv : Result Error Env
@@ -60,32 +60,20 @@ traceOrEvalModule cfg source expression =
         Ok env ->
             let
                 callTreeContinuation : CallTreeContinuation
-                callTreeContinuation children res =
-                    CallNode "module"
-                        { moduleName = []
-                        , name =
-                            fakeNode expression
-                                |> Elm.Writer.writeExpression
-                                |> Elm.Writer.write
-                        }
-                        { args = []
-                        , children = children
-                        , result = res
-                        }
-                        |> Rope.singleton
+                callTreeContinuation =
+                    CTCModule []
 
-                ( result, _, logLines ) =
+                ( result, callTrees, logLines ) =
                     Eval.Expression.evalExpression
                         (fakeNode expression)
                         { trace = cfg.trace
                         , callTreeContinuation = callTreeContinuation
-                        , logContinuation = identity
+                        , logContinuation = Log.Done
                         }
                         env
             in
             ( Result.mapError Types.EvalError result
-            , Rope.empty
-              -- TODO: fix call trees callTreeContinuation callTrees result
+            , callTrees
             , logLines
             )
 
