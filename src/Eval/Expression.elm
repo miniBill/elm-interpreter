@@ -137,7 +137,7 @@ evalExpression (Node _ expression) cfg env =
     case result of
         PartialValue ( v, callTrees, logLines ) ->
             ( v
-            , if cfg.trace then
+            , if cfg.trace && False then
                 applyCallTreeContinuation cfg.callTreeContinuation callTrees v
 
               else
@@ -191,7 +191,7 @@ applyCallTreeContinuation k children result =
             children
 
         CTCWithMoreChildren moreChildren andThen ->
-            applyCallTreeContinuation andThen (Rope.appendTo children moreChildren) result
+            applyCallTreeContinuation andThen (Rope.prependTo children moreChildren) result
 
         CTCCall name values andThen ->
             applyCallTreeContinuation andThen
