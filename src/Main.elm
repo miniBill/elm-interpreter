@@ -136,7 +136,7 @@ viewCallTrees callTree =
 
 
 viewCallTree : Int -> CallTree -> Element msg
-viewCallTree budget (CallNode kind name { args, children, result }) =
+viewCallTree budget (CallNode name { args, children, result }) =
     if budget <= 0 then
         Element.none
 
@@ -173,7 +173,7 @@ viewCallTree budget (CallNode kind name { args, children, result }) =
 
             nameRow : Element msg
             nameRow =
-                (from ++ " = " ++ resultString ++ " [" ++ kind ++ "]")
+                (from ++ " = " ++ resultString)
                     |> text
 
             resultString : String

@@ -115,7 +115,6 @@ type CallTreeContinuation
 
 type CallTree
     = CallNode
-        String
         QualifiedNameRef
         { args : List Value
         , result : Result EvalError Value

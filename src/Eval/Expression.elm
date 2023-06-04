@@ -135,10 +135,13 @@ evalExpression (Node _ expression) cfg env =
                 l ++ " ==> " ++ r
     in
     case result of
-        PartialValue ( v, _, logLines ) ->
+        PartialValue ( v, callTrees, logLines ) ->
             ( v
-            , Rope.empty
-              --TODO: fix call trees cfg.callTreeContinuation callTrees v
+            , if cfg.trace then
+                applyCallTreeContinuation cfg.callTreeContinuation callTrees v
+
+              else
+                Rope.empty
             , if cfg.trace then
                 logLines
                     |> Rope.prepend
@@ -151,7 +154,7 @@ evalExpression (Node _ expression) cfg env =
                         , message = equal expressionString (Types.partialResultToString result)
                         , env = relevantEnv env expression
                         }
-                    |> applyContinuation cfg.logContinuation
+                    |> applyLogContinuation cfg.logContinuation
 
               else
                 Rope.empty
@@ -180,8 +183,32 @@ evalExpression (Node _ expression) cfg env =
                 newEnv
 
 
-applyContinuation : Log.Continuation -> Rope Log.Line -> Rope Log.Line
-applyContinuation k lines =
+applyCallTreeContinuation : CallTreeContinuation -> Rope CallTree -> Result EvalError Value -> Rope CallTree
+applyCallTreeContinuation k children result =
+    case k of
+        CTCModule _ ->
+            -- TODO: Use the name somewhere maybe?
+            children
+
+        CTCWithMoreChildren moreChildren andThen ->
+            applyCallTreeContinuation andThen (Rope.appendTo children moreChildren) result
+
+        CTCCall name values andThen ->
+            applyCallTreeContinuation andThen
+                (Rope.singleton
+                    (CallNode name
+                        { args = values
+                        , result = result
+                        , children = children
+                        }
+                    )
+                )
+                -- TODO: This is wrong
+                result
+
+
+applyLogContinuation : Log.Continuation -> Rope Log.Line -> Rope Log.Line
+applyLogContinuation k lines =
     case k of
         Log.Done ->
             lines
@@ -189,17 +216,17 @@ applyContinuation k lines =
         Log.AppendTo before andThen ->
             lines
                 |> Rope.appendTo before
-                |> applyContinuation andThen
+                |> applyLogContinuation andThen
 
         Log.Prepend line andThen ->
             lines
                 |> Rope.prepend line
-                |> applyContinuation andThen
+                |> applyLogContinuation andThen
 
         Log.Append line andThen ->
             lines
                 |> Rope.append line
-                |> applyContinuation andThen
+                |> applyLogContinuation andThen
 
 
 relevantEnv : Env -> Expression -> Dict String Value
@@ -394,7 +421,7 @@ evalApplication first rest cfg env =
                                                                             in
                                                                             ( kernelResult
                                                                             , if cfg.trace then
-                                                                                CallNode "application"
+                                                                                CallNode
                                                                                     qualifiedName
                                                                                     { args = values
                                                                                     , result = kernelResult
@@ -691,7 +718,7 @@ evalKernelFunction moduleName name cfg env =
                             let
                                 callTree : CallTree
                                 callTree =
-                                    CallNode "evalKernelFunction"
+                                    CallNode
                                         { moduleName = moduleName
                                         , name = name
                                         }
