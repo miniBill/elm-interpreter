@@ -1,5 +1,6 @@
 module Kernel.Utils exposing (append, compare, comparison, innerCompare)
 
+import Elm.Syntax.ModuleName exposing (ModuleName)
 import Eval.Types as Types exposing (Eval)
 import Value exposing (EvalError, Value(..), typeError)
 
@@ -113,8 +114,8 @@ innerCompare l r env =
                                 ++ Value.toString r
 
 
-comparison : List Order -> ( Int, List Value -> Eval Value )
-comparison orders =
+comparison : List Order -> ModuleName -> ( Int, List Value -> Eval Value )
+comparison orders _ =
     ( 2
     , \args cfg env ->
         case args of

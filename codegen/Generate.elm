@@ -283,6 +283,7 @@ declarationToGen moduleName (Node _ declaration) =
                                 (String.join "." (moduleName ++ [ name ]))
                     }
                     |> Elm.declaration name
+                    |> Elm.expose
                 )
 
         _ ->
