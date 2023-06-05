@@ -1,4 +1,4 @@
-module TestUtils exposing (evalExpect, evalTest, evalTest_, list, slowTest)
+module TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, slowTest)
 
 import Eval
 import Eval.Types exposing (Error(..))
@@ -56,3 +56,13 @@ slowTest test =
 list : (a -> Value) -> List a -> Value
 list f xs =
     List (List.map f xs)
+
+
+maybe : (a -> Value) -> Maybe a -> Value
+maybe f mx =
+    case mx of
+        Nothing ->
+            Custom { moduleName = [ "Maybe" ], name = "Nothing" } []
+
+        Just x ->
+            Custom { moduleName = [ "Maybe" ], name = "Just" } [ f x ]

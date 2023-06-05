@@ -1,4 +1,4 @@
-module Eval.Types exposing (CallTree(..), CallTreeContinuation(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, errorToString, evalErrorToString, fail, failPartial, fromResult, map, map2, onValue, partialResultToString, succeed, succeedPartial, toResult)
+module Eval.Types exposing (CallTree(..), CallTreeContinuation(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, partialResultToString, succeed, succeedPartial, toResult)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
@@ -82,6 +82,36 @@ combineMap f xs cfg env =
                         acc
         )
         (succeed [])
+        xs
+
+
+foldl : (a -> out -> Eval out) -> out -> List a -> Eval out
+foldl f init xs cfg env =
+    List.foldl
+        (\el acc ->
+            case toResult acc of
+                Err _ ->
+                    acc
+
+                Ok a ->
+                    f el a cfg env
+        )
+        (succeed init)
+        xs
+
+
+foldr : (a -> out -> Eval out) -> out -> List a -> Eval out
+foldr f init xs cfg env =
+    List.foldr
+        (\el acc ->
+            case toResult acc of
+                Err _ ->
+                    acc
+
+                Ok a ->
+                    f el a cfg env
+        )
+        (succeed init)
         xs
 
 

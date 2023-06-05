@@ -1,4 +1,4 @@
-module Kernel.List exposing (sortBy, sortWith)
+module Kernel.List exposing (foldl, foldr, sortBy, sortWith)
 
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
@@ -72,3 +72,13 @@ handleErr err =
     in
     -- TODO: find out how to deal with errors
     Debug.todo "handleErr"
+
+
+foldr : (Value -> Eval (Value -> Eval Value)) -> Value -> List Value -> Eval Value
+foldr f i xs cfg env =
+    Types.foldr (\el acc c e -> Types.andThen (\fe -> fe acc c e) (f el c e)) i xs cfg env
+
+
+foldl : (Value -> Eval (Value -> Eval Value)) -> Value -> List Value -> Eval Value
+foldl f i xs cfg env =
+    Types.foldl (\el acc c e -> Types.andThen (\fe -> fe acc c e) (f el c e)) i xs cfg env

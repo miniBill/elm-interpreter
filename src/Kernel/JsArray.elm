@@ -1,4 +1,4 @@
-module Kernel.JsArray exposing (appendN, foldr, initialize, initializeFromList)
+module Kernel.JsArray exposing (appendN, foldr, initialize, initializeFromList, map)
 
 import Array exposing (Array)
 import Eval.Types as Types exposing (Eval)
@@ -56,3 +56,9 @@ foldr f init arr cfg env =
         )
         (Types.succeed init)
         arr
+
+
+map : (Value -> Eval Value) -> Array Value -> Eval (Array Value)
+map f array cfg env =
+    Types.combineMap f (Array.toList array) cfg env
+        |> Types.map Array.fromList

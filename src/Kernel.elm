@@ -12,7 +12,7 @@ import Core.String
 import Elm.Syntax.Expression as Expression exposing (Expression(..), FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node)
-import Elm.Syntax.Pattern as Pattern exposing (Pattern(..), QualifiedNameRef)
+import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Env
 import Eval.Types as Types exposing (Eval, EvalResult)
 import FastDict as Dict exposing (Dict)
@@ -27,7 +27,7 @@ import Value exposing (EvalError, Value(..), typeError)
 
 type alias EvalFunction =
     List Value
-    -> List (Node Pattern.Pattern)
+    -> List (Node Pattern)
     -> Maybe QualifiedNameRef
     -> Node Expression
     -> Eval Value
@@ -109,7 +109,9 @@ functions evalFunction =
         , ( "initialize", threeWithError int int (function evalFunction int to anything) to (jsArray anything) Kernel.JsArray.initialize Core.Elm.JsArray.initialize )
         , ( "initializeFromList", two int (list anything) to (tuple (jsArray anything) (list anything)) Kernel.JsArray.initializeFromList Core.Elm.JsArray.initializeFromList )
         , ( "length", one (jsArray anything) to int Array.length Core.Elm.JsArray.length )
+        , ( "map", twoWithError (function evalFunction anything to anything) (jsArray anything) to (jsArray anything) Kernel.JsArray.map Core.Elm.JsArray.map )
         , ( "push", two anything (jsArray anything) to (jsArray anything) Array.push Core.Elm.JsArray.push )
+        , ( "singleton", one anything to (jsArray anything) (List.singleton >> Array.fromList) Core.Elm.JsArray.singleton )
         ]
       )
 
@@ -136,10 +138,9 @@ functions evalFunction =
         , ( "cons", two char string to string String.cons Core.String.cons )
         , ( "contains", two string string to bool String.contains Core.String.contains )
         , ( "endsWith", two string string to bool String.endsWith Core.String.endsWith )
-
-        -- , ( "filter", one string to string String.filter Core.String.filter)
-        -- , ( "foldl", one string to string String.foldl Core.String.foldl)
-        -- , ( "foldr", one string to string String.foldr Core.String.foldr)
+        , ( "filter", twoWithError (function evalFunction char to bool) string to string Kernel.String.filter Core.String.filter )
+        , ( "foldl", threeWithError (function2 evalFunction char anything to anything) anything string to anything Kernel.String.foldl Core.String.foldl )
+        , ( "foldr", threeWithError (function2 evalFunction char anything to anything) anything string to anything Kernel.String.foldr Core.String.foldr )
         , ( "fromList", one (list char) to string String.fromList Core.String.fromList )
         , ( "fromNumber", oneWithError anything to string Kernel.String.fromNumber (tODO "fromNumber") )
         , ( "indexes", two string string to (list int) String.indexes Core.String.indexes )
@@ -614,6 +615,7 @@ twoWithError firstSelector secondSelector _ output f implementation moduleName =
 
             _ ->
                 let
+                    got : String
                     got =
                         String.join ", " <| List.map Value.toString args
                 in
