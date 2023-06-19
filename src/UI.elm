@@ -243,13 +243,13 @@ viewLogLines logLines =
                                     5
 
                                 else
-                                    20
+                                    10
                             , right =
                                 if column == List.length rawColumns - 1 then
                                     5
 
                                 else
-                                    20
+                                    10
                             , top = 5
                             , bottom = 5
                             }
@@ -286,6 +286,14 @@ viewLogLines logLines =
                                     )
                                 |> String.join "\n"
                   }
+                , { header = "Module"
+                  , view =
+                        \logLine ->
+                            logLine.stack
+                                |> List.head
+                                |> Maybe.map (\{ moduleName } -> String.join "." moduleName)
+                                |> Maybe.withDefault "?"
+                  }
                 , { header = "Expression"
                   , view = \logLine -> String.trim logLine.message
                   }
@@ -302,7 +310,10 @@ viewLogLines logLines =
                     )
                     rawColumns
         in
-        Element.indexedTable [ Font.family [ Font.monospace ] ]
+        Element.indexedTable
+            [ width shrink
+            , Font.family [ Font.monospace ]
+            ]
             { columns = columns
             , data = logLines
             }
@@ -310,7 +321,7 @@ viewLogLines logLines =
 
 init : Model
 init =
-    { input = """List.sum [0, 1]"""
+    { input = """List.sum (List.range 0 3)"""
     , output = Ok ""
     , callTree = []
     , logLines = []
