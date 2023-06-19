@@ -138,7 +138,7 @@ type alias Config =
 
 
 type CallTreeContinuation
-    = CTCModule ModuleName
+    = CTCRoot
     | CTCWithMoreChildren (Rope CallTree) CallTreeContinuation
     | CTCCall QualifiedNameRef (List Value) CallTreeContinuation
 

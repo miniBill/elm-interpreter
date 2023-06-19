@@ -61,7 +61,7 @@ traceOrEvalModule cfg source expression =
             let
                 callTreeContinuation : CallTreeContinuation
                 callTreeContinuation =
-                    CTCModule []
+                    CTCRoot
 
                 ( result, callTrees, logLines ) =
                     Eval.Expression.evalExpression
