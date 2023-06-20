@@ -507,7 +507,7 @@ evalFunctionOrValue moduleName name cfg env =
                         [ fakeNode <| VarPattern "$x" ]
                         Nothing
                         (fakeNode <|
-                            Application
+                            Expression.Application
                                 [ fakeNode <| FunctionOrValue [ "Maybe" ] "Just"
                                 , fakeNode <| FunctionOrValue [] "$x"
                                 ]
