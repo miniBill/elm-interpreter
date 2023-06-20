@@ -199,11 +199,6 @@ applyCallTreeContinuation k children result =
             )
 
 
-
--- TODO: This is wrong
--- result
-
-
 applyLogContinuation : Log.Continuation -> Rope Log.Line -> Rope Log.Line
 applyLogContinuation k lines =
     case k of
