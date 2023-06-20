@@ -106,12 +106,17 @@ functions evalFunction =
       , [ ( "appendN", three int (jsArray anything) (jsArray anything) to (jsArray anything) Kernel.JsArray.appendN Core.Elm.JsArray.appendN )
         , ( "empty", zero to (jsArray anything) Array.empty )
         , ( "foldr", threeWithError (function2 evalFunction anything anything to anything) anything (jsArray anything) to anything Kernel.JsArray.foldr Core.Elm.JsArray.foldr )
+        , ( "foldl", threeWithError (function2 evalFunction anything anything to anything) anything (jsArray anything) to anything Kernel.JsArray.foldl Core.Elm.JsArray.foldl )
         , ( "initialize", threeWithError int int (function evalFunction int to anything) to (jsArray anything) Kernel.JsArray.initialize Core.Elm.JsArray.initialize )
         , ( "initializeFromList", two int (list anything) to (tuple (jsArray anything) (list anything)) Kernel.JsArray.initializeFromList Core.Elm.JsArray.initializeFromList )
         , ( "length", one (jsArray anything) to int Array.length Core.Elm.JsArray.length )
         , ( "map", twoWithError (function evalFunction anything to anything) (jsArray anything) to (jsArray anything) Kernel.JsArray.map Core.Elm.JsArray.map )
+        , ( "indexedMap", twoWithError (function2 evalFunction int anything to anything) (jsArray anything) to (jsArray anything) Kernel.JsArray.indexedMap Core.Elm.JsArray.indexedMap )
         , ( "push", two anything (jsArray anything) to (jsArray anything) Array.push Core.Elm.JsArray.push )
+        , ( "slice", three int int (jsArray anything) to (jsArray anything) Array.slice Core.Elm.JsArray.slice )
         , ( "singleton", one anything to (jsArray anything) (List.singleton >> Array.fromList) Core.Elm.JsArray.singleton )
+        , ( "unsafeGet", twoWithError int (jsArray anything) to anything Kernel.JsArray.unsafeGet Core.Elm.JsArray.unsafeGet )
+        , ( "unsafeSet", three int anything (jsArray anything) to (jsArray anything) Array.set Core.Elm.JsArray.unsafeSet )
         ]
       )
 
@@ -132,8 +137,6 @@ functions evalFunction =
         , ( "toInt", one string to (maybe int) String.toInt Core.String.toInt )
         , ( "toLower", one string to string String.toLower Core.String.toLower )
         , ( "toUpper", one string to string String.toUpper Core.String.toUpper )
-
-        -- , ( "any", one string to string String.any Core.String.any)
         , ( "append", two string string to string String.append Core.String.append )
         , ( "cons", two char string to string String.cons Core.String.cons )
         , ( "contains", two string string to bool String.contains Core.String.contains )
@@ -157,14 +160,16 @@ functions evalFunction =
         , ( "words", one string to (list string) String.words Core.String.words )
         ]
       )
-    , -- Elm.Kernel.Utils
-      ( [ "Elm", "Kernel", "Utils" ]
+
+    -- Elm.Kernel.Utils
+    , ( [ "Elm", "Kernel", "Utils" ]
       , [ ( "append", twoWithError anything anything to anything Kernel.Utils.append Core.Basics.append )
         , ( "ge", Kernel.Utils.comparison [ GT, EQ ] )
         , ( "gt", Kernel.Utils.comparison [ GT ] )
         , ( "le", Kernel.Utils.comparison [ LT, EQ ] )
         , ( "lt", Kernel.Utils.comparison [ LT ] )
         , ( "equal", Kernel.Utils.comparison [ EQ ] )
+        , ( "notEqual", Kernel.Utils.comparison [ LT, GT ] )
         , ( "compare", twoWithError anything anything to order Kernel.Utils.compare Core.Basics.compare )
         ]
       )
