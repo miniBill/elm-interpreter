@@ -17,17 +17,12 @@ suite =
 
 evalTestN : Int -> String -> String -> (e -> Value) -> e -> Test
 evalTestN n description code toValue value =
-    let
-        stringN : String
-        stringN =
-            String.fromInt n
-    in
-    evalTest (description ++ " (" ++ stringN ++ ")")
+    evalTest description
         ("""
 let
     n : Int
     n =
-        """ ++ stringN ++ """
+        """ ++ String.fromInt n ++ """
 
     xs : List Int
     xs =
