@@ -1,4 +1,9 @@
-module Elm.Kernel.String exposing (all, foldl, foldr, map)
+module Elm.Kernel.String exposing (all, any, foldl, foldr, map)
+
+
+any : (Char -> Bool) -> String -> Bool
+any f s =
+    List.any f (String.toList s)
 
 
 all : (Char -> Bool) -> String -> Bool

@@ -167,6 +167,29 @@ visitFunction { declaration } =
 
 testDefined : ( ( ModuleName, String ), List String ) -> Test
 testDefined ( ( moduleName, name ), requiredBy ) =
+    case Dict.get moduleName (Kernel.functions Eval.Expression.evalFunction) of
+        Just kernelModule ->
+            if Dict.member name kernelModule then
+                let
+                    fullName : String
+                    fullName =
+                        Syntax.qualifiedNameToString
+                            { moduleName = moduleName
+                            , name = name
+                            }
+                in
+                test fullName <|
+                    \_ -> Expect.pass
+
+            else
+                trySearchingElmCoded moduleName requiredBy name
+
+        Nothing ->
+            trySearchingElmCoded moduleName requiredBy name
+
+
+trySearchingElmCoded : ModuleName -> List String -> String -> Test
+trySearchingElmCoded moduleName requiredBy name =
     let
         fullName : String
         fullName =
@@ -174,23 +197,24 @@ testDefined ( ( moduleName, name ), requiredBy ) =
                 { moduleName = moduleName
                 , name = name
                 }
-
-        error : Test
-        error =
-            Test.todo
-                (fullName
-                    ++ " is not defined, but it's requried by "
-                    ++ String.join ", " requiredBy
-                )
     in
-    case Dict.get moduleName (Kernel.functions Eval.Expression.evalFunction) of
+    case Dict.get moduleName Core.functions of
+        Nothing ->
+            error fullName requiredBy
+
         Just kernelModule ->
             if Dict.member name kernelModule then
                 test fullName <|
                     \_ -> Expect.pass
 
             else
-                error
+                error fullName requiredBy
 
-        Nothing ->
-            error
+
+error : String -> List String -> Test
+error fullName requiredBy =
+    Test.todo
+        (fullName
+            ++ " is not defined, but it's required by "
+            ++ String.join ", " requiredBy
+        )
