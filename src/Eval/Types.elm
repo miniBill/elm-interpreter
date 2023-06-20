@@ -1,7 +1,6 @@
 module Eval.Types exposing (CallTree(..), CallTreeContinuation(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, partialResultToString, succeed, succeedPartial, toResult)
 
 import Elm.Syntax.Expression exposing (Expression)
-import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import Elm.Writer
