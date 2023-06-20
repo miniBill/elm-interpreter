@@ -1,7 +1,7 @@
 module CoreTests.List exposing (suite)
 
 import Test exposing (Test, describe)
-import TestUtils exposing (evalTest, evalTest_, list, tuple)
+import TestUtils exposing (evalTest, list, maybe, tuple)
 import Value exposing (Value(..))
 
 
@@ -23,152 +23,377 @@ evalTestN n description code toValue value =
             String.fromInt n
     in
     evalTest (description ++ " (" ++ stringN ++ ")")
-        ("let n = " ++ stringN ++ " in " ++ code)
+        ("""
+let
+    n : Int
+    n =
+        """ ++ stringN ++ """
+
+    xs : List Int
+    xs =
+        List.range 1 n
+
+    xsOpp : List Int
+    xsOpp =
+        List.range -n -1
+
+    xsNeg : List Int
+    xsNeg =
+        List.foldl (::) [] xsOpp
+
+    -- assume foldl and (::) work
+    zs : List Int
+    zs =
+        List.range 0 n
+
+    mid : Int
+    mid =
+        n // 2
+in
+""" ++ code)
         toValue
         value
 
 
 testListOfN : Int -> Test
 testListOfN n =
-    evalTestN n
-        "map2"
-        "List.map2 Tuple.pair (List.range 0 n) (List.range n (n + 10))"
-        (list (tuple Int Int))
-        (List.map2 Tuple.pair (List.range 0 n) (List.range n (n + 10)))
+    let
+        xs : List Int
+        xs =
+            List.range 1 n
 
+        xsOpp : List Int
+        xsOpp =
+            List.range -n -1
 
+        xsNeg : List Int
+        xsNeg =
+            List.foldl (::) [] xsOpp
 
--- testListOfN : Int -> Test
--- testListOfN n =
---     let
---         xs =
---             List.range 1 n
---         xsOpp =
---             List.range -n -1
---         xsNeg =
---             List.foldl (::) [] xsOpp
---         -- assume foldl and (::) work
---         zs =
---             List.range 0 n
---         sumSeq k =
---             k * (k + 1) // 2
---         xsSum =
---             sumSeq n
---         mid =
---             n // 2
---     in
---         describe (String.fromInt n ++ " elements")
---             [ describe "foldl"
---                 [ test "order" <| \() -> Expect.equal (n) (List.foldl (\x acc -> x) 0 xs)
---                 , test "total" <| \() -> Expect.equal (xsSum) (List.foldl (+) 0 xs)
---                 ]
---             , describe "foldr"
---                 [ test "order" <| \() -> Expect.equal (min 1 n) (foldr (\x acc -> x) 0 xs)
---                 , test "total" <| \() -> Expect.equal (xsSum) (List.foldl (+) 0 xs)
---                 ]
---             , describe "map"
---                 [ test "identity" <| \() -> Expect.equal (xs) (map identity xs)
---                 , test "linear" <| \() -> Expect.equal (List.range 2 (n + 1)) (map ((+) 1) xs)
---                 ]
---             , test "isEmpty" <| \() -> Expect.equal (n == 0) (isEmpty xs)
---             , test "length" <| \() -> Expect.equal (n) (length xs)
---             , test "reverse" <| \() -> Expect.equal (xsOpp) (reverse xsNeg)
---             , describe "member"
---                 [ test "positive" <| \() -> Expect.equal (True) (member n zs)
---                 , test "negative" <| \() -> Expect.equal (False) (member (n + 1) xs)
---                 ]
---             , test "head" <|
---                 \() ->
---                     if n == 0 then
---                         Expect.equal (Nothing) (head xs)
---                     else
---                         Expect.equal (Just 1) (head xs)
---             , describe "List.filter"
---                 [ test "none" <| \() -> Expect.equal ([]) (List.filter (\x -> x > n) xs)
---                 , test "one" <| \() -> Expect.equal ([ n ]) (List.filter (\z -> z == n) zs)
---                 , test "all" <| \() -> Expect.equal (xs) (List.filter (\x -> x <= n) xs)
---                 ]
---             , describe "take"
---                 [ test "none" <| \() -> Expect.equal ([]) (take 0 xs)
---                 , test "some" <| \() -> Expect.equal (List.range 0 (n - 1)) (take n zs)
---                 , test "all" <| \() -> Expect.equal (xs) (take n xs)
---                 , test "all+" <| \() -> Expect.equal (xs) (take (n + 1) xs)
---                 ]
---             , describe "drop"
---                 [ test "none" <| \() -> Expect.equal (xs) (drop 0 xs)
---                 , test "some" <| \() -> Expect.equal ([ n ]) (drop n zs)
---                 , test "all" <| \() -> Expect.equal ([]) (drop n xs)
---                 , test "all+" <| \() -> Expect.equal ([]) (drop (n + 1) xs)
---                 ]
---             , test "repeat" <| \() -> Expect.equal (map (\x -> -1) xs) (repeat n -1)
---             , test "append" <| \() -> Expect.equal (xsSum * 2) (append xs xs |> List.foldl (+) 0)
---             , test "(::)" <| \() -> Expect.equal (append [ -1 ] xs) (-1 :: xs)
---             , test "List.concat" <| \() -> Expect.equal (append xs (append zs xs)) (List.concat [ xs, zs, xs ])
---             , test "intersperse" <|
---                 \() ->
---                     Expect.equal
---                         ( min -(n - 1) 0, xsSum )
---                         (intersperse -1 xs |> List.foldl (\x ( c1, c2 ) -> ( c2, c1 + x )) ( 0, 0 ))
---             , describe "partition"
---                 [ test "left" <| \() -> Expect.equal ( xs, [] ) (partition (\x -> x > 0) xs)
---                 , test "right" <| \() -> Expect.equal ( [], xs ) (partition (\x -> x < 0) xs)
---                 , test "split" <| \() -> Expect.equal ( List.range (mid + 1) n, List.range 1 mid ) (partition (\x -> x > mid) xs)
---                 ]
---             , describe "map2"
---                 [ test "same length" <| \() -> Expect.equal (map ((*) 2) xs) (map2 (+) xs xs)
---                 , test "long first" <| \() -> Expect.equal (map (\x -> x * 2 - 1) xs) (map2 (+) zs xs)
---                 , test "short first" <| \() -> Expect.equal (map (\x -> x * 2 - 1) xs) (map2 (+) xs zs)
---                 ]
---             , test "unzip" <| \() -> Expect.equal ( xsNeg, xs ) (map (\x -> ( -x, x )) xs |> unzip)
---             , describe "filterMap"
---                 [ test "none" <| \() -> Expect.equal ([]) (filterMap (\x -> Nothing) xs)
---                 , test "all" <| \() -> Expect.equal (xsNeg) (filterMap (\x -> Just -x) xs)
---                 , let
---                     halve x =
---                         if modBy 2 x == 0 then
---                             Just (x // 2)
---                         else
---                             Nothing
---                   in
---                     test "some" <| \() -> Expect.equal (List.range 1 mid) (filterMap halve xs)
---                 ]
---             , describe "concatMap"
---                 [ test "none" <| \() -> Expect.equal ([]) (concatMap (\x -> []) xs)
---                 , test "all" <| \() -> Expect.equal (xsNeg) (concatMap (\x -> [ -x ]) xs)
---                 ]
---             , test "indexedMap" <| \() -> Expect.equal (map2 Tuple.pair zs xsNeg) (indexedMap (\i x -> ( i, -x )) xs)
---             , test "sum" <| \() -> Expect.equal (xsSum) (sum xs)
---             , test "product" <| \() -> Expect.equal (0) (product zs)
---             , test "maximum" <|
---                 \() ->
---                     if n == 0 then
---                         Expect.equal (Nothing) (maximum xs)
---                     else
---                         Expect.equal (Just n) (maximum xs)
---             , test "minimum" <|
---                 \() ->
---                     if n == 0 then
---                         Expect.equal (Nothing) (minimum xs)
---                     else
---                         Expect.equal (Just 1) (minimum xs)
---             , describe "all"
---                 [ test "false" <| \() -> Expect.equal (False) (all (\z -> z < n) zs)
---                 , test "true" <| \() -> Expect.equal (True) (all (\x -> x <= n) xs)
---                 ]
---             , describe "any"
---                 [ test "false" <| \() -> Expect.equal (False) (any (\x -> x > n) xs)
---                 , test "true" <| \() -> Expect.equal (True) (any (\z -> z >= n) zs)
---                 ]
---             , describe "sort"
---                 [ test "sorted" <| \() -> Expect.equal (xs) (sort xs)
---                 , test "unsorted" <| \() -> Expect.equal (xsOpp) (sort xsNeg)
---                 ]
---             , describe "sortBy"
---                 [ test "sorted" <| \() -> Expect.equal (xsNeg) (sortBy negate xsNeg)
---                 , test "unsorted" <| \() -> Expect.equal (xsNeg) (sortBy negate xsOpp)
---                 ]
---             , describe "sortWith"
---                 [ test "sorted" <| \() -> Expect.equal (xsNeg) (sortWith (\x -> \y -> compare y x) xsNeg)
---                 , test "unsorted" <| \() -> Expect.equal (xsNeg) (sortWith (\x -> \y -> compare y x) xsOpp)
---                 ]
---             ]
+        -- assume foldl and (::) work
+        zs : List Int
+        zs =
+            List.range 0 n
+
+        mid : Int
+        mid =
+            n // 2
+    in
+    describe (String.fromInt n ++ " elements")
+        [ describe "foldl"
+            [ evalTestN n
+                "order"
+                "List.foldl (\\x _ -> x) 0 xs"
+                Int
+                (List.foldl (\x _ -> x) 0 xs)
+            , evalTestN n
+                "total"
+                "List.foldl (+) 0 xs"
+                Int
+                (List.foldl (+) 0 xs)
+            ]
+        , describe "foldr"
+            [ evalTestN n
+                "order"
+                "List.foldr (\\x _ -> x) 0 xs"
+                Int
+                (List.foldr (\x _ -> x) 0 xs)
+            , evalTestN n
+                "total"
+                "List.foldl (+) 0 xs"
+                Int
+                (List.foldl (+) 0 xs)
+            ]
+        , describe "map"
+            [ evalTestN n
+                "identity"
+                "List.map identity xs"
+                (list Int)
+                (List.map identity xs)
+            , evalTestN n
+                "linear"
+                "List.map ((+) 1) xs"
+                (list Int)
+                (List.map ((+) 1) xs)
+            ]
+        , evalTestN n
+            "isEmpty"
+            "List.isEmpty xs"
+            Bool
+            (List.isEmpty xs)
+        , evalTestN n
+            "length"
+            "List.length xs"
+            Int
+            (List.length xs)
+        , evalTestN n
+            "reverse"
+            "List.reverse xsNeg"
+            (list Int)
+            (List.reverse xsNeg)
+        , describe "member"
+            [ evalTestN n
+                "positive"
+                "List.member n zs"
+                Bool
+                (List.member n zs)
+            , evalTestN n
+                "negative"
+                "List.member (n + 1) xs"
+                Bool
+                (List.member (n + 1) xs)
+            ]
+        , evalTestN n
+            "head"
+            "List.head xs"
+            (maybe Int)
+            (List.head xs)
+        , describe "List.filter"
+            [ evalTestN n
+                "none"
+                "List.filter (\\x -> x > n) xs"
+                (list Int)
+                (List.filter (\x -> x > n) xs)
+            , evalTestN n
+                "one"
+                "List.filter (\\z -> z == n) zs"
+                (list Int)
+                (List.filter (\z -> z == n) zs)
+            , evalTestN n
+                "all"
+                "List.filter (\\x -> x <= n) xs"
+                (list Int)
+                (List.filter (\x -> x <= n) xs)
+            ]
+        , describe "take"
+            [ evalTestN n
+                "none"
+                "List.take 0 xs"
+                (list Int)
+                (List.take 0 xs)
+            , evalTestN n
+                "some"
+                "List.take n zs"
+                (list Int)
+                (List.take n zs)
+            , evalTestN n
+                "all"
+                "List.take n xs"
+                (list Int)
+                (List.take n xs)
+            , evalTestN n
+                "all+"
+                "List.take (n + 1) xs"
+                (list Int)
+                (List.take (n + 1) xs)
+            ]
+        , describe "drop"
+            [ evalTestN n
+                "none"
+                "List.drop 0 xs"
+                (list Int)
+                (List.drop 0 xs)
+            , evalTestN n
+                "some"
+                "List.drop n zs"
+                (list Int)
+                (List.drop n zs)
+            , evalTestN n
+                "all"
+                "List.drop n xs"
+                (list Int)
+                (List.drop n xs)
+            , evalTestN n
+                "all+"
+                "List.drop (n + 1) xs"
+                (list Int)
+                (List.drop (n + 1) xs)
+            ]
+        , evalTestN n
+            "repeat"
+            "List.repeat n -1"
+            (list Int)
+            (List.repeat n -1)
+        , evalTestN n
+            "append"
+            "List.append xs xs |> List.foldl (+) 0"
+            Int
+            (List.append xs xs |> List.foldl (+) 0)
+        , evalTestN n
+            "(::)"
+            "-1 :: xs"
+            (list Int)
+            (-1 :: xs)
+        , evalTestN n
+            "List.concat"
+            "List.concat [ xs, zs, xs ]"
+            (list Int)
+            (List.concat [ xs, zs, xs ])
+        , evalTestN n
+            "intersperse"
+            "List.intersperse -1 xs |> List.foldl (\\x ( c1, c2 ) -> ( c2, c1 + x )) ( 0, 0 )"
+            (tuple Int Int)
+            (List.intersperse -1 xs |> List.foldl (\x ( c1, c2 ) -> ( c2, c1 + x )) ( 0, 0 ))
+        , describe "partition"
+            [ evalTestN n
+                "left"
+                "List.partition (\\x -> x > 0) xs"
+                (tuple (list Int) (list Int))
+                (List.partition (\x -> x > 0) xs)
+            , evalTestN n
+                "right"
+                "List.partition (\\x -> x < 0) xs"
+                (tuple (list Int) (list Int))
+                (List.partition (\x -> x < 0) xs)
+            , evalTestN n
+                "split"
+                "List.partition (\\x -> x > mid) xs"
+                (tuple (list Int) (list Int))
+                (List.partition (\x -> x > mid) xs)
+            ]
+        , describe "map2"
+            [ evalTestN n
+                "same length"
+                "List.map2 (+) xs xs"
+                (list Int)
+                (List.map2 (+) xs xs)
+            , evalTestN n
+                "long first"
+                "List.map2 (+) zs xs"
+                (list Int)
+                (List.map2 (+) zs xs)
+            , evalTestN n
+                "short first"
+                "List.map2 (+) xs zs"
+                (list Int)
+                (List.map2 (+) xs zs)
+            ]
+        , evalTestN n
+            "unzip"
+            "List.map (\\x -> ( -x, x )) xs |> List.unzip"
+            (tuple (list Int) (list Int))
+            (List.map (\x -> ( -x, x )) xs |> List.unzip)
+        , describe "filterMap"
+            [ evalTestN n
+                "none"
+                "List.filterMap (\\_ -> Nothing) xs"
+                (list Int)
+                (List.filterMap (\_ -> Nothing) xs)
+            , evalTestN n
+                "all"
+                "List.filterMap (\\x -> Just -x) xs"
+                (list Int)
+                (List.filterMap (\x -> Just -x) xs)
+            , let
+                halve : Int -> Maybe Int
+                halve x =
+                    if modBy 2 x == 0 then
+                        Just (x // 2)
+
+                    else
+                        Nothing
+              in
+              evalTestN n
+                "some"
+                "let halve x = if modBy 2 x == 0 then Just (x // 2) else Nothing in List.filterMap halve xs"
+                (list Int)
+                (List.filterMap halve xs)
+            ]
+        , describe "concatMap"
+            [ evalTestN n
+                "none"
+                "List.concatMap (\\_ -> []) xs"
+                (list Int)
+                (List.concatMap (\_ -> []) xs)
+            , evalTestN n
+                "all"
+                "List.concatMap (\\x -> [ -x ]) xs"
+                (list Int)
+                (List.concatMap (\x -> [ -x ]) xs)
+            ]
+        , evalTestN n
+            "indexedMap"
+            "List.indexedMap (\\i x -> ( i, -x )) xs"
+            (list (tuple Int Int))
+            (List.indexedMap (\i x -> ( i, -x )) xs)
+        , evalTestN n
+            "sum"
+            "List.sum xs"
+            Int
+            (List.sum xs)
+        , evalTestN n
+            "product"
+            "List.product zs"
+            Int
+            (List.product zs)
+        , evalTestN n
+            "maximum"
+            "List.maximum xs"
+            (maybe Int)
+            (List.maximum xs)
+        , evalTestN n
+            "minimum"
+            "List.minimum xs"
+            (maybe Int)
+            (List.minimum xs)
+        , describe "all"
+            [ evalTestN n
+                "false"
+                "List.all (\\z -> z < n) zs"
+                Bool
+                (List.all (\z -> z < n) zs)
+            , evalTestN n
+                "true"
+                "List.all (\\x -> x <= n) xs"
+                Bool
+                (List.all (\x -> x <= n) xs)
+            ]
+        , describe "any"
+            [ evalTestN n
+                "false"
+                "List.any (\\x -> x > n) xs"
+                Bool
+                (List.any (\x -> x > n) xs)
+            , evalTestN n
+                "true"
+                "List.any (\\z -> z >= n) zs"
+                Bool
+                (List.any (\z -> z >= n) zs)
+            ]
+        , describe "sort"
+            [ evalTestN n
+                "sorted"
+                "List.sort xs"
+                (list Int)
+                (List.sort xs)
+            , evalTestN n
+                "unsorted"
+                "List.sort xsNeg"
+                (list Int)
+                (List.sort xsNeg)
+            ]
+        , describe "sortBy"
+            [ evalTestN n
+                "sorted"
+                "List.sortBy negate xsNeg"
+                (list Int)
+                (List.sortBy negate xsNeg)
+            , evalTestN n
+                "unsorted"
+                "List.sortBy negate xsOpp"
+                (list Int)
+                (List.sortBy negate xsOpp)
+            ]
+        , describe "sortWith"
+            [ evalTestN n
+                "sorted"
+                "List.sortWith (\\x -> \\y -> compare y x) xsNeg"
+                (list Int)
+                (List.sortWith (\x -> \y -> compare y x) xsNeg)
+            , evalTestN n
+                "unsorted"
+                "List.sortWith (\\x -> \\y -> compare y x) xsOpp"
+                (list Int)
+                (List.sortWith (\x -> \y -> compare y x) xsOpp)
+            ]
+        ]
