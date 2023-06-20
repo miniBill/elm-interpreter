@@ -2,7 +2,7 @@ module Eval.Expression exposing (evalExpression, evalFunction)
 
 import Core
 import Core.Basics
-import Elm.Syntax.Expression as Expression exposing (Expression, LetDeclaration)
+import Elm.Syntax.Expression as Expression exposing (Expression(..), LetDeclaration)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
@@ -495,6 +495,23 @@ evalFunctionOrValue moduleName name cfg env =
 
             ( [], "False" ) ->
                 Types.succeedPartial <| Value.Bool False
+
+            ( [], "Nothing" ) ->
+                Types.succeedPartial <| Value.Custom { moduleName = [ "Maybe" ], name = "Nothing" } []
+
+            ( [], "Just" ) ->
+                Types.succeedPartial <|
+                    Value.PartiallyApplied
+                        (Env.empty [ "Maybe" ])
+                        []
+                        [ fakeNode <| VarPattern "$x" ]
+                        Nothing
+                        (fakeNode <|
+                            Application
+                                [ fakeNode <| FunctionOrValue [ "Maybe" ] "Just"
+                                , fakeNode <| FunctionOrValue [] "$x"
+                                ]
+                        )
 
             _ ->
                 Types.succeedPartial <| Value.Custom qualifiedNameRef []
@@ -1007,11 +1024,11 @@ evalRecordAccessFunction field =
     PartiallyApplied
         (Env.empty [])
         []
-        [ fakeNode (VarPattern "r") ]
+        [ fakeNode (VarPattern "$r") ]
         Nothing
         (fakeNode <|
             Expression.RecordAccess
-                (fakeNode <| Expression.FunctionOrValue [] "r")
+                (fakeNode <| Expression.FunctionOrValue [] "$r")
                 (fakeNode <| String.dropLeft 1 field)
         )
 
@@ -1058,13 +1075,13 @@ evalOperator opName _ env =
             PartiallyApplied
                 (Env.call kernelFunction.moduleName opName env)
                 []
-                [ fakeNode <| VarPattern "l", fakeNode <| VarPattern "r" ]
+                [ fakeNode <| VarPattern "$l", fakeNode <| VarPattern "$r" ]
                 Nothing
                 (fakeNode <|
                     Expression.Application
                         [ fakeNode <| Expression.FunctionOrValue kernelFunction.moduleName kernelFunction.name
-                        , fakeNode <| Expression.FunctionOrValue [] "l"
-                        , fakeNode <| Expression.FunctionOrValue [] "r"
+                        , fakeNode <| Expression.FunctionOrValue [] "$l"
+                        , fakeNode <| Expression.FunctionOrValue [] "$r"
                         ]
                 )
                 |> Types.succeedPartial

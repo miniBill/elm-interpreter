@@ -189,13 +189,13 @@ tODO : String -> FunctionImplementation
 tODO name =
     -- TODO: get rid of this
     { name = fakeNode name
-    , arguments = [ fakeNode <| VarPattern "x" ]
+    , arguments = [ fakeNode <| VarPattern "$x" ]
     , expression =
         [ Expression.FunctionOrValue
             [ "Elm", "Kernel", "Debug" ]
             "todo"
         , Expression.Literal name
-        , Expression.FunctionOrValue [] "x"
+        , Expression.FunctionOrValue [] "$x"
         ]
             |> List.map fakeNode
             |> Expression.Application
@@ -206,12 +206,13 @@ tODO name =
 log : FunctionImplementation
 log =
     { name = fakeNode "log"
-    , arguments = [ fakeNode <| VarPattern "x" ]
+    , arguments = [ fakeNode <| VarPattern "$x" ]
     , expression =
         fakeNode <|
             Expression.Application
                 [ Core.Basics.logBase.expression
                 , fakeNode <| FunctionOrValue [] "e"
+                , fakeNode <| FunctionOrValue [] "$x"
                 ]
     }
 
