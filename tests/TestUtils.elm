@@ -1,4 +1,4 @@
-module TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, slowTest)
+module TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, slowTest, tuple)
 
 import Eval
 import Eval.Types exposing (Error(..))
@@ -51,6 +51,11 @@ slowTest : (Int -> Test) -> Test
 slowTest test =
     -- Change this to 10 to make it fast
     test 10
+
+
+tuple : (a -> Value) -> (b -> Value) -> ( a, b ) -> Value
+tuple lf rf ( l, r ) =
+    Tuple (lf l) (rf r)
 
 
 list : (a -> Value) -> List a -> Value

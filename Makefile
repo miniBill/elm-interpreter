@@ -1,4 +1,4 @@
-KERNELS = $(wildcard codegen/Kernel/*.elm)
+KERNELS = $(wildcard codegen/Elm/Kernel/*.elm)
 
 .PHONY: all
 all: generated/Core/Basics.elm
@@ -13,6 +13,6 @@ codegen/Gen/Basics.elm: codegen/elm.codegen.json node_modules/elm-codegen/bin/el
 node_modules/elm-codegen/bin/elm-codegen: package.json yarn.lock
 	yarn install
 
-generated/modules.elms: $(KERNELS) Makefile
+generated/modules.elms: ${KERNELS} Makefile
 	mkdir -p generated
-	(find ${ELM_HOME}/0.19.1/packages/elm/core/1.0.5/src -type f -name '*.elm'; find codegen/Elm -type f -name '*.elm') | xargs awk 'FNR==1 && NR!=1 {print "---SNIP---"}{print}' > $@
+	(find ${ELM_HOME}/0.19.1/packages/elm/core/1.0.5/src -type f -name '*.elm'; find codegen/Elm  -type f -name '*.elm') | xargs awk 'FNR==1 && NR!=1 {print "---SNIP---"}{print}' > $@

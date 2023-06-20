@@ -106,11 +106,11 @@ lengthTests =
             "Array.length Array.empty"
             Int
             (Array.length Array.empty)
+        , fuzzEvalTest "non-empty array"
+            "Array.length (Array.initialize size identity)"
+            Int
+            (\size -> Array.length (Array.initialize size identity))
 
-        -- , fuzz defaultSizeRange "non-empty array" <|
-        --     \size ->
-        --         length (initialize size identity)
-        --             |> Expect.equal size
         -- , fuzz defaultSizeRange "push" <|
         --     \size ->
         --         length (push size (initialize size identity))
