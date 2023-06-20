@@ -138,7 +138,7 @@ evalExpression (Node _ expression) cfg env =
         PartialValue ( v, callTrees, logLines ) ->
             ( v
             , if cfg.trace then
-                applyCallTreeContinuation cfg.callTreeContinuation callTrees v
+                Tuple.first (applyCallTreeContinuation cfg.callTreeContinuation callTrees v)
 
               else
                 Rope.empty
@@ -178,27 +178,30 @@ evalExpression (Node _ expression) cfg env =
                 newEnv
 
 
-applyCallTreeContinuation : CallTreeContinuation -> Rope CallTree -> Result EvalError Value -> Rope CallTree
+applyCallTreeContinuation : CallTreeContinuation -> Rope CallTree -> Result EvalError Value -> ( Rope CallTree, CallTreeContinuation )
 applyCallTreeContinuation k children result =
     case k of
         CTCRoot ->
-            children
+            ( children, CTCRoot )
 
         CTCWithMoreChildren moreChildren andThen ->
-            applyCallTreeContinuation andThen (Rope.prependTo children moreChildren) result
+            ( Rope.prependTo children moreChildren, andThen )
 
         CTCCall name values andThen ->
-            applyCallTreeContinuation andThen
-                (Rope.singleton
-                    (CallNode name
-                        { args = values
-                        , result = result
-                        , children = children
-                        }
-                    )
+            ( Rope.singleton
+                (CallNode name
+                    { args = values
+                    , result = result
+                    , children = children
+                    }
                 )
-                -- TODO: This is wrong
-                result
+            , andThen
+            )
+
+
+
+-- TODO: This is wrong
+-- result
 
 
 applyLogContinuation : Log.Continuation -> Rope Log.Line -> Rope Log.Line
