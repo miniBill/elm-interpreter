@@ -1,4 +1,4 @@
-module TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, slowTest, tuple)
+module TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, slowTest, tuple, withInt)
 
 import Eval
 import Eval.Types exposing (Error(..))
@@ -71,3 +71,8 @@ maybe f mx =
 
         Just x ->
             Custom { moduleName = [ "Maybe" ], name = "Just" } [ f x ]
+
+
+withInt : String -> Int -> String -> String
+withInt name value code =
+    "let " ++ name ++ " = " ++ String.fromInt value ++ " in " ++ code

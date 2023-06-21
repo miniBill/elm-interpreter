@@ -3,7 +3,7 @@ module CoreTests.Array exposing (suite)
 import Array exposing (Array)
 import Fuzz exposing (Fuzzer, intRange)
 import Test exposing (Test, describe, fuzz)
-import TestUtils exposing (evalExpect, evalTest, list, maybe)
+import TestUtils exposing (evalExpect, evalTest, list, maybe, withInt)
 import Value exposing (Value(..))
 
 
@@ -35,7 +35,7 @@ fuzzEvalTest : String -> String -> (a -> Value) -> (Int -> a) -> Test
 fuzzEvalTest name source kind value =
     fuzz defaultSizeRange name <|
         \size ->
-            evalExpect ("let size = " ++ String.fromInt size ++ " in " ++ source)
+            evalExpect (withInt "size" size source)
                 kind
                 (value size)
 
@@ -54,7 +54,7 @@ initTests =
         --     size =
         --         1056
         --   in
-        --   evalTest_ ("Array.toList <| Array.initialize " ++ String.fromInt size ++ " identity")
+        --   evalTest_ (withInt "size" size <| "Array.toList <| Array.initialize size identity")
         --     (list Int)
         --     (Array.toList <| Array.initialize size identity)
         , Test.skip <|
