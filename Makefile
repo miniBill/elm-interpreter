@@ -5,7 +5,6 @@ ELM_CORE_VERSION = 1.0.5
 all: generated/Core/Basics.elm
 
 generated/Core/Basics.elm: build/modules.elms codegen/Gen/Basics.elm codegen/Generate.elm node_modules/elm-codegen/bin/elm-codegen
-	rm -f generated/**/*.elm
 	yarn elm-codegen run --flags-from $<
 
 codegen/Gen/Basics.elm: codegen/elm.codegen.json node_modules/elm-codegen/bin/elm-codegen
@@ -13,6 +12,7 @@ codegen/Gen/Basics.elm: codegen/elm.codegen.json node_modules/elm-codegen/bin/el
 
 node_modules/elm-codegen/bin/elm-codegen: package.json yarn.lock
 	yarn install
+	touch $@
 
 build/elm-core-${ELM_CORE_VERSION}.tar.gz:
 	mkdir -p build
@@ -20,6 +20,7 @@ build/elm-core-${ELM_CORE_VERSION}.tar.gz:
 
 build/core-${ELM_CORE_VERSION}/src/Basics.elm: build/elm-core-${ELM_CORE_VERSION}.tar.gz
 	(cd build; tar -xf elm-core-${ELM_CORE_VERSION}.tar.gz)
+	touch $@
 
 build/modules.elms: ${KERNELS} build/core-${ELM_CORE_VERSION}/src/Basics.elm Makefile
 	mkdir -p build
