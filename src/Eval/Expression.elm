@@ -513,6 +513,34 @@ evalFunctionOrValue moduleName name cfg env =
                                 ]
                         )
 
+            ( [], "Err" ) ->
+                Types.succeedPartial <|
+                    Value.PartiallyApplied
+                        (Env.empty [ "Result" ])
+                        []
+                        [ fakeNode <| VarPattern "$x" ]
+                        Nothing
+                        (fakeNode <|
+                            Expression.Application
+                                [ fakeNode <| FunctionOrValue [ "Result" ] "Err"
+                                , fakeNode <| FunctionOrValue [] "$x"
+                                ]
+                        )
+
+            ( [], "Ok" ) ->
+                Types.succeedPartial <|
+                    Value.PartiallyApplied
+                        (Env.empty [ "Result" ])
+                        []
+                        [ fakeNode <| VarPattern "$x" ]
+                        Nothing
+                        (fakeNode <|
+                            Expression.Application
+                                [ fakeNode <| FunctionOrValue [ "Result" ] "Ok"
+                                , fakeNode <| FunctionOrValue [] "$x"
+                                ]
+                        )
+
             _ ->
                 Types.succeedPartial <| Value.Custom qualifiedNameRef []
 

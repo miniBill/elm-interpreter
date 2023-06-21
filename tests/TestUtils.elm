@@ -1,4 +1,4 @@
-module TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, slowTest, tuple, withInt)
+module TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, result, slowTest, tuple, withInt)
 
 import Eval
 import Eval.Types exposing (Error(..))
@@ -23,14 +23,14 @@ evalTest name expression toValue a =
 evalExpect : String -> (a -> Value) -> a -> Expect.Expectation
 evalExpect expression toValue a =
     let
-        result : Value
-        result =
+        res : Value
+        res =
             toValue a
     in
-    case ( Eval.eval expression, result ) of
+    case ( Eval.eval expression, res ) of
         ( Ok (Int i), Float _ ) ->
             (Float <| toFloat i)
-                |> Expect.equal result
+                |> Expect.equal res
 
         ( Err (EvalError e), _ ) ->
             Expect.fail <|
@@ -44,7 +44,7 @@ evalExpect expression toValue a =
             Expect.fail <| Debug.toString e
 
         ( v, _ ) ->
-            v |> Expect.equal (Ok result)
+            v |> Expect.equal (Ok res)
 
 
 slowTest : (Int -> Test) -> Test
@@ -71,6 +71,16 @@ maybe f mx =
 
         Just x ->
             Custom { moduleName = [ "Maybe" ], name = "Just" } [ f x ]
+
+
+result : (e -> Value) -> (x -> Value) -> Result e x -> Value
+result ef xf rx =
+    case rx of
+        Err e ->
+            Custom { moduleName = [ "Result" ], name = "Err" } [ ef e ]
+
+        Ok x ->
+            Custom { moduleName = [ "Result" ], name = "Ok" } [ xf x ]
 
 
 withInt : String -> Int -> String -> String
