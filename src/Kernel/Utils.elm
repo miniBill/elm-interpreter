@@ -1,7 +1,9 @@
 module Kernel.Utils exposing (append, compare, comparison, innerCompare)
 
+import Array
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Eval.Types as Types exposing (Eval)
+import FastDict as Dict exposing (Dict)
 import Value exposing (EvalError, Value(..), typeError)
 
 
@@ -100,18 +102,42 @@ innerCompare l r env =
                             innerCompare (List lt) (List rt) env
                     )
 
-        _ ->
-            case ( Value.toArray l, Value.toArray r ) of
-                ( Just la, Just ra ) ->
-                    innerCompare (List la) (List ra) env
+        ( Custom lname lvalues, Custom rname rvalues ) ->
+            if lname.moduleName /= rname.moduleName then
+                inner lname.moduleName rname.moduleName
 
-                _ ->
-                    Err <|
-                        typeError env <|
-                            "Comparison not yet implemented for "
-                                ++ Value.toString l
-                                ++ " and "
-                                ++ Value.toString r
+            else if lname.name /= rname.name then
+                inner lname.name rname.name
+
+            else
+                case ( Value.toArray l, Value.toArray r ) of
+                    ( Just la, Just ra ) ->
+                        innerCompare (List la) (List ra) env
+
+                    _ ->
+                        innerCompare (List lvalues) (List rvalues) env
+
+        ( Record ldict, Record rdict ) ->
+            let
+                toValue : Dict String Value -> Value
+                toValue dict =
+                    dict
+                        |> Dict.toList
+                        |> List.map (\( k, v ) -> Tuple (String k) v)
+                        |> List
+            in
+            innerCompare (toValue ldict) (toValue rdict) env
+
+        ( JsArray larr, JsArray rarr ) ->
+            innerCompare (List <| Array.toList larr) (List <| Array.toList rarr) env
+
+        _ ->
+            Err <|
+                typeError env <|
+                    "Comparison not yet implemented for "
+                        ++ Value.toString l
+                        ++ " and "
+                        ++ Value.toString r
 
 
 comparison : List Order -> ModuleName -> ( Int, List Value -> Eval Value )
