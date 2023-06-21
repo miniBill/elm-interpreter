@@ -18,9 +18,9 @@ build/elm-core-${ELM_CORE_VERSION}.tar.gz:
 	mkdir -p build
 	curl -sSL https://github.com/elm/core/archive/refs/tags/${ELM_CORE_VERSION}.tar.gz -o $@
 
-build/src/Basics.elm: build/elm-core-${ELM_CORE_VERSION}.tar.gz
+build/core-${ELM_CORE_VERSION}/src/Basics.elm: build/elm-core-${ELM_CORE_VERSION}.tar.gz
 	(cd build; tar -xf elm-core-${ELM_CORE_VERSION}.tar.gz)
 
-build/modules.elms: ${KERNELS} build/src/Basics.elm Makefile
+build/modules.elms: ${KERNELS} build/core-${ELM_CORE_VERSION}/src/Basics.elm Makefile
 	mkdir -p build
 	(find build/core-${ELM_CORE_VERSION}/src -type f -name '*.elm'; find codegen/Elm  -type f -name '*.elm') | xargs awk 'FNR==1 && NR!=1 {print "---SNIP---"}{print}' | sed 's/n-1/n - 1/' > $@
