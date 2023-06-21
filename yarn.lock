@@ -880,10 +880,10 @@ ee-first@1.1.1:
   resolved "https://registry.yarnpkg.com/ee-first/-/ee-first-1.1.1.tgz#590c61156b0ae2f4f0255732a158b266bc56b21d"
   integrity sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==
 
-elm-codegen@^0.3.0:
-  version "0.3.0"
-  resolved "https://registry.yarnpkg.com/elm-codegen/-/elm-codegen-0.3.0.tgz#a52f13e8e7efe46f681a95bfaf7e5d27cc732cc5"
-  integrity sha512-IsgEL7HkXA1vuTIoxEKVz04t64u5BAsLYtCwXFvCzo0KHE9xFaM1gOsSxJbO5E92Kp58QFR4C/Km+z4K+RBMMg==
+elm-codegen@^0.4.1:
+  version "0.4.1"
+  resolved "https://registry.yarnpkg.com/elm-codegen/-/elm-codegen-0.4.1.tgz#67acbd56c43178c0815bfdc238cc0ba0c2f73f9f"
+  integrity sha512-UoHR0ELwx1NbiX308DF+PxbZAWqB0hj1t9GT4gwyRJdb47apAHmX8+qZlQ9u7PeMWfnLYinDO0ysDoPGP+nvRA==
   dependencies:
     chalk "^4.1.1"
     chokidar "^3.5.1"
@@ -2623,6 +2623,7 @@ streamsearch@^1.1.0:
   integrity sha512-Mcc5wHehp9aXz1ax6bZUyY5afg9u2rv5cqQI3mRrYkGC8rW2hM02jWuwjtL++LS5qinSyhj2QfLyNsuc+VsExg==
 
 "string-width-cjs@npm:string-width@^4.2.0", string-width@^4.1.0:
+  name string-width-cjs
   version "4.2.3"
   resolved "https://registry.yarnpkg.com/string-width/-/string-width-4.2.3.tgz#269c7117d27b05ad2e536830a8ec895ef9c6d010"
   integrity sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==
@@ -2648,6 +2649,7 @@ string_decoder@^1.1.1:
     safe-buffer "~5.2.0"
 
 "strip-ansi-cjs@npm:strip-ansi@^6.0.1", strip-ansi@^6.0.0, strip-ansi@^6.0.1:
+  name strip-ansi-cjs
   version "6.0.1"
   resolved "https://registry.yarnpkg.com/strip-ansi/-/strip-ansi-6.0.1.tgz#9e26c63d30f53443e9489495b2105d37b67a85d9"
   integrity sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==
