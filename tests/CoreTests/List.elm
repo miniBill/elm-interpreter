@@ -1,7 +1,7 @@
 module CoreTests.List exposing (suite)
 
 import Test exposing (Test, describe)
-import TestUtils exposing (evalTest, list, maybe, tuple)
+import TestUtils exposing (evalTest, list, maybe, slowTest, tuple)
 import Value exposing (Value(..))
 
 
@@ -11,7 +11,7 @@ suite =
         [ testListOfN 0
         , testListOfN 1
         , testListOfN 2
-        , testListOfN 5000
+        , slowTest testListOfN
         ]
 
 

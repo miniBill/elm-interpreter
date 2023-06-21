@@ -14,7 +14,7 @@ fromNumber s _ env =
             Types.succeed <| String.fromFloat f
 
         _ ->
-            Types.fail <| typeError env <| "Cannot convert " ++ Value.toString s ++ " to a number"
+            Types.fail <| typeError env <| "Cannot convert " ++ Value.toString s ++ " to a string"
 
 
 foldr : (Char -> Eval (Value -> Eval Value)) -> Value -> String -> Eval Value
