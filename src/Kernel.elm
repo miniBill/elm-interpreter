@@ -143,7 +143,7 @@ functions evalFunction =
         , ( "foldl", threeWithError (function2 evalFunction char anything to anything) anything string to anything Kernel.String.foldl Core.String.foldl )
         , ( "foldr", threeWithError (function2 evalFunction char anything to anything) anything string to anything Kernel.String.foldr Core.String.foldr )
         , ( "fromList", one (list char) to string String.fromList Core.String.fromList )
-        , ( "fromNumber", oneWithError anything to string Kernel.String.fromNumber (tODO "fromNumber") )
+        , ( "fromNumber", oneWithError anything to string Kernel.String.fromNumber Core.String.fromFloat ) -- TODO: `fromFloat` is not the same as `fromNumber`
         , ( "indexes", two string string to (list int) String.indexes Core.String.indexes )
         , ( "join", two string (jsArray string) to string (\s a -> String.join s (Array.toList a)) Core.String.join )
         , ( "lines", one string to (list string) String.lines Core.String.lines )
@@ -181,24 +181,6 @@ functions evalFunction =
                 )
             )
         |> Dict.fromList
-
-
-tODO : String -> FunctionImplementation
-tODO name =
-    -- TODO: get rid of this
-    { name = fakeNode name
-    , arguments = [ fakeNode <| VarPattern "$x" ]
-    , expression =
-        [ Expression.FunctionOrValue
-            [ "Elm", "Kernel", "Debug" ]
-            "todo"
-        , Expression.Literal name
-        , Expression.FunctionOrValue [] "$x"
-        ]
-            |> List.map fakeNode
-            |> Expression.Application
-            |> fakeNode
-    }
 
 
 log : FunctionImplementation
