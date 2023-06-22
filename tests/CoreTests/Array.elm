@@ -9,17 +9,16 @@ import Value exposing (Value(..))
 
 suite : Test
 suite =
-    Test.skip <|
-        describe "Array"
-            [ initTests
-            , isEmptyTests
-            , lengthTests
-            , getSetTests
-            , conversionTests
-            , transformTests
-            , sliceTests
-            , runtimeCrashTests
-            ]
+    describe "Array"
+        [ initTests
+        , isEmptyTests
+        , lengthTests
+        , getSetTests
+        , conversionTests
+        , transformTests
+        , sliceTests
+        , runtimeCrashTests
+        ]
 
 
 {-|
@@ -34,11 +33,12 @@ defaultSizeRange =
 
 fuzzEvalTest : String -> String -> (a -> Value) -> (Int -> a) -> Test
 fuzzEvalTest name source kind value =
-    fuzz defaultSizeRange name <|
-        \size ->
-            evalExpect (withInt "size" size source)
-                kind
-                (value size)
+    Test.skip <|
+        fuzz defaultSizeRange name <|
+            \size ->
+                evalExpect (withInt "size" size source)
+                    kind
+                    (value size)
 
 
 initTests : Test
@@ -48,11 +48,10 @@ initTests =
             "Array.toList <| Array.initialize size identity"
             List
             (\size -> Array.toList <| Array.initialize size Int)
-        , Test.skip <|
-            fuzzEvalTest "push"
-                "Array.toList <| List.foldl Array.push Array.empty (List.range 0 (size - 1))"
-                List
-                (\size -> Array.toList <| List.foldl Array.push Array.empty (List.map Int <| List.range 0 (size - 1)))
+        , fuzzEvalTest "push"
+            "Array.toList <| List.foldl Array.push Array.empty (List.range 0 (size - 1))"
+            List
+            (\size -> Array.toList <| List.foldl Array.push Array.empty (List.map Int <| List.range 0 (size - 1)))
         , evalTest "initialize non-identity"
             "Array.toList (Array.initialize 4 (\\n -> n * n))"
             (list Int)
@@ -167,11 +166,10 @@ getSetTests =
           --         set (negate n) 5 arr
           --             |> set (size + n) 5
           --             |> Expect.equal arr,
-          Test.skip <|
-            evalTest "Retrieval works from tail"
-                "Array.get 1030 (Array.set 1030 5 (Array.initialize 1035 identity))"
-                (maybe Int)
-                (Array.get 1030 (Array.set 1030 5 (Array.initialize 1035 identity)))
+          evalTest "Retrieval works from tail"
+            "Array.get 1030 (Array.set 1030 5 (Array.initialize 1035 identity))"
+            (maybe Int)
+            (Array.get 1030 (Array.set 1030 5 (Array.initialize 1035 identity)))
         ]
 
 
@@ -187,11 +185,10 @@ conversionTests =
           --         toList (fromList ls)
           --             |> Expect.equal ls,
           --   Test.skip <|
-          Test.skip <|
-            fuzzEvalTest "indexed"
-                "Array.toIndexedList (Array.initialize size ((+) 1)) == Array.toList (Array.initialize size (\\idx -> ( idx, idx + 1 )))"
-                Bool
-                (\size -> Array.toIndexedList (Array.initialize size ((+) 1)) == Array.toList (Array.initialize size (\idx -> ( idx, idx + 1 ))))
+          fuzzEvalTest "indexed"
+            "Array.toIndexedList (Array.initialize size ((+) 1)) == Array.toList (Array.initialize size (\\idx -> ( idx, idx + 1 )))"
+            Bool
+            (\size -> Array.toIndexedList (Array.initialize size ((+) 1)) == Array.toList (Array.initialize size (\idx -> ( idx, idx + 1 ))))
         ]
 
 
@@ -210,11 +207,10 @@ transformTests =
           --     \size ->
           --         toList (filter (\a -> modBy 2 a == 0) (initialize size identity))
           --             |> Expect.equal (List.filter (\a -> modBy 2 a == 0) (List.range 0 (size - 1))),
-          Test.skip <|
-            fuzzEvalTest "map"
-                "Array.map ((+) 1) (Array.initialize size identity) == Array.initialize size ((+) 1)"
-                Bool
-                (\size -> Array.map ((+) 1) (Array.initialize size identity) == Array.initialize size ((+) 1))
+          fuzzEvalTest "map"
+            "Array.map ((+) 1) (Array.initialize size identity) == Array.initialize size ((+) 1)"
+            Bool
+            (\size -> Array.map ((+) 1) (Array.initialize size identity) == Array.initialize size ((+) 1))
 
         -- , fuzz defaultSizeRange "indexedMap" <|
         --     \size ->
@@ -265,11 +261,10 @@ sliceTests =
           --             |> slice -1 size
           --             |> toList
           --             |> Expect.equal [ size - 1 ],
-          Test.skip <|
-            evalTest "both small"
-                "let smallSample = Array.fromList (List.range 1 8) in Array.toList (Array.slice 2 5 smallSample)"
-                (list Int)
-                (Array.toList (Array.slice 2 5 smallSample))
+          evalTest "both small"
+            "let smallSample = Array.fromList (List.range 1 8) in Array.toList (Array.slice 2 5 smallSample)"
+            (list Int)
+            (Array.toList (Array.slice 2 5 smallSample))
 
         -- , test "start small" <|
         --     \() ->
