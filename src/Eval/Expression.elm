@@ -487,6 +487,25 @@ evalFunctionOrValue moduleName name cfg env =
         qualifiedNameRef : QualifiedNameRef
         qualifiedNameRef =
             { moduleName = fixedModuleName, name = name }
+
+        variant0 : ModuleName -> String -> PartialResult
+        variant0 modName ctorName =
+            Types.succeedPartial <| Value.Custom { moduleName = modName, name = ctorName } []
+
+        variant1 : ModuleName -> String -> PartialResult
+        variant1 modName ctorName =
+            Types.succeedPartial <|
+                Value.PartiallyApplied
+                    (Env.empty modName)
+                    []
+                    [ fakeNode <| VarPattern "$x" ]
+                    Nothing
+                    (fakeNode <|
+                        Expression.Application
+                            [ fakeNode <| FunctionOrValue modName ctorName
+                            , fakeNode <| FunctionOrValue [] "$x"
+                            ]
+                    )
     in
     if isVariant name then
         case ( moduleName, name ) of
@@ -497,58 +516,25 @@ evalFunctionOrValue moduleName name cfg env =
                 Types.succeedPartial <| Value.Bool False
 
             ( [], "Nothing" ) ->
-                Types.succeedPartial <| Value.Custom { moduleName = [ "Maybe" ], name = "Nothing" } []
+                variant0 [ "Maybe" ] "Nothing"
 
             ( [], "Just" ) ->
-                Types.succeedPartial <|
-                    Value.PartiallyApplied
-                        (Env.empty [ "Maybe" ])
-                        []
-                        [ fakeNode <| VarPattern "$x" ]
-                        Nothing
-                        (fakeNode <|
-                            Expression.Application
-                                [ fakeNode <| FunctionOrValue [ "Maybe" ] "Just"
-                                , fakeNode <| FunctionOrValue [] "$x"
-                                ]
-                        )
+                variant1 [ "Maybe" ] "Just"
 
             ( [], "Err" ) ->
-                Types.succeedPartial <|
-                    Value.PartiallyApplied
-                        (Env.empty [ "Result" ])
-                        []
-                        [ fakeNode <| VarPattern "$x" ]
-                        Nothing
-                        (fakeNode <|
-                            Expression.Application
-                                [ fakeNode <| FunctionOrValue [ "Result" ] "Err"
-                                , fakeNode <| FunctionOrValue [] "$x"
-                                ]
-                        )
+                variant1 [ "Result" ] "Err"
 
             ( [], "Ok" ) ->
-                Types.succeedPartial <|
-                    Value.PartiallyApplied
-                        (Env.empty [ "Result" ])
-                        []
-                        [ fakeNode <| VarPattern "$x" ]
-                        Nothing
-                        (fakeNode <|
-                            Expression.Application
-                                [ fakeNode <| FunctionOrValue [ "Result" ] "Ok"
-                                , fakeNode <| FunctionOrValue [] "$x"
-                                ]
-                        )
+                variant1 [ "Result" ] "Ok"
 
             ( [], "LT" ) ->
-                Types.succeedPartial <| Value.Custom { moduleName = [ "Basics" ], name = "LT" } []
+                variant0 [ "Basics" ] "LT"
 
             ( [], "EQ" ) ->
-                Types.succeedPartial <| Value.Custom { moduleName = [ "Basics" ], name = "EQ" } []
+                variant0 [ "Basics" ] "EQ"
 
             ( [], "GT" ) ->
-                Types.succeedPartial <| Value.Custom { moduleName = [ "Basics" ], name = "GT" } []
+                variant0 [ "Basics" ] "GT"
 
             _ ->
                 Types.succeedPartial <| Value.Custom qualifiedNameRef []
