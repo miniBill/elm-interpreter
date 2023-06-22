@@ -541,6 +541,15 @@ evalFunctionOrValue moduleName name cfg env =
                                 ]
                         )
 
+            ( [], "LT" ) ->
+                Types.succeedPartial <| Value.Custom { moduleName = [ "Basics" ], name = "LT" } []
+
+            ( [], "EQ" ) ->
+                Types.succeedPartial <| Value.Custom { moduleName = [ "Basics" ], name = "EQ" } []
+
+            ( [], "GT" ) ->
+                Types.succeedPartial <| Value.Custom { moduleName = [ "Basics" ], name = "GT" } []
+
             _ ->
                 Types.succeedPartial <| Value.Custom qualifiedNameRef []
 
