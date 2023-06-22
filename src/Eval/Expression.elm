@@ -360,73 +360,7 @@ evalApplication first rest cfg env =
 
                             else
                                 -- Just right, we special case this for TCO
-                                let
-                                    maybeNewEnvValues : Result EvalError (Maybe EnvValues)
-                                    maybeNewEnvValues =
-                                        match env
-                                            (fakeNode <| ListPattern patterns)
-                                            (List args)
-                                in
-                                case maybeNewEnvValues of
-                                    Err e ->
-                                        Types.failPartial e
-
-                                    Ok Nothing ->
-                                        Types.failPartial <| typeError env "Could not match lambda patterns"
-
-                                    Ok (Just newEnvValues) ->
-                                        case implementation of
-                                            Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
-                                                let
-                                                    qualifiedName : QualifiedNameRef
-                                                    qualifiedName =
-                                                        { moduleName = moduleName
-                                                        , name = name
-                                                        }
-
-                                                    fullName : String
-                                                    fullName =
-                                                        Syntax.qualifiedNameToString qualifiedName
-                                                in
-                                                case Dict.get moduleName kernelFunctions of
-                                                    Nothing ->
-                                                        Types.failPartial <| nameError env fullName
-
-                                                    Just kernelModule ->
-                                                        case Dict.get name kernelModule of
-                                                            Nothing ->
-                                                                Types.failPartial <| nameError env fullName
-
-                                                            Just ( _, f ) ->
-                                                                let
-                                                                    ( kernelResult, children, logLines ) =
-                                                                        f values
-                                                                            cfg
-                                                                            (Env.call moduleName name env)
-                                                                in
-                                                                ( kernelResult
-                                                                , if cfg.trace then
-                                                                    CallNode
-                                                                        qualifiedName
-                                                                        { args = values
-                                                                        , result = kernelResult
-                                                                        , children = children
-                                                                        }
-                                                                        |> Rope.singleton
-
-                                                                  else
-                                                                    Rope.empty
-                                                                , logLines
-                                                                )
-                                                                    |> PartialValue
-
-                                            _ ->
-                                                call
-                                                    maybeQualifiedName
-                                                    implementation
-                                                    args
-                                                    cfg
-                                                    (localEnv |> Env.with newEnvValues)
+                                evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg env
                         )
     in
     evalExpression first cfg env
@@ -448,6 +382,77 @@ evalApplication first rest cfg env =
                                     ++ Value.toString other
                                     ++ ", which is a non-lambda non-variant"
             )
+
+
+evalFullyApplied : Env -> List Value -> List (Node Pattern) -> Maybe QualifiedNameRef -> Node Expression -> PartialEval
+evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg env =
+    let
+        maybeNewEnvValues : Result EvalError (Maybe EnvValues)
+        maybeNewEnvValues =
+            match env
+                (fakeNode <| ListPattern patterns)
+                (List args)
+    in
+    case maybeNewEnvValues of
+        Err e ->
+            Types.failPartial e
+
+        Ok Nothing ->
+            Types.failPartial <| typeError env "Could not match lambda patterns"
+
+        Ok (Just newEnvValues) ->
+            case implementation of
+                Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
+                    let
+                        qualifiedName : QualifiedNameRef
+                        qualifiedName =
+                            { moduleName = moduleName
+                            , name = name
+                            }
+
+                        fullName : String
+                        fullName =
+                            Syntax.qualifiedNameToString qualifiedName
+                    in
+                    case Dict.get moduleName kernelFunctions of
+                        Nothing ->
+                            Types.failPartial <| nameError env fullName
+
+                        Just kernelModule ->
+                            case Dict.get name kernelModule of
+                                Nothing ->
+                                    Types.failPartial <| nameError env fullName
+
+                                Just ( _, f ) ->
+                                    let
+                                        ( kernelResult, children, logLines ) =
+                                            f args
+                                                cfg
+                                                (Env.call moduleName name env)
+                                    in
+                                    ( kernelResult
+                                    , if cfg.trace then
+                                        CallNode
+                                            qualifiedName
+                                            { args = args
+                                            , result = kernelResult
+                                            , children = children
+                                            }
+                                            |> Rope.singleton
+
+                                      else
+                                        Rope.empty
+                                    , logLines
+                                    )
+                                        |> PartialValue
+
+                _ ->
+                    call
+                        maybeQualifiedName
+                        implementation
+                        args
+                        cfg
+                        (localEnv |> Env.with newEnvValues)
 
 
 call : Maybe QualifiedNameRef -> Node Expression -> List Value -> PartialEval
