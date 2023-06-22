@@ -252,6 +252,7 @@ evalTestModule name expression toValue a =
                 |> Expect.equal (Ok (toValue a))
 
 
+shadowingTest : Test
 shadowingTest =
     evalTestModule "shadowing in let/in" """module Temp exposing (main)
 
