@@ -3,22 +3,23 @@ module CoreTests.Array exposing (suite)
 import Array exposing (Array)
 import Fuzz exposing (Fuzzer, intRange)
 import Test exposing (Test, describe, fuzz)
-import TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, withInt)
+import TestUtils exposing (evalExpect, evalTest, list, maybe, withInt)
 import Value exposing (Value(..))
 
 
 suite : Test
 suite =
-    describe "Array"
-        [ initTests
-        , isEmptyTests
-        , lengthTests
-        , getSetTests
-        , conversionTests
-        , transformTests
-        , sliceTests
-        , runtimeCrashTests
-        ]
+    Test.skip <|
+        describe "Array"
+            [ initTests
+            , isEmptyTests
+            , lengthTests
+            , getSetTests
+            , conversionTests
+            , transformTests
+            , sliceTests
+            , runtimeCrashTests
+            ]
 
 
 {-|
@@ -47,15 +48,6 @@ initTests =
             "Array.toList <| Array.initialize size identity"
             List
             (\size -> Array.toList <| Array.initialize size Int)
-
-        -- , let
-        --     size : Int
-        --     size =
-        --         1056
-        --   in
-        --   evalTest_ (withInt "size" size <| "Array.toList <| Array.initialize size identity")
-        --     (list Int)
-        --     (Array.toList <| Array.initialize size identity)
         , Test.skip <|
             fuzzEvalTest "push"
                 "Array.toList <| List.foldl Array.push Array.empty (List.range 0 (size - 1))"

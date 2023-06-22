@@ -4,7 +4,7 @@ import Elm.Syntax.Expression as Expression
 import Eval.Module
 import Expect
 import Test exposing (Test, describe, test)
-import TestUtils exposing (evalTest, evalTest_, slowTest)
+import TestUtils exposing (evalTest, evalTest_, list, slowTest)
 import Value exposing (Value(..))
 
 
@@ -27,6 +27,7 @@ suite =
         , joinTest
         , modulesTest
         , higherOrderTest
+        , shadowingTest
         ]
 
 
@@ -249,3 +250,27 @@ evalTestModule name expression toValue a =
         \_ ->
             Eval.Module.eval expression (Expression.FunctionOrValue [] "main")
                 |> Expect.equal (Ok (toValue a))
+
+
+shadowingTest =
+    evalTestModule "shadowing in let/in" """module Temp exposing (main)
+
+foo : a -> List a -> List a
+foo nodes acc =
+    let
+        node =
+            nodes
+
+        newAcc =
+            node :: acc
+    in
+    newAcc
+
+
+main : List (List number)
+main =
+    let
+        node =
+            [ 0, 1 ]
+    in
+    foo [ 4, 5 ] [ node ]""" (list (list Int)) [ [ 4, 5 ], [ 0, 1 ] ]
