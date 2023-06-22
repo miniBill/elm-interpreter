@@ -1,4 +1,4 @@
-module Kernel.Utils exposing (append, compare, comparison, innerCompare)
+module Kernel.Utils exposing (append, compare, comparison)
 
 import Array
 import Elm.Syntax.ModuleName exposing (ModuleName)

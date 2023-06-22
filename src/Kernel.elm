@@ -17,7 +17,7 @@ import Env
 import Eval.Types as Types exposing (Eval, EvalResult)
 import FastDict as Dict exposing (Dict)
 import Kernel.JsArray
-import Kernel.List
+
 import Kernel.String
 import Kernel.Utils
 import Maybe.Extra
@@ -124,8 +124,6 @@ functions evalFunction =
     , ( [ "Elm", "Kernel", "List" ]
       , [ ( "cons", two anything (list anything) to (list anything) (::) Core.List.cons )
         , ( "fromArray", one anything to anything identity (tODO "fromArray") )
-        , ( "sortBy", twoWithError (function evalFunction anything to anything) (list anything) to (list anything) Kernel.List.sortBy Core.List.sortBy )
-        , ( "sortWith", twoWithError (function2 evalFunction anything anything to order) (list anything) to (list anything) Kernel.List.sortWith Core.List.sortWith )
         , ( "toArray", one anything to anything identity (tODO "toArray") )
         ]
       )
