@@ -164,12 +164,11 @@ suite =
                 , evalTest "|>" " 3 + 6 |> identity" Int <| (3 + 6 |> identity)
                 , evalTest "<<" " not << xor True <| True" Bool <| (not << xor True <| True)
                 , describe ">>"
-                    [ Test.skip <|
-                        evalTest "with xor"
-                            "True |> xor True >> not"
-                            Bool
-                        <|
-                            (True |> xor True >> not)
+                    [ evalTest "with xor"
+                        "True |> (xor True >> not)"
+                        Bool
+                      <|
+                        (True |> xor True >> not)
                     , evalTest "with a record accessor"
                         """
                             [ { foo = "NaS", bar = "baz" } ]
