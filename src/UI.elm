@@ -215,7 +215,7 @@ viewLogLines logLines =
     else
         let
             cell : Int -> Int -> String -> Element msg
-            cell row column c =
+            cell row columnIndex c =
                 c
                     |> String.split "\n"
                     |> List.map
@@ -231,7 +231,7 @@ viewLogLines logLines =
                                     [ htmlAttribute <| Html.Attributes.style "white-space" "pre" ]
                                     (text line)
                         )
-                    |> Element.column
+                    |> column
                         [ if modBy 2 row == 0 then
                             Background.color <| rgb 0.85 0.85 0.9
 
@@ -239,13 +239,13 @@ viewLogLines logLines =
                             Background.color <| rgb 0.75 0.75 0.8
                         , paddingEach
                             { left =
-                                if column == 0 then
+                                if columnIndex == 0 then
                                     5
 
                                 else
                                     10
                             , right =
-                                if column == List.length rawColumns - 1 then
+                                if columnIndex == List.length rawColumns - 1 then
                                     5
 
                                 else
