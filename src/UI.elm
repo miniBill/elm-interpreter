@@ -231,7 +231,7 @@ viewLogLines logLines =
                                     [ htmlAttribute <| Html.Attributes.style "white-space" "pre" ]
                                     (text line)
                         )
-                    |> textColumn
+                    |> Element.column
                         [ if modBy 2 row == 0 then
                             Background.color <| rgb 0.85 0.85 0.9
 
@@ -285,14 +285,6 @@ viewLogLines logLines =
                                         k ++ " = " ++ Value.toString v
                                     )
                                 |> String.join "\n"
-                  }
-                , { header = "Module"
-                  , view =
-                        \logLine ->
-                            logLine.stack
-                                |> List.head
-                                |> Maybe.map (\{ moduleName } -> String.join "." moduleName)
-                                |> Maybe.withDefault "?"
                   }
                 , { header = "Expression"
                   , view = \logLine -> String.trim logLine.message
