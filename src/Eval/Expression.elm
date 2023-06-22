@@ -476,23 +476,29 @@ call maybeQualifiedName implementation values cfg env =
 
 evalFunctionOrValue : ModuleName -> String -> PartialEval
 evalFunctionOrValue moduleName name cfg env =
+    if isVariant name then
+        evalVariant moduleName env name
+
+    else
+        evalNonVariant moduleName name cfg env
+
+
+fixModuleName : ModuleName -> Env -> ModuleName
+fixModuleName moduleName env =
+    if List.isEmpty moduleName then
+        env.currentModule
+
+    else if moduleName == [ "JsArray" ] then
+        -- TODO: Generic import aliases
+        [ "Elm", "JsArray" ]
+
+    else
+        moduleName
+
+
+evalVariant : ModuleName -> Env -> String -> PartialResult
+evalVariant moduleName env name =
     let
-        fixedModuleName : ModuleName
-        fixedModuleName =
-            if List.isEmpty moduleName then
-                env.currentModule
-
-            else if moduleName == [ "JsArray" ] then
-                -- TODO: Generic import aliases
-                [ "Elm", "JsArray" ]
-
-            else
-                moduleName
-
-        qualifiedNameRef : QualifiedNameRef
-        qualifiedNameRef =
-            { moduleName = fixedModuleName, name = name }
-
         variant0 : ModuleName -> String -> PartialResult
         variant0 modName ctorName =
             Types.succeedPartial <| Value.Custom { moduleName = modName, name = ctorName } []
@@ -512,109 +518,128 @@ evalFunctionOrValue moduleName name cfg env =
                             ]
                     )
     in
-    if isVariant name then
-        case ( moduleName, name ) of
-            ( [], "True" ) ->
-                Types.succeedPartial <| Value.Bool True
+    case ( moduleName, name ) of
+        ( [], "True" ) ->
+            Types.succeedPartial <| Value.Bool True
 
-            ( [], "False" ) ->
-                Types.succeedPartial <| Value.Bool False
+        ( [], "False" ) ->
+            Types.succeedPartial <| Value.Bool False
 
-            ( [], "Nothing" ) ->
-                variant0 [ "Maybe" ] "Nothing"
+        ( [], "Nothing" ) ->
+            variant0 [ "Maybe" ] "Nothing"
 
-            ( [], "Just" ) ->
-                variant1 [ "Maybe" ] "Just"
+        ( [], "Just" ) ->
+            variant1 [ "Maybe" ] "Just"
 
-            ( [], "Err" ) ->
-                variant1 [ "Result" ] "Err"
+        ( [], "Err" ) ->
+            variant1 [ "Result" ] "Err"
 
-            ( [], "Ok" ) ->
-                variant1 [ "Result" ] "Ok"
+        ( [], "Ok" ) ->
+            variant1 [ "Result" ] "Ok"
 
-            ( [], "LT" ) ->
-                variant0 [ "Basics" ] "LT"
+        ( [], "LT" ) ->
+            variant0 [ "Basics" ] "LT"
 
-            ( [], "EQ" ) ->
-                variant0 [ "Basics" ] "EQ"
+        ( [], "EQ" ) ->
+            variant0 [ "Basics" ] "EQ"
 
-            ( [], "GT" ) ->
-                variant0 [ "Basics" ] "GT"
+        ( [], "GT" ) ->
+            variant0 [ "Basics" ] "GT"
 
-            _ ->
-                Types.succeedPartial <| Value.Custom qualifiedNameRef []
+        _ ->
+            let
+                fixedModuleName : ModuleName
+                fixedModuleName =
+                    fixModuleName moduleName env
 
-    else
-        case moduleName of
-            "Elm" :: "Kernel" :: _ ->
-                case Dict.get moduleName env.functions of
-                    Nothing ->
-                        evalKernelFunction moduleName name cfg env
+                qualifiedNameRef : QualifiedNameRef
+                qualifiedNameRef =
+                    { moduleName = fixedModuleName, name = name }
+            in
+            Types.succeedPartial <| Value.Custom qualifiedNameRef []
 
-                    Just kernelModule ->
-                        case Dict.get name kernelModule of
-                            Nothing ->
-                                evalKernelFunction moduleName name cfg env
 
-                            Just function ->
+evalNonVariant : ModuleName -> String -> PartialEval
+evalNonVariant moduleName name cfg env =
+    case moduleName of
+        "Elm" :: "Kernel" :: _ ->
+            case Dict.get moduleName env.functions of
+                Nothing ->
+                    evalKernelFunction moduleName name cfg env
+
+                Just kernelModule ->
+                    case Dict.get name kernelModule of
+                        Nothing ->
+                            evalKernelFunction moduleName name cfg env
+
+                        Just function ->
+                            PartiallyApplied
+                                (Env.call moduleName name env)
+                                []
+                                function.arguments
+                                (Just { moduleName = moduleName, name = name })
+                                function.expression
+                                |> Types.succeedPartial
+
+        _ ->
+            case ( moduleName, Dict.get name env.values ) of
+                ( [], Just (PartiallyApplied localEnv [] [] maybeName implementation) ) ->
+                    call maybeName implementation [] cfg localEnv
+
+                ( [], Just value ) ->
+                    Types.succeedPartial value
+
+                _ ->
+                    let
+                        fixedModuleName : ModuleName
+                        fixedModuleName =
+                            fixModuleName moduleName env
+
+                        maybeFunction : Maybe Expression.FunctionImplementation
+                        maybeFunction =
+                            let
+                                fromModule : Maybe Expression.FunctionImplementation
+                                fromModule =
+                                    Dict.get fixedModuleName env.functions
+                                        |> Maybe.andThen (Dict.get name)
+                            in
+                            if List.isEmpty moduleName then
+                                case fromModule of
+                                    Just function ->
+                                        Just function
+
+                                    Nothing ->
+                                        Dict.get name Core.Basics.functions
+
+                            else
+                                fromModule
+                    in
+                    case maybeFunction of
+                        Just function ->
+                            let
+                                qualifiedNameRef : QualifiedNameRef
+                                qualifiedNameRef =
+                                    { moduleName = fixedModuleName, name = name }
+                            in
+                            if List.isEmpty function.arguments then
+                                call (Just qualifiedNameRef) function.expression [] cfg env
+
+                            else
                                 PartiallyApplied
-                                    (Env.call moduleName name env)
+                                    (Env.call fixedModuleName name env)
                                     []
                                     function.arguments
-                                    (Just { moduleName = moduleName, name = name })
+                                    (Just qualifiedNameRef)
                                     function.expression
                                     |> Types.succeedPartial
 
-            _ ->
-                case ( moduleName, Dict.get name env.values ) of
-                    ( [], Just (PartiallyApplied localEnv [] [] maybeName implementation) ) ->
-                        call maybeName implementation [] cfg localEnv
-
-                    ( [], Just value ) ->
-                        Types.succeedPartial value
-
-                    _ ->
-                        let
-                            maybeFunction : Maybe Expression.FunctionImplementation
-                            maybeFunction =
-                                let
-                                    fromModule : Maybe Expression.FunctionImplementation
-                                    fromModule =
-                                        Dict.get fixedModuleName env.functions
-                                            |> Maybe.andThen (Dict.get name)
-                                in
-                                if List.isEmpty moduleName then
-                                    case fromModule of
-                                        Just function ->
-                                            Just function
-
-                                        Nothing ->
-                                            Dict.get name Core.Basics.functions
-
-                                else
-                                    fromModule
-                        in
-                        case maybeFunction of
-                            Just function ->
-                                if List.isEmpty function.arguments then
-                                    call (Just qualifiedNameRef) function.expression [] cfg env
-
-                                else
-                                    PartiallyApplied
-                                        (Env.call fixedModuleName name env)
-                                        []
-                                        function.arguments
-                                        (Just qualifiedNameRef)
-                                        function.expression
-                                        |> Types.succeedPartial
-
-                            Nothing ->
-                                Syntax.qualifiedNameToString
-                                    { moduleName = fixedModuleName
-                                    , name = name
-                                    }
-                                    |> nameError env
-                                    |> Types.failPartial
+                        Nothing ->
+                            Syntax.qualifiedNameToString
+                                { moduleName = fixedModuleName
+                                , name = name
+                                }
+                                |> nameError env
+                                |> Types.failPartial
 
 
 evalIfBlock : Node Expression -> Node Expression -> Node Expression -> PartialEval
