@@ -801,12 +801,20 @@ evalLetBlock letBlock cfg env =
     let
         envDefs : Set String
         envDefs =
-            Set.union
-                (Dict.get env.currentModule env.functions
-                    |> Maybe.map (Dict.keys >> Set.fromList)
-                    |> Maybe.withDefault Set.empty
+            Set.diff
+                (Set.union
+                    (Dict.get env.currentModule env.functions
+                        |> Maybe.map (Dict.keys >> Set.fromList)
+                        |> Maybe.withDefault Set.empty
+                    )
+                    (Dict.keys env.values |> Set.fromList)
                 )
-                (Dict.keys env.values |> Set.fromList)
+                allDefVars
+
+        allDefVars : Set String
+        allDefVars =
+            letBlock.declarations
+                |> List.foldl (\e -> Set.union (declarationDefinedVariables e)) Set.empty
 
         sortedDeclarations : Result TopologicalSort.SortError (List (Node LetDeclaration))
         sortedDeclarations =
