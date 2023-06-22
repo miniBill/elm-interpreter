@@ -18,6 +18,17 @@ appendN n dest source =
         (Array.slice 0 itemsToCopy source)
 
 
+{-| Initialize an array from a list. `initializeFromList n ls` creates an array of,
+at most, `n` elements from the list. The return value is a tuple containing the
+created array as well as a list without the first `n` elements.
+
+This function was created specifically for the `Array` module, which never wants
+to create `JsArray`s above a certain size. That being said, because every
+manipulation of `JsArray` results in a copy, users should always try to keep
+these as small as possible. The `n` parameter should always be set to a
+reasonably small value.
+
+-}
 initializeFromList : Int -> List Value -> ( Array Value, List Value )
 initializeFromList n values =
     let
