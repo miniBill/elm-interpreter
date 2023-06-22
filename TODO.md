@@ -1,3 +1,1 @@
-- Finish implementing kernel functions
-- Finish implementing operators
-- Import aliases
+- Import aliases / module resolution - nab it from elm-review :D
