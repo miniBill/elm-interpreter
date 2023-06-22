@@ -121,18 +121,17 @@ mapNTests =
 
 andThenTests : Test
 andThenTests =
-    Test.skip <|
-        describe "andThen Tests"
-            [ evalTest "andThen Ok"
-                (withToIntResult <| withIsEven """toIntResult "42" |> Result.andThen isEven""")
-                (result String Int)
-                (toIntResult "42" |> Result.andThen isEven)
-            , evalTest "andThen first Err"
-                (withToIntResult <| withIsEven """toIntResult "4.2" |> Result.andThen isEven""")
-                (result String Int)
-                (toIntResult "4.2" |> Result.andThen isEven)
-            , evalTest "andThen second Err"
-                (withToIntResult <| withIsEven """toIntResult "41" |> Result.andThen isEven""")
-                (result String Int)
-                (toIntResult "41" |> Result.andThen isEven)
-            ]
+    describe "andThen Tests"
+        [ evalTest "andThen Ok"
+            (withToIntResult <| withIsEven """toIntResult "42" |> Result.andThen isEven""")
+            (result String Int)
+            (toIntResult "42" |> Result.andThen isEven)
+        , evalTest "andThen first Err"
+            (withToIntResult <| withIsEven """toIntResult "4.2" |> Result.andThen isEven""")
+            (result String Int)
+            (toIntResult "4.2" |> Result.andThen isEven)
+        , evalTest "andThen second Err"
+            (withToIntResult <| withIsEven """toIntResult "41" |> Result.andThen isEven""")
+            (result String Int)
+            (toIntResult "41" |> Result.andThen isEven)
+        ]

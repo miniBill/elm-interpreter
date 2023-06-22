@@ -85,49 +85,42 @@ suite =
                 Int
                 (Bitwise.complement -279)
             ]
-        , Test.skip <|
-            describe "shiftLeftBy"
-                [ evalTest "8 |> shiftLeftBy 1 == 16"
-                    "8 |> Bitwise.shiftLeftBy 1"
-                    Int
-                    (8 |> Bitwise.shiftLeftBy 1)
-                , evalTest "8 |> shiftLeftby 2 == 32"
-                    "8 |> Bitwise.shiftLeftBy 2"
-                    Int
-                    (8 |> Bitwise.shiftLeftBy 2)
-                ]
+        , describe "shiftLeftBy"
+            [ evalTest "8 |> shiftLeftBy 1 == 16"
+                "8 |> Bitwise.shiftLeftBy 1"
+                Int
+                (8 |> Bitwise.shiftLeftBy 1)
+            , evalTest "8 |> shiftLeftby 2 == 32"
+                "8 |> Bitwise.shiftLeftBy 2"
+                Int
+                (8 |> Bitwise.shiftLeftBy 2)
+            ]
         , describe "shiftRightBy"
-            [ Test.skip <|
-                evalTest "32 |> shiftRight 1 == 16"
-                    "32 |> Bitwise.shiftRightBy 1"
-                    Int
-                    (32 |> Bitwise.shiftRightBy 1)
-            , Test.skip <|
-                evalTest "32 |> shiftRight 2 == 8"
-                    "32 |> Bitwise.shiftRightBy 2"
-                    Int
-                    (32 |> Bitwise.shiftRightBy 2)
-            , Test.skip <|
-                evalTest "-32 |> shiftRight 1 == -16"
-                    "-32 |> Bitwise.shiftRightBy 1"
-                    Int
-                    (-32 |> Bitwise.shiftRightBy 1)
+            [ evalTest "32 |> shiftRight 1 == 16"
+                "32 |> Bitwise.shiftRightBy 1"
+                Int
+                (32 |> Bitwise.shiftRightBy 1)
+            , evalTest "32 |> shiftRight 2 == 8"
+                "32 |> Bitwise.shiftRightBy 2"
+                Int
+                (32 |> Bitwise.shiftRightBy 2)
+            , evalTest "-32 |> shiftRight 1 == -16"
+                "-32 |> Bitwise.shiftRightBy 1"
+                Int
+                (-32 |> Bitwise.shiftRightBy 1)
             ]
         , describe "shiftRightZfBy"
-            [ Test.skip <|
-                evalTest "32 |> shiftRightZfBy 1 == 16"
-                    "32 |> Bitwise.shiftRightZfBy 1"
-                    Int
-                    (32 |> Bitwise.shiftRightZfBy 1)
-            , Test.skip <|
-                evalTest "32 |> shiftRightZfBy 2 == 8"
-                    "32 |> Bitwise.shiftRightZfBy 2"
-                    Int
-                    (32 |> Bitwise.shiftRightZfBy 2)
-            , Test.skip <|
-                evalTest "-32 |> shiftRightZfBy 1 == 2147483632"
-                    "-32 |> Bitwise.shiftRightZfBy 1"
-                    Int
-                    (-32 |> Bitwise.shiftRightZfBy 1)
+            [ evalTest "32 |> shiftRightZfBy 1 == 16"
+                "32 |> Bitwise.shiftRightZfBy 1"
+                Int
+                (32 |> Bitwise.shiftRightZfBy 1)
+            , evalTest "32 |> shiftRightZfBy 2 == 8"
+                "32 |> Bitwise.shiftRightZfBy 2"
+                Int
+                (32 |> Bitwise.shiftRightZfBy 2)
+            , evalTest "-32 |> shiftRightZfBy 1 == 2147483632"
+                "-32 |> Bitwise.shiftRightZfBy 1"
+                Int
+                (-32 |> Bitwise.shiftRightZfBy 1)
             ]
         ]
