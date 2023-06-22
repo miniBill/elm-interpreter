@@ -91,8 +91,8 @@ suite =
                 , evalTest "multiply int" "round 10 * round 9" Int <| round 10 * round 9
                 , evalTest "divide float" "527 / 40" Float <| 527 / 40
                 , evalTest "divide int" "70 // 3" Int <| 70 // 3
-                , Test.skip <| evalTest_ "7 |> remainderBy 2" Int <| (7 |> remainderBy 2)
-                , Test.skip <| evalTest_ "-1 |> remainderBy 4" Int <| (-1 |> remainderBy 4)
+                , evalTest_ "7 |> remainderBy 2" Int <| (7 |> remainderBy 2)
+                , evalTest_ "-1 |> remainderBy 4" Int <| (-1 |> remainderBy 4)
                 , evalTest_ "modBy 2 7" Int <| modBy 2 7
                 , evalTest_ "modBy 4 -1" Int <| modBy 4 -1
                 , evalTest_ "3 ^ 2" Float <| 3 ^ 2
