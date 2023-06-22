@@ -2,6 +2,7 @@ module Kernel exposing (EvalFunction, functions)
 
 import Array exposing (Array)
 import Bitwise
+import Core.Array
 import Core.Basics
 import Core.Bitwise
 import Core.Char
@@ -17,7 +18,6 @@ import Env
 import Eval.Types as Types exposing (Eval, EvalResult)
 import FastDict as Dict exposing (Dict)
 import Kernel.JsArray
-
 import Kernel.String
 import Kernel.Utils
 import Maybe.Extra
@@ -123,8 +123,8 @@ functions evalFunction =
     -- Elm.Kernel.List
     , ( [ "Elm", "Kernel", "List" ]
       , [ ( "cons", two anything (list anything) to (list anything) (::) Core.List.cons )
-        , ( "fromArray", one anything to anything identity (tODO "fromArray") )
-        , ( "toArray", one anything to anything identity (tODO "toArray") )
+        , ( "fromArray", one (jsArray anything) to (list anything) Array.toList Core.Array.toList )
+        , ( "toArray", one (list anything) to (jsArray anything) Array.fromList Core.Array.fromList )
         ]
       )
 
@@ -145,11 +145,11 @@ functions evalFunction =
         , ( "fromList", one (list char) to string String.fromList Core.String.fromList )
         , ( "fromNumber", oneWithError anything to string Kernel.String.fromNumber (tODO "fromNumber") )
         , ( "indexes", two string string to (list int) String.indexes Core.String.indexes )
-        , ( "join", two string (list string) to string String.join Core.String.join )
+        , ( "join", two string (jsArray string) to string (\s a -> String.join s (Array.toList a)) Core.String.join )
         , ( "lines", one string to (list string) String.lines Core.String.lines )
         , ( "reverse", one string to string String.reverse Core.String.reverse )
         , ( "slice", three int int string to string String.slice Core.String.slice )
-        , ( "split", two string string to (list string) String.split Core.String.split )
+        , ( "split", two string string to (jsArray string) (\s l -> Array.fromList (String.split s l)) Core.String.split )
         , ( "startsWith", two string string to bool String.startsWith Core.String.startsWith )
         , ( "trim", one string to string String.trim Core.String.trim )
         , ( "trimLeft", one string to string String.trimLeft Core.String.trimLeft )
