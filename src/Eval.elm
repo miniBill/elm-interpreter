@@ -1,4 +1,4 @@
-module Eval exposing (eval, trace)
+module Eval exposing (eval, toModule, trace)
 
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Eval.Log as Log

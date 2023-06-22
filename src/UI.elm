@@ -1,13 +1,18 @@
 module UI exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, IndexedColumn, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, rgb, row, shrink, spacing, text, textColumn, width)
+import Element exposing (Element, IndexedColumn, alignTop, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, rgb, row, shrink, spacing, text, textColumn, width)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Element.Lazy
+import Elm.Parser
+import Elm.Processing
+import Elm.Syntax.Declaration as Declaration
 import Elm.Syntax.Expression as Expression
+import Elm.Syntax.File as File
+import Elm.Syntax.Node as Node
 import Eval
 import Eval.Log as Log
 import Eval.Module
@@ -27,6 +32,7 @@ type Msg
 
 type alias Model =
     { input : String
+    , parsed : Maybe Expression.Expression
     , output : Result String String
     , callTree : List CallTree
     , logLines : List Log.Line
@@ -58,6 +64,7 @@ innerView model =
             , label = Input.labelAbove [] <| text "Input"
             , placeholder = Nothing
             }
+        , Element.Lazy.lazy viewParsed model.parsed
         , let
             toRun : String
             toRun =
@@ -103,6 +110,55 @@ innerView model =
         , Element.Lazy.lazy viewCallTrees model.callTree
         , Element.Lazy.lazy viewLogLines model.logLines
         ]
+
+
+viewParsed : Maybe Expression.Expression -> Element Msg
+viewParsed maybeExpr =
+    case maybeExpr of
+        Nothing ->
+            Element.none
+
+        Just expr ->
+            el
+                [ Font.family
+                    [ Font.typeface "Fira Code"
+                    , Font.monospace
+                    ]
+                ]
+                (viewExpression expr)
+
+
+viewExpression : Expression.Expression -> Element msg
+viewExpression expr =
+    let
+        boxxxy : String -> List (Node.Node Expression.Expression) -> Element msg
+        boxxxy name children =
+            column
+                [ alignTop
+                , Border.width 1
+                , padding 10
+                , spacing 10
+                ]
+                [ text name
+                , if List.isEmpty children then
+                    Element.none
+
+                  else
+                    row [] <| List.map (Node.value >> viewExpression) children
+                ]
+    in
+    case expr of
+        Expression.OperatorApplication name _ l r ->
+            boxxxy name [ l, r ]
+
+        Expression.FunctionOrValue moduleName name ->
+            boxxxy (String.join "." (moduleName ++ [ name ])) []
+
+        Expression.Application children ->
+            boxxxy "Application" children
+
+        _ ->
+            paragraph [] [ text <| Debug.toString expr ]
 
 
 viewOutput : Result String String -> Element Msg
@@ -314,6 +370,7 @@ viewLogLines logLines =
 init : Model
 init =
     { input = """List.sum (List.range 0 3)"""
+    , parsed = Nothing
     , output = Ok ""
     , callTree = []
     , logLines = []
@@ -324,7 +381,10 @@ update : Msg -> Model -> Model
 update msg model =
     case msg of
         Input input ->
-            { model | input = input }
+            { model
+                | input = input
+                , parsed = tryParse input
+            }
 
         Eval tracing ->
             let
@@ -351,6 +411,51 @@ update msg model =
                 , callTree = Rope.toList callTree
                 , logLines = Rope.toList logLines
             }
+
+
+tryParse : String -> Maybe Expression.Expression
+tryParse input =
+    let
+        fixedInput : String
+        fixedInput =
+            if String.startsWith "module" input then
+                input
+
+            else
+                Eval.toModule input
+    in
+    fixedInput
+        |> Elm.Parser.parse
+        |> Result.toMaybe
+        |> Maybe.andThen
+            (\rawFile ->
+                let
+                    file : File.File
+                    file =
+                        Elm.Processing.process Elm.Processing.init rawFile
+                in
+                file.declarations
+                    |> List.Extra.findMap (Node.value >> findMain)
+            )
+
+
+findMain : Declaration.Declaration -> Maybe Expression.Expression
+findMain declaration =
+    case declaration of
+        Declaration.FunctionDeclaration function ->
+            let
+                implementation : Expression.FunctionImplementation
+                implementation =
+                    Node.value function.declaration
+            in
+            if Node.value implementation.name == "main" then
+                Just <| Node.value implementation.expression
+
+            else
+                Nothing
+
+        _ ->
+            Nothing
 
 
 resultToString : Result Error Value.Value -> Result String String
