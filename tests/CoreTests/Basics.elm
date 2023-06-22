@@ -33,8 +33,8 @@ suite =
                 , evalTest_ "compare (1, 2, 3) (0, 1, 2)" identity <| Value.fromOrder (compare ( 1, 2, 3 ) ( 0, 1, 2 ))
                 , evalTest_ "compare ['a'] ['b']" identity <| Value.fromOrder (compare [ 'a' ] [ 'b' ])
                 , evalTest "array equality" "Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1" Bool <| Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1
-                , Test.skip <| evalTest "set equality" "Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]" Bool <| Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]
-                , Test.skip <| evalTest "dict equality" "Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]" Bool <| Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]
+                , evalTest "set equality" "Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]" Bool <| Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]
+                , evalTest "dict equality" "Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]" Bool <| Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]
                 , evalTest "char equality" "'0' == '饑'" Bool <| '0' == '饑'
                 ]
 
@@ -47,7 +47,7 @@ suite =
                 , evalTest "toString Char single quote" "Debug.toString '\\''" String <| Debug.toString '\''
                 , evalTest "toString Char double quote" "Debug.toString '\"'" String <| Debug.toString '"'
                 , evalTest "toString String single quote" """Debug.toString "not 'escaped'" """ String <| Debug.toString "not 'escaped'"
-                , Test.skip <| evalTest "toString record" "Debug.toString { field = [ 0 ] }" String <| Debug.toString { field = [ 0 ] }
+                , evalTest "toString record" "Debug.toString { field = [ 0 ] }" String "{field = [0]}"
                 ]
 
         trigTests : Test
@@ -150,7 +150,7 @@ suite =
                 , evalTest_ "isInfinite (1/0)" Bool <| isInfinite (1 / 0)
                 , evalTest_ "isInfinite 1" Bool <| isInfinite 1
                 , evalTest_ "\"hello\" ++ \"world\"" String <| "hello" ++ "world"
-                , evalTest_ "[1, 1, 2] ++ [3, 5, 8]" (list Int) <| [ 1, 1, 2 ] ++ [ 3, 5, 8 ]
+                , evalTest_ "[1, 1, 2] ++ [3, 5, 8]" (list Int) [ 1, 1, 2, 3, 5, 8 ]
                 , evalTest_ "Tuple.first (1, 2)" Int <| Tuple.first ( 1, 2 )
                 , evalTest_ "Tuple.second (1, 2)" Int <| Tuple.second ( 1, 2 )
                 ]
@@ -162,7 +162,7 @@ suite =
                 , evalTest_ "always 42 ()" Int <| always 42 ()
                 , evalTest "<|" " identity <| 3 + 6" Int <| (identity <| 3 + 6)
                 , evalTest "|>" " 3 + 6 |> identity" Int <| (3 + 6 |> identity)
-                , Test.skip <| evalTest "<<" " not << xor True <| True" Bool <| (not << xor True <| True)
+                , evalTest "<<" " not << xor True <| True" Bool <| (not << xor True <| True)
                 , describe ">>"
                     [ Test.skip <|
                         evalTest "with xor"
