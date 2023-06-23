@@ -17,6 +17,7 @@ import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Environment
 import Eval.Types as Types exposing (Eval, EvalResult)
 import FastDict as Dict exposing (Dict)
+import Kernel.Debug
 import Kernel.JsArray
 import Kernel.String
 import Kernel.Utils
@@ -95,9 +96,9 @@ functions evalFunction =
 
     -- Elm.Kernel.Debug
     , ( [ "Elm", "Kernel", "Debug" ]
-      , [ ( "log", two string anything to anything Debug.log Core.Debug.log )
+      , [ ( "log", twoWithError string anything to anything Kernel.Debug.log Core.Debug.log )
         , ( "toString", one anything to string Value.toString Core.Debug.toString )
-        , ( "todo", one string to anything Debug.todo Core.Debug.todo )
+        , ( "todo", oneWithError string to anything Kernel.Debug.todo Core.Debug.todo )
         ]
       )
 

@@ -21,6 +21,7 @@ import Eval.Types as Types exposing (CallTree(..), Error)
 import FastDict as Dict
 import Hex
 import Html.Attributes
+import Json.Encode
 import List.Extra
 import Rope
 import Syntax
@@ -143,7 +144,7 @@ viewExpression (Node.Node _ expr) =
             boxxxy "Application" [ viewExpressions children ]
 
         Expression.Literal s ->
-            boxxxy (Debug.toString s) []
+            boxxxy (Json.Encode.encode 0 <| Json.Encode.string s) []
 
         Expression.Integer i ->
             boxxxy (String.fromInt i) []

@@ -241,6 +241,9 @@ evalErrorToString { callStack, error } =
 
                 NameError name ->
                     "Name error: " ++ name ++ " not found"
+
+                Todo message ->
+                    "Todo: " ++ message
     in
     messageWithType
         ++ "\nCall stack:\n - "

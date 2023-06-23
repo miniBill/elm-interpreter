@@ -1,4 +1,4 @@
-module Value exposing (Env, EnvValues, EvalError, EvalErrorKind(..), Value(..), fromOrder, nameError, toArray, toOrder, toString, typeError, unsupported)
+module Value exposing (Env, EnvValues, EvalError, EvalErrorKind(..), Value(..), fromOrder, nameError, toArray, toOrder, toString, todo, typeError, unsupported)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
@@ -49,6 +49,7 @@ type EvalErrorKind
     = TypeError String
     | Unsupported String
     | NameError String
+    | Todo String
 
 
 typeError : Env -> String -> EvalError
@@ -64,6 +65,11 @@ nameError env msg =
 unsupported : Env -> String -> EvalError
 unsupported env msg =
     error env (Unsupported msg)
+
+
+todo : Env -> String -> EvalError
+todo env msg =
+    error env (Todo msg)
 
 
 error : Env -> EvalErrorKind -> EvalError
