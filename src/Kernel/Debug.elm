@@ -1,4 +1,4 @@
-module Kernel.Debug exposing (..)
+module Kernel.Debug exposing (log, todo)
 
 import Eval.Log as Log
 import Eval.Types as Types exposing (Eval)
