@@ -213,12 +213,13 @@ viewExpression (Node.Node _ expr) =
         Expression.RecordAccessFunction name ->
             boxxxy0 name
 
+        Expression.GLSLExpression code ->
+            boxxxy "glsl" [ boxxxy0 code ]
+
         -- Expression.CaseExpression _ ->
         --     Debug.todo "branch 'CaseExpression _' not implemented"
         -- Expression.LambdaExpression _ ->
         --     Debug.todo "branch 'LambdaExpression _' not implemented"
-        -- Expression.GLSLExpression _ ->
-        --     Debug.todo "branch 'GLSLExpression _' not implemented"
         _ ->
             boxxxy0 <| Debug.toString expr
 
