@@ -138,22 +138,25 @@ viewExpression (Node.Node _ expr) =
             boxxxy name [ viewExpressions [ l, r ] ]
 
         Expression.FunctionOrValue moduleName name ->
-            boxxxy (String.join "." (moduleName ++ [ name ])) []
+            boxxxy0 <| String.join "." (moduleName ++ [ name ])
 
         Expression.Application children ->
             boxxxy "Application" [ viewExpressions children ]
 
         Expression.Literal s ->
-            boxxxy (Json.Encode.encode 0 <| Json.Encode.string s) []
+            boxxxy0 <| Json.Encode.encode 0 <| Json.Encode.string s
 
         Expression.Integer i ->
-            boxxxy (String.fromInt i) []
+            boxxxy0 <| String.fromInt i
 
         Expression.Floatable f ->
-            boxxxy (String.fromFloat f) []
+            boxxxy0 <| String.fromFloat f
+
+        Expression.CharLiteral c ->
+            boxxxy0 <| "'" ++ String.fromChar c ++ "'"
 
         Expression.Hex i ->
-            boxxxy ("0x" ++ Hex.toString i) []
+            boxxxy0 <| "0x" ++ Hex.toString i
 
         Expression.LetExpression { declarations, expression } ->
             boxxxy "let/in"
@@ -162,55 +165,82 @@ viewExpression (Node.Node _ expr) =
                 ]
 
         Expression.UnitExpr ->
-            boxxxy "()" []
+            boxxxy0 "()"
 
         Expression.Negation expression ->
             boxxxy "-" [ viewExpression expression ]
 
         Expression.PrefixOperator name ->
-            boxxxy ("(" ++ name ++ ")") []
+            boxxxy0 <| "(" ++ name ++ ")"
 
         Expression.Operator name ->
-            boxxxy ("(" ++ name ++ ")") []
+            boxxxy0 <| "(" ++ name ++ ")"
 
         Expression.ParenthesizedExpression expression ->
             boxxxy "()" [ viewExpression expression ]
 
-        -- IfBlock _ _ _ ->
-        --     Debug.todo "branch 'IfBlock _ _ _' not implemented"
-        -- CharLiteral _ ->
-        --     Debug.todo "branch 'CharLiteral _' not implemented"
-        -- TupledExpression _ ->
-        --     Debug.todo "branch 'TupledExpression _' not implemented"
-        -- CaseExpression _ ->
+        Expression.IfBlock c t f ->
+            boxxxy_ [ text "if ", viewExpression c, text " then" ]
+                [ row []
+                    [ viewExpression t
+                    , el [ alignTop ] <| text " else "
+                    , viewExpression f
+                    ]
+                ]
+
+        Expression.TupledExpression children ->
+            boxxxy
+                (if List.length children == 2 then
+                    "(,)"
+
+                 else
+                    "(,,)"
+                )
+                [ viewExpressions children ]
+
+        Expression.RecordAccess chil (Node.Node _ name) ->
+            boxxxy "." [ row [] [ viewExpression chil, text <| " " ++ name ] ]
+
+        Expression.RecordUpdateExpression (Node.Node _ name) setters ->
+            boxxxy ("{ " ++ name ++ " | }") [ viewSetters setters ]
+
+        Expression.RecordExpr setters ->
+            boxxxy "{}" [ viewSetters setters ]
+
+        -- Expression.CaseExpression _ ->
         --     Debug.todo "branch 'CaseExpression _' not implemented"
-        -- LambdaExpression _ ->
+        -- Expression.LambdaExpression _ ->
         --     Debug.todo "branch 'LambdaExpression _' not implemented"
-        -- RecordExpr _ ->
-        --     Debug.todo "branch 'RecordExpr _' not implemented"
-        -- ListExpr _ ->
+        -- Expression.ListExpr _ ->
         --     Debug.todo "branch 'ListExpr _' not implemented"
-        -- RecordAccess _ _ ->
-        --     Debug.todo "branch 'RecordAccess _ _' not implemented"
-        -- RecordAccessFunction _ ->
+        -- Expression.RecordAccessFunction _ ->
         --     Debug.todo "branch 'RecordAccessFunction _' not implemented"
-        -- RecordUpdateExpression _ _ ->
+        -- Expression.RecordUpdateExpression _ _ ->
         --     Debug.todo "branch 'RecordUpdateExpression _ _' not implemented"
-        -- GLSLExpression _ ->
+        -- Expression.GLSLExpression _ ->
         --     Debug.todo "branch 'GLSLExpression _' not implemented"
         _ ->
-            paragraph [] [ text <| Debug.toString expr ]
+            boxxxy0 <| Debug.toString expr
+
+
+viewSetters : List (Node.Node Expression.RecordSetter) -> Element msg
+viewSetters setters =
+    row [] (List.map viewSetter setters)
+
+
+viewSetter : Node.Node Expression.RecordSetter -> Element msg
+viewSetter (Node.Node _ ( Node.Node _ name, value )) =
+    boxxxy (name ++ " =") [ viewExpression value ]
+
+
+boxxxy0 : String -> Element msg
+boxxxy0 name =
+    boxxxy name []
 
 
 boxxxy : String -> List (Element msg) -> Element msg
 boxxxy name children =
-    column
-        [ alignTop
-        , Border.width 1
-        , padding 10
-        , spacing 10
-        ]
-        (text name :: children)
+    boxxxy_ [ text name ] children
 
 
 boxxxy_ : List (Element msg) -> List (Element msg) -> Element msg
