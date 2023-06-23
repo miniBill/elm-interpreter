@@ -198,6 +198,9 @@ viewExpression (Node.Node _ expr) =
                 )
                 [ viewExpressions children ]
 
+        Expression.ListExpr children ->
+            boxxxy "[]" [ viewExpressions children ]
+
         Expression.RecordAccess chil (Node.Node _ name) ->
             boxxxy "." [ row [] [ viewExpression chil, text <| " " ++ name ] ]
 
@@ -207,16 +210,13 @@ viewExpression (Node.Node _ expr) =
         Expression.RecordExpr setters ->
             boxxxy "{}" [ viewSetters setters ]
 
+        Expression.RecordAccessFunction name ->
+            boxxxy0 name
+
         -- Expression.CaseExpression _ ->
         --     Debug.todo "branch 'CaseExpression _' not implemented"
         -- Expression.LambdaExpression _ ->
         --     Debug.todo "branch 'LambdaExpression _' not implemented"
-        -- Expression.ListExpr _ ->
-        --     Debug.todo "branch 'ListExpr _' not implemented"
-        -- Expression.RecordAccessFunction _ ->
-        --     Debug.todo "branch 'RecordAccessFunction _' not implemented"
-        -- Expression.RecordUpdateExpression _ _ ->
-        --     Debug.todo "branch 'RecordUpdateExpression _ _' not implemented"
         -- Expression.GLSLExpression _ ->
         --     Debug.todo "branch 'GLSLExpression _' not implemented"
         _ ->
