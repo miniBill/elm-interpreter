@@ -14,7 +14,7 @@ import Elm.Syntax.Expression as Expression exposing (Expression(..), FunctionImp
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
-import Env
+import Environment
 import Eval.Types as Types exposing (Eval, EvalResult)
 import FastDict as Dict exposing (Dict)
 import Kernel.JsArray
@@ -678,7 +678,7 @@ partiallyApply moduleName args implementation =
     Types.fromResult <|
         Ok <|
             PartiallyApplied
-                (Env.empty moduleName)
+                (Environment.empty moduleName)
                 args
                 implementation.arguments
                 (Just

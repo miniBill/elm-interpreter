@@ -9,7 +9,7 @@ import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Module exposing (Module(..))
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
-import Env
+import Environment
 import Eval.Expression
 import Eval.Log as Log
 import Eval.Types as Types exposing (CallTree, CallTreeContinuation(..), Error(..))
@@ -109,7 +109,7 @@ buildInitialEnv file =
                         (Node _ implementation) =
                             function.declaration
                     in
-                    Ok (Env.addFunction moduleName implementation env)
+                    Ok (Environment.addFunction moduleName implementation env)
 
                 PortDeclaration _ ->
                     Err <| Types.EvalError <| unsupported env "Port declaration"

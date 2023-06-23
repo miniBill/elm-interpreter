@@ -7,7 +7,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Elm.Writer
-import Env
+import Environment
 import Eval.Log as Log
 import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation(..), Eval, EvalResult, PartialEval, PartialResult(..))
 import FastDict as Dict exposing (Dict)
@@ -428,7 +428,7 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
                                         ( kernelResult, children, logLines ) =
                                             f args
                                                 cfg
-                                                (Env.call moduleName name env)
+                                                (Environment.call moduleName name env)
                                     in
                                     ( kernelResult
                                     , if cfg.trace then
@@ -452,7 +452,7 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
                         implementation
                         args
                         cfg
-                        (localEnv |> Env.with newEnvValues)
+                        (localEnv |> Environment.with newEnvValues)
 
 
 call : Maybe QualifiedNameRef -> Node Expression -> List Value -> PartialEval
@@ -468,7 +468,7 @@ call maybeQualifiedName implementation values cfg env =
                         else
                             cfg.callTreeContinuation
                 }
-                (Env.call qualifiedName.moduleName qualifiedName.name env)
+                (Environment.call qualifiedName.moduleName qualifiedName.name env)
 
         Nothing ->
             PartialExpression implementation cfg env
@@ -507,7 +507,7 @@ evalVariant moduleName env name =
         variant1 modName ctorName =
             Types.succeedPartial <|
                 Value.PartiallyApplied
-                    (Env.empty modName)
+                    (Environment.empty modName)
                     []
                     [ fakeNode <| VarPattern "$x" ]
                     Nothing
@@ -574,7 +574,7 @@ evalNonVariant moduleName name cfg env =
 
                         Just function ->
                             PartiallyApplied
-                                (Env.call moduleName name env)
+                                (Environment.call moduleName name env)
                                 []
                                 function.arguments
                                 (Just { moduleName = moduleName, name = name })
@@ -626,7 +626,7 @@ evalNonVariant moduleName name cfg env =
 
                             else
                                 PartiallyApplied
-                                    (Env.call fixedModuleName name env)
+                                    (Environment.call fixedModuleName name env)
                                     []
                                     function.arguments
                                     (Just qualifiedNameRef)
@@ -741,7 +741,7 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
                                     Just ( _, f ) ->
                                         f []
                                             cfg
-                                            (Env.call moduleName name localEnv)
+                                            (Environment.call moduleName name localEnv)
 
                     _ ->
                         evalExpression
@@ -761,7 +761,7 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
                                 _ ->
                                     cfg
                             )
-                            (localEnv |> Env.with newEnvValues)
+                            (localEnv |> Environment.with newEnvValues)
 
 
 evalKernelFunction : ModuleName -> String -> PartialEval
@@ -779,7 +779,7 @@ evalKernelFunction moduleName name cfg env =
                     if argCount == 0 then
                         let
                             ( result, callTrees, logLines ) =
-                                f [] cfg (Env.call moduleName name env)
+                                f [] cfg (Environment.call moduleName name env)
                         in
                         if cfg.trace then
                             let
@@ -800,7 +800,7 @@ evalKernelFunction moduleName name cfg env =
                             PartialValue <| Types.fromResult result
 
                     else
-                        PartiallyApplied (Env.empty moduleName)
+                        PartiallyApplied (Environment.empty moduleName)
                             []
                             (List.repeat argCount (fakeNode AllPattern))
                             (Just { moduleName = moduleName, name = name })
@@ -913,11 +913,11 @@ addLetDeclaration ((Node _ letDeclaration) as node) cfg env =
             case declaration of
                 Node _ ({ name, expression } as implementation) ->
                     if isLetDeclarationFunction node then
-                        Types.succeed <| Env.addFunction env.currentModule implementation env
+                        Types.succeed <| Environment.addFunction env.currentModule implementation env
 
                     else
                         evalExpression expression cfg env
-                            |> Types.map (\value -> Env.addValue (Node.value name) value env)
+                            |> Types.map (\value -> Environment.addValue (Node.value name) value env)
 
         Expression.LetDestructuring letPattern letExpression ->
             evalExpression letExpression cfg env
@@ -931,7 +931,7 @@ addLetDeclaration ((Node _ letDeclaration) as node) cfg env =
                                 Err <| typeError env "Could not match pattern inside let"
 
                             Ok (Just patternEnv) ->
-                                Ok (Env.with patternEnv env)
+                                Ok (Environment.with patternEnv env)
                     )
 
 
@@ -1083,7 +1083,7 @@ evalRecordAccess recordExpr (Node _ field) cfg env =
 evalRecordAccessFunction : String -> Value
 evalRecordAccessFunction field =
     PartiallyApplied
-        (Env.empty [])
+        (Environment.empty [])
         []
         [ fakeNode (VarPattern "$r") ]
         Nothing
@@ -1134,7 +1134,7 @@ evalOperator opName _ env =
 
         Just kernelFunction ->
             PartiallyApplied
-                (Env.call kernelFunction.moduleName opName env)
+                (Environment.call kernelFunction.moduleName opName env)
                 []
                 [ fakeNode <| VarPattern "$l", fakeNode <| VarPattern "$r" ]
                 Nothing
@@ -1184,7 +1184,7 @@ evalCase { expression, cases } cfg env =
                                                 Ok (Just additionalEnv) ->
                                                     PartialExpression result2
                                                         cfg
-                                                        (Env.with additionalEnv env)
+                                                        (Environment.with additionalEnv env)
                                                         |> Just
                                                         |> Ok
                                 )

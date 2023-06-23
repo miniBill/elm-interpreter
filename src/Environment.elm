@@ -1,4 +1,4 @@
-module Env exposing (addFunction, addValue, call, empty, with)
+module Environment exposing (addFunction, addValue, call, empty, with)
 
 import Elm.Syntax.Expression exposing (FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
