@@ -13,11 +13,13 @@ import Elm.Syntax.Declaration as Declaration
 import Elm.Syntax.Expression as Expression
 import Elm.Syntax.File as File
 import Elm.Syntax.Node as Node
+import Elm.Syntax.Pattern as Pattern
 import Eval
 import Eval.Log as Log
 import Eval.Module
 import Eval.Types as Types exposing (CallTree(..), Error)
 import FastDict as Dict
+import Hex
 import Html.Attributes
 import List.Extra
 import Rope
@@ -32,7 +34,7 @@ type Msg
 
 type alias Model =
     { input : String
-    , parsed : Maybe Expression.Expression
+    , parsed : Maybe (Node.Node Expression.Expression)
     , output : Result String String
     , callTree : List CallTree
     , logLines : List Log.Line
@@ -112,7 +114,7 @@ innerView model =
         ]
 
 
-viewParsed : Maybe Expression.Expression -> Element Msg
+viewParsed : Maybe (Node.Node Expression.Expression) -> Element Msg
 viewParsed maybeExpr =
     case maybeExpr of
         Nothing ->
@@ -128,37 +130,130 @@ viewParsed maybeExpr =
                 (viewExpression expr)
 
 
-viewExpression : Expression.Expression -> Element msg
-viewExpression expr =
-    let
-        boxxxy : String -> List (Node.Node Expression.Expression) -> Element msg
-        boxxxy name children =
-            column
-                [ alignTop
-                , Border.width 1
-                , padding 10
-                , spacing 10
-                ]
-                [ text name
-                , if List.isEmpty children then
-                    Element.none
-
-                  else
-                    row [] <| List.map (Node.value >> viewExpression) children
-                ]
-    in
+viewExpression : Node.Node Expression.Expression -> Element msg
+viewExpression (Node.Node _ expr) =
     case expr of
         Expression.OperatorApplication name _ l r ->
-            boxxxy name [ l, r ]
+            boxxxy name [ viewExpressions [ l, r ] ]
 
         Expression.FunctionOrValue moduleName name ->
             boxxxy (String.join "." (moduleName ++ [ name ])) []
 
         Expression.Application children ->
-            boxxxy "Application" children
+            boxxxy "Application" [ viewExpressions children ]
 
+        Expression.Literal s ->
+            boxxxy (Debug.toString s) []
+
+        Expression.Integer i ->
+            boxxxy (String.fromInt i) []
+
+        Expression.Floatable f ->
+            boxxxy (String.fromFloat f) []
+
+        Expression.Hex i ->
+            boxxxy ("0x" ++ Hex.toString i) []
+
+        Expression.LetExpression { declarations, expression } ->
+            boxxxy "let/in"
+                [ row [] <| List.map (Node.value >> viewLetDeclaration) declarations
+                , viewExpressions [ expression ]
+                ]
+
+        Expression.UnitExpr ->
+            boxxxy "()" []
+
+        -- IfBlock _ _ _ ->
+        --     Debug.todo "branch 'IfBlock _ _ _' not implemented"
+        -- PrefixOperator _ ->
+        --     Debug.todo "branch 'PrefixOperator _' not implemented"
+        -- Operator _ ->
+        --     Debug.todo "branch 'Operator _' not implemented"
+        -- Negation _ ->
+        --     Debug.todo "branch 'Negation _' not implemented"
+        -- CharLiteral _ ->
+        --     Debug.todo "branch 'CharLiteral _' not implemented"
+        -- TupledExpression _ ->
+        --     Debug.todo "branch 'TupledExpression _' not implemented"
+        -- ParenthesizedExpression _ ->
+        --     Debug.todo "branch 'ParenthesizedExpression _' not implemented"
+        -- CaseExpression _ ->
+        --     Debug.todo "branch 'CaseExpression _' not implemented"
+        -- LambdaExpression _ ->
+        --     Debug.todo "branch 'LambdaExpression _' not implemented"
+        -- RecordExpr _ ->
+        --     Debug.todo "branch 'RecordExpr _' not implemented"
+        -- ListExpr _ ->
+        --     Debug.todo "branch 'ListExpr _' not implemented"
+        -- RecordAccess _ _ ->
+        --     Debug.todo "branch 'RecordAccess _ _' not implemented"
+        -- RecordAccessFunction _ ->
+        --     Debug.todo "branch 'RecordAccessFunction _' not implemented"
+        -- RecordUpdateExpression _ _ ->
+        --     Debug.todo "branch 'RecordUpdateExpression _ _' not implemented"
+        -- GLSLExpression _ ->
+        --     Debug.todo "branch 'GLSLExpression _' not implemented"
         _ ->
             paragraph [] [ text <| Debug.toString expr ]
+
+
+boxxxy : String -> List (Element msg) -> Element msg
+boxxxy name children =
+    column
+        [ alignTop
+        , Border.width 1
+        , padding 10
+        , spacing 10
+        ]
+        (text name :: children)
+
+
+boxxxy_ : List (Element msg) -> List (Element msg) -> Element msg
+boxxxy_ name children =
+    column
+        [ alignTop
+        , Border.width 1
+        , padding 10
+        , spacing 10
+        ]
+        (row [] name :: children)
+
+
+viewLetDeclaration : Expression.LetDeclaration -> Element msg
+viewLetDeclaration letDeclaration =
+    case letDeclaration of
+        Expression.LetFunction function ->
+            viewFunction function
+
+        Expression.LetDestructuring pattern expression ->
+            column []
+                [ viewPattern pattern
+                , viewExpression expression
+                ]
+
+
+viewFunction : Expression.Function -> Element msg
+viewFunction function =
+    let
+        declaration : Expression.FunctionImplementation
+        declaration =
+            Node.value function.declaration
+    in
+    boxxxy_
+        (text (Node.value declaration.name)
+            :: List.map viewPattern declaration.arguments
+        )
+        [ viewExpression declaration.expression ]
+
+
+viewPattern : Node.Node Pattern.Pattern -> Element msg
+viewPattern (Node.Node _ pattern) =
+    text <| Debug.toString pattern
+
+
+viewExpressions : List (Node.Node Expression.Expression) -> Element msg
+viewExpressions expressions =
+    row [] <| List.map viewExpression expressions
 
 
 viewOutput : Result String String -> Element Msg
@@ -413,7 +508,7 @@ update msg model =
             }
 
 
-tryParse : String -> Maybe Expression.Expression
+tryParse : String -> Maybe (Node.Node Expression.Expression)
 tryParse input =
     let
         fixedInput : String
@@ -439,7 +534,7 @@ tryParse input =
             )
 
 
-findMain : Declaration.Declaration -> Maybe Expression.Expression
+findMain : Declaration.Declaration -> Maybe (Node.Node Expression.Expression)
 findMain declaration =
     case declaration of
         Declaration.FunctionDeclaration function ->
@@ -449,7 +544,7 @@ findMain declaration =
                     Node.value function.declaration
             in
             if Node.value implementation.name == "main" then
-                Just <| Node.value implementation.expression
+                Just implementation.expression
 
             else
                 Nothing
