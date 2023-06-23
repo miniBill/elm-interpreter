@@ -39,7 +39,7 @@ let
                 Ok i
 
             Nothing ->
-                Err <| "could not convert string '" ++ s ++ "' to an Int"
+                Err ("could not convert string '" ++ s ++ "' to an Int")
 in """ ++ source
 
 
