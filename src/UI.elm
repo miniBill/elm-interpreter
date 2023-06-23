@@ -156,27 +156,31 @@ viewExpression (Node.Node _ expr) =
 
         Expression.LetExpression { declarations, expression } ->
             boxxxy "let/in"
-                [ row [] <| List.map (Node.value >> viewLetDeclaration) declarations
-                , viewExpressions [ expression ]
+                [ row [] <| List.map viewLetDeclaration declarations
+                , viewExpression expression
                 ]
 
         Expression.UnitExpr ->
             boxxxy "()" []
 
+        Expression.Negation expression ->
+            boxxxy "-" [ viewExpression expression ]
+
+        Expression.PrefixOperator name ->
+            boxxxy ("(" ++ name ++ ")") []
+
+        Expression.Operator name ->
+            boxxxy ("(" ++ name ++ ")") []
+
+        Expression.ParenthesizedExpression expression ->
+            boxxxy "()" [ viewExpression expression ]
+
         -- IfBlock _ _ _ ->
         --     Debug.todo "branch 'IfBlock _ _ _' not implemented"
-        -- PrefixOperator _ ->
-        --     Debug.todo "branch 'PrefixOperator _' not implemented"
-        -- Operator _ ->
-        --     Debug.todo "branch 'Operator _' not implemented"
-        -- Negation _ ->
-        --     Debug.todo "branch 'Negation _' not implemented"
         -- CharLiteral _ ->
         --     Debug.todo "branch 'CharLiteral _' not implemented"
         -- TupledExpression _ ->
         --     Debug.todo "branch 'TupledExpression _' not implemented"
-        -- ParenthesizedExpression _ ->
-        --     Debug.todo "branch 'ParenthesizedExpression _' not implemented"
         -- CaseExpression _ ->
         --     Debug.todo "branch 'CaseExpression _' not implemented"
         -- LambdaExpression _ ->
@@ -219,8 +223,8 @@ boxxxy_ name children =
         (row [] name :: children)
 
 
-viewLetDeclaration : Expression.LetDeclaration -> Element msg
-viewLetDeclaration letDeclaration =
+viewLetDeclaration : Node.Node Expression.LetDeclaration -> Element msg
+viewLetDeclaration (Node.Node _ letDeclaration) =
     case letDeclaration of
         Expression.LetFunction function ->
             viewFunction function
