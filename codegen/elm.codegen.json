@@ -6,8 +6,6 @@
             "stil4m/elm-syntax": "7.2.9",
             "miniBill/elm-fast-dict": "1.1.0"
         },
-        "local": [
-            "src/"
-        ]
+        "local": []
     }
 }

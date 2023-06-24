@@ -15,15 +15,17 @@ import Elm.Syntax.Module as Module
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
+import Elm.Syntax.Range as Range
 import Gen.CodeGen.Generate as Generate exposing (Directory(..))
 import Gen.Elm.Syntax.Expression
 import Gen.Elm.Syntax.Infix
 import Gen.Elm.Syntax.ModuleName
+import Gen.Elm.Syntax.Node
 import Gen.Elm.Syntax.Pattern
+import Gen.Elm.Syntax.Range
 import Gen.FastDict
 import Gen.List
 import Gen.Maybe
-import Gen.Syntax
 import Json.Decode exposing (Value)
 import List.Extra
 import Result.Extra
@@ -382,8 +384,24 @@ qualifiedNameRefToGen { name, moduleName } =
 
 
 renode : (a -> Elm.Expression) -> Node a -> Elm.Expression
-renode toGen (Node _ value) =
-    Gen.Syntax.fakeNode (toGen value)
+renode toGen (Node range value) =
+    Gen.Elm.Syntax.Node.make_.node (rangeToGen range) (toGen value)
+
+
+rangeToGen : Range.Range -> Elm.Expression
+rangeToGen range =
+    Gen.Elm.Syntax.Range.make_.range
+        { start = locationToGen range.start
+        , end = locationToGen range.end
+        }
+
+
+locationToGen : Range.Location -> Elm.Expression
+locationToGen location =
+    Gen.Elm.Syntax.Range.make_.location
+        { row = Elm.int location.row
+        , column = Elm.int location.column
+        }
 
 
 renodeList : (a -> Elm.Expression) -> List (Node a) -> Elm.Expression

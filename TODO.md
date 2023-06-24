@@ -1,1 +1,3 @@
 - Import aliases / module resolution - nab it from elm-review :D
+- Investigage unifying Value/Expression for simpler code
+- Make types "native"
