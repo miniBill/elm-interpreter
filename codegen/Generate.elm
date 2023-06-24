@@ -2,6 +2,7 @@ module Generate exposing (main)
 
 {-| -}
 
+import Dict
 import Elm
 import Elm.Annotation as Type
 import Elm.Parser
@@ -14,8 +15,7 @@ import Elm.Syntax.Module as Module
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
-import Gen.CodeGen.Generate as Generate
-import Gen.Dict as Dict
+import Gen.CodeGen.Generate as Generate exposing (Directory(..))
 import Gen.Elm.Syntax.Expression
 import Gen.Elm.Syntax.Infix
 import Gen.Elm.Syntax.ModuleName
@@ -24,18 +24,23 @@ import Gen.FastDict
 import Gen.List
 import Gen.Maybe
 import Gen.Syntax
+import Json.Decode exposing (Value)
 import List.Extra
 import Result.Extra
 
 
-main : Program String () ()
+main : Program Value () ()
 main =
-    Generate.fromText toFiles
+    Generate.fromDirectory toFiles
 
 
-toFiles : String -> List Elm.File
+toFiles : Directory -> List Elm.File
 toFiles modulesSource =
     let
+        allFiles : List String
+        allFiles =
+            traverseDirectoryForFiles modulesSource
+
         maybeFiles :
             Result
                 String
@@ -46,8 +51,7 @@ toFiles modulesSource =
                     }
                 )
         maybeFiles =
-            modulesSource
-                |> String.split "---SNIP---"
+            allFiles
                 |> Result.Extra.combineMap toFile
                 |> Result.map
                     (List.filterMap identity
@@ -127,6 +131,27 @@ toFiles modulesSource =
                         |> Elm.file [ "Core" ]
             in
             core :: List.map .file files
+
+
+traverseDirectoryForFiles : Directory -> List String
+traverseDirectoryForFiles d =
+    let
+        go (Directory directory) acc =
+            Dict.foldl (\_ subdir -> go subdir)
+                (Dict.foldl
+                    (\name content iacc ->
+                        if String.endsWith ".elm" name then
+                            content :: iacc
+
+                        else
+                            iacc
+                    )
+                    acc
+                    directory.files
+                )
+                directory.directories
+    in
+    go d []
 
 
 toFile : String -> Result String (Maybe { moduleName : ModuleName, declarations : List Elm.Declaration, hasOperators : Bool })
