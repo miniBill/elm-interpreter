@@ -7,7 +7,7 @@ all: generated/Core/Basics.elm
 generated/Core/Basics.elm: codegen/Gen/Basics.elm codegen/Generate.elm node_modules/elm-codegen/bin/elm-codegen build/src/core-${ELM_CORE_VERSION}/src/Basics.elm build/src/codegen/Elm/Kernel/List.elm
 	yarn elm-codegen run --flags-from build/src
 
-codegen/Gen/Basics.elm: codegen/elm.codegen.json node_modules/elm-codegen/bin/elm-codegen
+codegen/Gen/Basics.elm: codegen/elm.codegen.json node_modules/elm-codegen/bin/elm-codegen $(wildcard shared/*.elm)
 	yarn elm-codegen install
 
 node_modules/elm-codegen/bin/elm-codegen: package.json yarn.lock
@@ -20,7 +20,7 @@ build/elm-core-${ELM_CORE_VERSION}.tar.gz:
 
 build/src/core-${ELM_CORE_VERSION}/src/Basics.elm: build/elm-core-${ELM_CORE_VERSION}.tar.gz
 	mkdir -p build/src
-	tar -xf $< -C build/src -m
+	tar -xf $< -C build/src -m core-${ELM_CORE_VERSION}/src
 
 build/src/codegen/Elm/Kernel/List.elm: ${KERNELS}
 	mkdir -p build/src/codegen

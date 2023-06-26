@@ -1,12 +1,12 @@
 module Kernel.JsArray exposing (appendN, foldl, foldr, indexedMap, initialize, initializeFromList, map, unsafeGet)
 
 import Array exposing (Array)
-import Eval.Types as Types exposing (Eval)
+import Eval
 import List.Extra
-import Value exposing (Value)
+import Types exposing (Eval, Expr)
 
 
-appendN : Int -> Array Value -> Array Value -> Array Value
+appendN : Int -> Array Expr -> Array Expr -> Array Expr
 appendN n dest source =
     let
         itemsToCopy : Int
@@ -29,7 +29,7 @@ these as small as possible. The `n` parameter should always be set to a
 reasonably small value.
 
 -}
-initializeFromList : Int -> List Value -> ( Array Value, List Value )
+initializeFromList : Int -> List Expr -> ( Array Expr, List Expr )
 initializeFromList n values =
     let
         ( before, after ) =
@@ -47,69 +47,69 @@ case. This is an optimization that has proved useful in the `Array` module.
     initialize 3 5 identity == [ 5, 6, 7 ]
 
 -}
-initialize : Int -> Int -> (Int -> Eval Value) -> Eval (Array Value)
+initialize : Int -> Int -> (Int -> Eval Expr) -> Eval (Array Expr)
 initialize len offset f cfg env =
-    Types.combineMap f (List.range offset (offset + len - 1)) cfg env
-        |> Types.map Array.fromList
+    Eval.combineMap f (List.range offset (offset + len - 1)) cfg env
+        |> Eval.map Array.fromList
 
 
-foldr : (Value -> Eval (Value -> Eval Value)) -> Value -> Array Value -> Eval Value
+foldr : (Expr -> Eval (Expr -> Eval Expr)) -> Expr -> Array Expr -> Eval Expr
 foldr f init arr cfg env =
     Array.foldr
         (\e acc ->
-            case Types.toResult acc of
+            case Eval.toResult acc of
                 Err _ ->
                     acc
 
                 Ok _ ->
-                    Types.map2 Tuple.pair (f e cfg env) acc
-                        |> Types.andThen (\( g, y ) -> g y cfg env)
+                    Eval.map2 Tuple.pair (f e cfg env) acc
+                        |> Eval.andThen (\( g, y ) -> g y cfg env)
         )
-        (Types.succeed init)
+        (Eval.succeed init)
         arr
 
 
-foldl : (Value -> Eval (Value -> Eval Value)) -> Value -> Array Value -> Eval Value
+foldl : (Expr -> Eval (Expr -> Eval Expr)) -> Expr -> Array Expr -> Eval Expr
 foldl f init arr cfg env =
     Array.foldl
         (\e acc ->
-            case Types.toResult acc of
+            case Eval.toResult acc of
                 Err _ ->
                     acc
 
                 Ok _ ->
-                    Types.map2 Tuple.pair (f e cfg env) acc
-                        |> Types.andThen (\( g, y ) -> g y cfg env)
+                    Eval.map2 Tuple.pair (f e cfg env) acc
+                        |> Eval.andThen (\( g, y ) -> g y cfg env)
         )
-        (Types.succeed init)
+        (Eval.succeed init)
         arr
 
 
-map : (Value -> Eval Value) -> Array Value -> Eval (Array Value)
+map : (Expr -> Eval Expr) -> Array Expr -> Eval (Array Expr)
 map f array cfg env =
-    Types.combineMap f (Array.toList array) cfg env
-        |> Types.map Array.fromList
+    Eval.combineMap f (Array.toList array) cfg env
+        |> Eval.map Array.fromList
 
 
-indexedMap : (Int -> Eval (Value -> Eval Value)) -> Array Value -> Eval (Array Value)
+indexedMap : (Int -> Eval (Expr -> Eval Expr)) -> Array Expr -> Eval (Array Expr)
 indexedMap f array cfg env =
-    Types.combineMap f (List.range 0 (Array.length array - 1)) cfg env
-        |> Types.andThen
+    Eval.combineMap f (List.range 0 (Array.length array - 1)) cfg env
+        |> Eval.andThen
             (\fs ->
-                Types.combineMap
+                Eval.combineMap
                     (\( ef, ex ) -> ef ex)
                     (List.map2 Tuple.pair fs (Array.toList array))
                     cfg
                     env
             )
-        |> Types.map Array.fromList
+        |> Eval.map Array.fromList
 
 
-unsafeGet : Int -> Array Value -> Eval Value
+unsafeGet : Int -> Array Expr -> Eval Expr
 unsafeGet index array _ env =
     case Array.get index array of
         Just v ->
-            Types.succeed v
+            Eval.succeed v
 
         Nothing ->
-            Types.fail <| Value.typeError env "Out of bounds access"
+            Eval.fail <| Eval.typeError env "Out of bounds access"

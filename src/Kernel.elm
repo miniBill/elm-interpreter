@@ -10,31 +10,25 @@ import Core.Debug
 import Core.Elm.JsArray
 import Core.List
 import Core.String
-import Elm.Syntax.Expression as Expression exposing (Expression(..), FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
-import Elm.Syntax.Node as Node exposing (Node)
-import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
+import Elm.Syntax.Pattern exposing (Pattern(..))
 import Environment
-import Eval.Types as Types exposing (Eval, EvalResult)
+import Eval exposing (typeError)
+import Expr
 import FastDict as Dict exposing (Dict)
 import Kernel.Debug
 import Kernel.JsArray
 import Kernel.String
 import Kernel.Utils
 import Maybe.Extra
-import Syntax exposing (fakeNode)
-import Value exposing (EvalError, Value(..), typeError)
+import Types exposing (Eval, EvalErrorData, EvalResult, Expr(..))
 
 
 type alias EvalFunction =
-    List Value
-    -> List (Node Pattern)
-    -> Maybe QualifiedNameRef
-    -> Node Expression
-    -> Eval Value
+    Expr -> Eval Expr
 
 
-functions : EvalFunction -> Dict ModuleName (Dict String ( Int, List Value -> Eval Value ))
+functions : EvalFunction -> Dict ModuleName (Dict String ( Int, List Expr -> Eval Expr ))
 functions evalFunction =
     [ -- Elm.Kernel.Basics
       ( [ "Elm", "Kernel", "Basics" ]
@@ -97,7 +91,7 @@ functions evalFunction =
     -- Elm.Kernel.Debug
     , ( [ "Elm", "Kernel", "Debug" ]
       , [ ( "log", twoWithError string anything to anything Kernel.Debug.log Core.Debug.log )
-        , ( "toString", one anything to string Value.toString Core.Debug.toString )
+        , ( "toString", one anything to string Expr.toString Core.Debug.toString )
         , ( "todo", oneWithError string to anything Kernel.Debug.todo Core.Debug.todo )
         ]
       )
@@ -175,27 +169,16 @@ functions evalFunction =
     ]
         |> List.map
             (\( moduleName, moduleFunctions ) ->
-                ( moduleName
-                , moduleFunctions
-                    |> List.map (\( k, f ) -> ( k, f moduleName ))
-                    |> Dict.fromList
-                )
+                ( moduleName, Dict.fromList moduleFunctions )
             )
         |> Dict.fromList
 
 
-log : FunctionImplementation
+log : Expr
 log =
-    { name = fakeNode "log"
-    , arguments = [ fakeNode <| VarPattern "$x" ]
-    , expression =
-        fakeNode <|
-            Expression.Application
-                [ Core.Basics.logBase.expression
-                , fakeNode <| FunctionOrValue [] "e"
-                , fakeNode <| FunctionOrValue [] "$x"
-                ]
-    }
+    Apply
+        Core.Basics.logBase
+        (Expr.val "e")
 
 
 
@@ -204,14 +187,14 @@ log =
 
 type alias InSelector a x =
     { x
-        | fromValue : Value -> Maybe a
+        | fromExpr : Expr -> Maybe a
         , name : String
     }
 
 
 type alias OutSelector a x =
     { x
-        | toValue : a -> Value
+        | toExpr : a -> Expr
         , name : String
     }
 
@@ -229,25 +212,25 @@ to =
     To
 
 
-anything : Selector Value
+anything : Selector Expr
 anything =
-    { fromValue = Just
-    , toValue = identity
+    { fromExpr = Just
+    , toExpr = identity
     , name = "anything"
     }
 
 
 order : Selector Order
 order =
-    { fromValue = Value.toOrder
-    , toValue = Value.fromOrder
+    { fromExpr = Expr.toOrder
+    , toExpr = Expr.fromOrder
     , name = "Order"
     }
 
 
 string : Selector String
 string =
-    { fromValue =
+    { fromExpr =
         \value ->
             case value of
                 String s ->
@@ -255,14 +238,14 @@ string =
 
                 _ ->
                     Nothing
-    , toValue = String
+    , toExpr = String
     , name = "String"
     }
 
 
 float : Selector Float
 float =
-    { fromValue =
+    { fromExpr =
         \value ->
             case value of
                 Float s ->
@@ -274,14 +257,14 @@ float =
 
                 _ ->
                     Nothing
-    , toValue = Float
+    , toExpr = Float
     , name = "Float"
     }
 
 
 int : Selector Int
 int =
-    { fromValue =
+    { fromExpr =
         \value ->
             case value of
                 Int s ->
@@ -289,14 +272,14 @@ int =
 
                 _ ->
                     Nothing
-    , toValue = Int
+    , toExpr = Int
     , name = "Int"
     }
 
 
 char : Selector Char
 char =
-    { fromValue =
+    { fromExpr =
         \value ->
             case value of
                 Char s ->
@@ -304,14 +287,14 @@ char =
 
                 _ ->
                     Nothing
-    , toValue = Char
+    , toExpr = Char
     , name = "Char"
     }
 
 
 bool : Selector Bool
 bool =
-    { fromValue =
+    { fromExpr =
         \value ->
             case value of
                 Bool s ->
@@ -319,14 +302,14 @@ bool =
 
                 _ ->
                     Nothing
-    , toValue = Bool
+    , toExpr = Bool
     , name = "Bool"
     }
 
 
 maybe : Selector a -> Selector (Maybe a)
 maybe selector =
-    { fromValue =
+    { fromExpr =
         \value ->
             case value of
                 Custom ctor args ->
@@ -335,39 +318,39 @@ maybe selector =
                             Just Nothing
 
                         ( [ "Maybe" ], "Just", [ arg ] ) ->
-                            Maybe.map Just (selector.fromValue arg)
+                            Maybe.map Just (selector.fromExpr arg)
 
                         _ ->
                             Nothing
 
                 _ ->
                     Nothing
-    , toValue =
-        \maybeValue ->
-            case maybeValue of
+    , toExpr =
+        \maybeExpr ->
+            case maybeExpr of
                 Nothing ->
                     Custom { moduleName = [ "Maybe" ], name = "Nothing" } []
 
                 Just value ->
-                    Custom { moduleName = [ "Maybe" ], name = "Just" } [ selector.toValue value ]
+                    Custom { moduleName = [ "Maybe" ], name = "Just" } [ selector.toExpr value ]
     , name = "Maybe " ++ selector.name
     }
 
 
 list : Selector a -> Selector (List a)
 list selector =
-    { fromValue =
+    { fromExpr =
         \value ->
             case value of
                 List l ->
-                    Maybe.Extra.traverse selector.fromValue l
+                    Maybe.Extra.traverse selector.fromExpr l
 
                 _ ->
                     Nothing
-    , toValue =
+    , toExpr =
         \value ->
             value
-                |> List.map selector.toValue
+                |> List.map selector.toExpr
                 |> List
     , name = "List " ++ selector.name
     }
@@ -375,21 +358,21 @@ list selector =
 
 jsArray : Selector a -> Selector (Array a)
 jsArray selector =
-    { fromValue =
+    { fromExpr =
         \value ->
             case value of
                 JsArray jsa ->
                     jsa
                         |> Array.toList
-                        |> Maybe.Extra.traverse selector.fromValue
+                        |> Maybe.Extra.traverse selector.fromExpr
                         |> Maybe.map Array.fromList
 
                 _ ->
                     Nothing
-    , toValue =
+    , toExpr =
         \array ->
             array
-                |> Array.map selector.toValue
+                |> Array.map selector.toExpr
                 |> JsArray
     , name = "JsArray " ++ selector.name
     }
@@ -403,34 +386,46 @@ function :
     -> InSelector (from -> Eval to) {}
 function evalFunctionWith inSelector _ outSelector =
     let
-        fromValue : Value -> Maybe (from -> Eval to)
-        fromValue value =
+        fromExpr : Expr -> Maybe (from -> Eval to)
+        fromExpr value =
             case value of
-                PartiallyApplied localEnv oldArgs patterns maybeName implementation ->
+                Lambda lambdaEnv lambdaArg implementation ->
                     Just
-                        (\arg cfg _ ->
-                            evalFunctionWith (oldArgs ++ [ inSelector.toValue arg ]) patterns maybeName implementation cfg localEnv
-                                |> Types.onValue
-                                    (\out ->
-                                        case outSelector.fromValue out of
-                                            Just ov ->
-                                                Ok ov
+                        (\arg cfg env ->
+                            -- TODO: env is used for the call stack
+                            -- The call stack should probably be a mix of env and lambdaEnv?
+                            case Eval.matchInfallible env lambdaArg (inSelector.toExpr arg) of
+                                Err e ->
+                                    Eval.fail e
 
-                                            Nothing ->
-                                                Err <|
-                                                    typeError localEnv <|
-                                                        "Could not convert output from "
-                                                            ++ Value.toString out
-                                                            ++ " to "
-                                                            ++ outSelector.name
-                                    )
+                                Ok argEnv ->
+                                    let
+                                        newEnv =
+                                            lambdaEnv
+                                                |> Environment.with argEnv
+                                    in
+                                    evalFunctionWith implementation cfg newEnv
+                                        |> Eval.onExpr
+                                            (\out ->
+                                                case outSelector.fromExpr out of
+                                                    Just ov ->
+                                                        Ok ov
+
+                                                    Nothing ->
+                                                        Err <|
+                                                            typeError env <|
+                                                                "Could not convert output from "
+                                                                    ++ Expr.toString out
+                                                                    ++ " to "
+                                                                    ++ outSelector.name
+                                            )
                         )
 
                 _ ->
                     Nothing
     in
     { name = inSelector.name ++ " -> " ++ outSelector.name
-    , fromValue = fromValue
+    , fromExpr = fromExpr
     }
 
 
@@ -447,31 +442,31 @@ function2 evalFunction in1Selector in2Selector _ outSelector =
 
 tuple : Selector a -> Selector b -> Selector ( a, b )
 tuple firstSelector secondSelector =
-    { fromValue =
+    { fromExpr =
         \value ->
             case value of
-                Tuple first second ->
-                    Maybe.map2 Tuple.pair (firstSelector.fromValue first) (secondSelector.fromValue second)
+                Tuple [ first, second ] ->
+                    Maybe.map2 Tuple.pair (firstSelector.fromExpr first) (secondSelector.fromExpr second)
 
                 _ ->
                     Nothing
-    , toValue =
+    , toExpr =
         \( first, second ) ->
-            Tuple (firstSelector.toValue first) (secondSelector.toValue second)
+            Tuple [ firstSelector.toExpr first, secondSelector.toExpr second ]
     , name = "( " ++ firstSelector.name ++ ", " ++ secondSelector.name ++ ")"
     }
 
 
-constant : OutSelector res x -> res -> ModuleName -> ( Int, List Value -> Eval Value )
-constant selector const _ =
+constant : OutSelector res x -> res -> ( Int, List Expr -> Eval Expr )
+constant selector const =
     ( 0
     , \args _ env ->
         case args of
             [] ->
-                Types.succeed <| selector.toValue const
+                Eval.succeed <| selector.toExpr const
 
             _ ->
-                Types.fail <| typeError env <| "Didn't expect any args"
+                Eval.fail <| typeError env <| "Didn't expect any args"
     )
 
 
@@ -479,8 +474,7 @@ zero :
     To
     -> OutSelector out ox
     -> out
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
+    -> ( Int, List Expr -> Eval Expr )
 zero _ output f =
     zeroWithError To output (Ok f)
 
@@ -488,18 +482,17 @@ zero _ output f =
 zeroWithError :
     To
     -> OutSelector out ox
-    -> Result EvalError out
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
-zeroWithError _ output f _ =
+    -> Result EvalErrorData out
+    -> ( Int, List Expr -> Eval Expr )
+zeroWithError _ output f =
     ( 0
     , \args _ env ->
         case args of
             [] ->
-                Types.fromResult <| Result.map output.toValue f
+                Eval.fromResult <| Result.map output.toExpr f
 
             _ ->
-                Types.fail <| typeError env <| "Expected zero args, got more"
+                Eval.fail <| typeError env <| "Expected zero args, got more"
     )
 
 
@@ -508,11 +501,10 @@ one :
     -> To
     -> OutSelector out ox
     -> (a -> out)
-    -> FunctionImplementation
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
+    -> Expr
+    -> ( Int, List Expr -> Eval Expr )
 one firstSelector _ output f =
-    oneWithError firstSelector To output (\v _ _ -> Types.succeed (f v))
+    oneWithError firstSelector To output (\v _ _ -> Eval.succeed (f v))
 
 
 oneWithError :
@@ -520,29 +512,28 @@ oneWithError :
     -> To
     -> OutSelector out xo
     -> (a -> Eval out)
-    -> FunctionImplementation
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
-oneWithError firstSelector _ output f implementation moduleName =
+    -> Expr
+    -> ( Int, List Expr -> Eval Expr )
+oneWithError firstSelector _ output f implementation =
     ( 1
     , \args cfg env ->
         let
             err : String -> EvalResult value
             err got =
-                Types.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
+                Eval.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
         in
         case args of
             [ arg ] ->
-                case firstSelector.fromValue arg of
+                case firstSelector.fromExpr arg of
                     Just s ->
                         f s cfg env
-                            |> Types.map output.toValue
+                            |> Eval.map output.toExpr
 
                     Nothing ->
-                        err (Value.toString arg)
+                        err (Expr.toString arg)
 
             [] ->
-                partiallyApply moduleName args implementation
+                partiallyApply implementation args
 
             _ ->
                 err "more"
@@ -555,11 +546,10 @@ two :
     -> To
     -> OutSelector out xo
     -> (a -> b -> out)
-    -> FunctionImplementation
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
+    -> Expr
+    -> ( Int, List Expr -> Eval Expr )
 two firstSelector secondSelector _ output f =
-    twoWithError firstSelector secondSelector To output (\l r _ _ -> Types.succeed (f l r))
+    twoWithError firstSelector secondSelector To output (\l r _ _ -> Eval.succeed (f l r))
 
 
 twoWithError :
@@ -568,43 +558,42 @@ twoWithError :
     -> To
     -> OutSelector out xo
     -> (a -> b -> Eval out)
-    -> FunctionImplementation
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
-twoWithError firstSelector secondSelector _ output f implementation moduleName =
+    -> Expr
+    -> ( Int, List Expr -> Eval Expr )
+twoWithError firstSelector secondSelector _ output f implementation =
     ( 2
     , \args cfg env ->
         let
             typeError_ : String -> EvalResult value
             typeError_ msg =
-                Types.fail (typeError env msg)
+                Eval.fail (typeError env msg)
         in
         case args of
             [ firstArg, secondArg ] ->
-                case firstSelector.fromValue firstArg of
+                case firstSelector.fromExpr firstArg of
                     Nothing ->
-                        typeError_ <| "Expected the first argument to be " ++ firstSelector.name ++ ", got " ++ Value.toString firstArg
+                        typeError_ <| "Expected the first argument to be " ++ firstSelector.name ++ ", got " ++ Expr.toString firstArg
 
                     Just first ->
-                        case secondSelector.fromValue secondArg of
+                        case secondSelector.fromExpr secondArg of
                             Nothing ->
-                                typeError_ <| "Expected the second argument to be " ++ secondSelector.name ++ ", got " ++ Value.toString secondArg
+                                typeError_ <| "Expected the second argument to be " ++ secondSelector.name ++ ", got " ++ Expr.toString secondArg
 
                             Just second ->
                                 f first second cfg env
-                                    |> Types.map output.toValue
+                                    |> Eval.map output.toExpr
 
             [ _ ] ->
-                partiallyApply moduleName args implementation
+                partiallyApply implementation args
 
             [] ->
-                partiallyApply moduleName args implementation
+                partiallyApply implementation args
 
             _ ->
                 let
                     got : String
                     got =
-                        String.join ", " <| List.map Value.toString args
+                        String.join ", " <| List.map Expr.toString args
                 in
                 if firstSelector.name == secondSelector.name then
                     typeError_ <| "Expected two " ++ firstSelector.name ++ "s, got " ++ got
@@ -621,11 +610,10 @@ three :
     -> To
     -> OutSelector out xo
     -> (a -> b -> c -> out)
-    -> FunctionImplementation
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
+    -> Expr
+    -> ( Int, List Expr -> Eval Expr )
 three firstSelector secondSelector thirdSelector _ output f =
-    threeWithError firstSelector secondSelector thirdSelector To output (\l m r _ _ -> Types.succeed (f l m r))
+    threeWithError firstSelector secondSelector thirdSelector To output (\l m r _ _ -> Eval.succeed (f l m r))
 
 
 threeWithError :
@@ -635,89 +623,81 @@ threeWithError :
     -> To
     -> OutSelector out xo
     -> (a -> b -> c -> Eval out)
-    -> FunctionImplementation
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
-threeWithError firstSelector secondSelector thirdSelector _ output f implementation moduleName =
+    -> Expr
+    -> ( Int, List Expr -> Eval Expr )
+threeWithError firstSelector secondSelector thirdSelector _ output f implementation =
     ( 3
     , \args cfg env ->
         let
             err : String -> EvalResult value
             err got =
                 if firstSelector.name == secondSelector.name && secondSelector.name == thirdSelector.name then
-                    Types.fail <| typeError env <| "Expected three " ++ firstSelector.name ++ "s, got " ++ got
+                    Eval.fail <| typeError env <| "Expected three " ++ firstSelector.name ++ "s, got " ++ got
 
                 else
-                    Types.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", one " ++ secondSelector.name ++ " and one " ++ thirdSelector.name ++ ", got " ++ got
+                    Eval.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", one " ++ secondSelector.name ++ " and one " ++ thirdSelector.name ++ ", got " ++ got
         in
         case args of
             [ firstArg, secondArg, thirdArg ] ->
-                case ( firstSelector.fromValue firstArg, secondSelector.fromValue secondArg, thirdSelector.fromValue thirdArg ) of
+                case ( firstSelector.fromExpr firstArg, secondSelector.fromExpr secondArg, thirdSelector.fromExpr thirdArg ) of
                     ( Just first, Just second, Just third ) ->
                         f first second third cfg env
-                            |> Types.map output.toValue
+                            |> Eval.map output.toExpr
 
                     _ ->
-                        err (String.join ", " (List.map Value.toString args))
+                        err (String.join ", " (List.map Expr.toString args))
 
             [ _, _ ] ->
-                partiallyApply moduleName args implementation
+                partiallyApply implementation args
 
             [ _ ] ->
-                partiallyApply moduleName args implementation
+                partiallyApply implementation args
 
             [] ->
-                partiallyApply moduleName args implementation
+                partiallyApply implementation args
 
             _ ->
-                err ("[ " ++ String.join ", " (List.map Value.toString args) ++ " ]")
+                err ("[ " ++ String.join ", " (List.map Expr.toString args) ++ " ]")
     )
 
 
-partiallyApply : ModuleName -> List Value -> FunctionImplementation -> EvalResult Value
-partiallyApply moduleName args implementation =
-    Types.fromResult <|
-        Ok <|
-            PartiallyApplied
-                (Environment.empty moduleName)
-                args
-                implementation.arguments
-                (Just
-                    { moduleName = moduleName
-                    , name = Node.value implementation.name
-                    }
-                )
-                implementation.expression
+partiallyApply : Expr -> List Expr -> EvalResult Expr
+partiallyApply implementation args =
+    case args of
+        [] ->
+            Eval.succeed implementation
+
+        arg :: tail ->
+            partiallyApply (Apply implementation arg) tail
 
 
 twoNumbers :
     (Int -> Int -> Int)
     -> (Float -> Float -> Float)
-    -> FunctionImplementation
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
-twoNumbers fInt fFloat implementation moduleName =
+    -> Expr
+    -> ( Int, List Expr -> Eval Expr )
+twoNumbers fInt fFloat implementation =
     ( 2
     , \args _ env ->
         case args of
             [ Int li, Int ri ] ->
-                Types.succeed <| Int (fInt li ri)
+                Eval.succeed <| Int (fInt li ri)
 
             [ Int li, Float rf ] ->
-                Types.succeed <| Float (fFloat (toFloat li) rf)
+                Eval.succeed <| Float (fFloat (toFloat li) rf)
 
             [ Float lf, Int ri ] ->
-                Types.succeed <| Float (fFloat lf (toFloat ri))
+                Eval.succeed <| Float (fFloat lf (toFloat ri))
 
             [ Float lf, Float rf ] ->
-                Types.succeed <| Float (fFloat lf rf)
+                Eval.succeed <| Float (fFloat lf rf)
 
             [ _ ] ->
-                partiallyApply moduleName args implementation
+                partiallyApply implementation args
 
             [] ->
-                partiallyApply moduleName args implementation
+                partiallyApply implementation args
 
             _ ->
-                Types.fail <| typeError env "Expected two numbers"
+                Eval.fail <| typeError env "Expected two numbers"
     )

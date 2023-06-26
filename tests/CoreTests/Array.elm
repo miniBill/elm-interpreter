@@ -1,10 +1,10 @@
 module CoreTests.Array exposing (suite)
 
 import Array exposing (Array)
+import Types exposing (Value(..))
 import Fuzz exposing (Fuzzer, intRange)
 import Test exposing (Test, describe, fuzz)
 import TestUtils exposing (evalExpect, evalTest, list, maybe, withInt)
-import Value exposing (Value(..))
 
 
 suite : Test

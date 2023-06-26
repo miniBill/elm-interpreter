@@ -1,9 +1,9 @@
 module CoreTests.Bitwise exposing (suite)
 
 import Bitwise
+import Types exposing (Value(..))
 import Test exposing (Test, describe)
 import TestUtils exposing (evalTest)
-import Value exposing (Value(..))
 
 
 suite : Test

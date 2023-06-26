@@ -1,28 +1,26 @@
 module Kernel.Debug exposing (log, todo)
 
-import Eval.Log as Log
-import Eval.Types as Types exposing (Eval)
-import FastDict as Dict
+import Environment
+import Eval
+import Expr
 import Rope
-import Value exposing (Value)
+import Types exposing (Eval, Expr, LogLine)
 
 
-log : String -> Value -> Eval Value
-log key value _ env =
+log : String -> Expr -> Eval Expr
+log key value _ _ =
     let
-        line : Log.Line
+        line : LogLine
         line =
-            { stack = env.callStack
-            , message = key ++ ": " ++ Value.toString value
-            , env = Dict.empty
+            { message = key ++ ": " ++ Expr.toString value
+            , env = Environment.empty
             }
     in
     ( Ok value
-    , Rope.empty
     , Rope.singleton line
     )
 
 
-todo : String -> Eval Value
+todo : String -> Eval Expr
 todo msg _ env =
-    Types.fail <| Value.todo env msg
+    Eval.fail <| Eval.todo env msg

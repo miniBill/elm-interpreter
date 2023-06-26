@@ -1,8 +1,8 @@
 module CoreTests.Char exposing (suite)
 
+import Types exposing (Value(..))
 import Test exposing (Test, describe)
 import TestUtils exposing (evalTest, evalTest_)
-import Value exposing (Value(..))
 
 
 suite : Test

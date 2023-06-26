@@ -2,14 +2,10 @@ module Eval.Expression exposing (evalExpression, evalFunction)
 
 import Core
 import Core.Basics
-import Elm.Syntax.Expression as Expression exposing (Expression(..), LetDeclaration)
-import Elm.Syntax.ModuleName exposing (ModuleName)
-import Elm.Syntax.Node as Node exposing (Node(..))
-import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
-import Elm.Writer
+import Elm.Interface exposing (Exposed(..))
 import Environment
-import Eval.Log as Log
-import Eval.Types as Types exposing (CallTree(..), CallTreeContinuation(..), Eval, EvalResult, PartialEval, PartialResult(..))
+import Eval exposing (match, matchInfallible, nameError, typeError, unsupported)
+import Expr
 import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
@@ -18,113 +14,15 @@ import Rope exposing (Rope)
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import TopologicalSort
+import Types exposing (Env, Error(..), Eval, EvalConfig, EvalResult, Expr(..), ExprOrValue(..), LogContinuation(..), LogLine, Pattern(..), QualifiedNameRef, Value(..))
 import Unicode
-import Value exposing (Env, EnvValues, EvalError, Value(..), nameError, typeError, unsupported)
 
 
-evalExpression : Node Expression -> Eval Value
-evalExpression (Node _ expression) cfg env =
+evalExpression : Expr -> Eval Value
+evalExpression expression cfg env =
     let
-        result : PartialResult
-        result =
-            case expression of
-                Expression.UnitExpr ->
-                    Types.succeedPartial <| Value.Unit
-
-                Expression.Integer i ->
-                    Types.succeedPartial <| Value.Int i
-
-                Expression.Hex i ->
-                    Types.succeedPartial <| Value.Int i
-
-                Expression.Floatable f ->
-                    Types.succeedPartial <| Value.Float f
-
-                Expression.Literal string ->
-                    Types.succeedPartial <| Value.String string
-
-                Expression.CharLiteral c ->
-                    Types.succeedPartial <| Value.Char c
-
-                Expression.OperatorApplication "||" _ l r ->
-                    evalShortCircuitOr l r cfg env
-
-                Expression.OperatorApplication "&&" _ l r ->
-                    evalShortCircuitAnd l r cfg env
-
-                Expression.OperatorApplication opName _ l r ->
-                    PartialExpression
-                        (fakeNode <|
-                            Expression.Application
-                                [ fakeNode <| Expression.Operator opName
-                                , l
-                                , r
-                                ]
-                        )
-                        cfg
-                        env
-
-                Expression.Application [] ->
-                    Types.failPartial <| typeError env "Empty application"
-
-                Expression.Application (first :: rest) ->
-                    evalApplication first rest cfg env
-
-                Expression.FunctionOrValue moduleName name ->
-                    evalFunctionOrValue moduleName name cfg env
-
-                Expression.IfBlock cond true false ->
-                    evalIfBlock cond true false cfg env
-
-                Expression.PrefixOperator opName ->
-                    evalOperator opName cfg env
-
-                Expression.Operator opName ->
-                    evalOperator opName cfg env
-
-                Expression.Negation child ->
-                    evalNegation child cfg env
-
-                Expression.TupledExpression exprs ->
-                    evalTuple exprs cfg env
-
-                Expression.ParenthesizedExpression child ->
-                    PartialExpression child cfg env
-
-                Expression.LetExpression letBlock ->
-                    evalLetBlock letBlock cfg env
-
-                Expression.CaseExpression caseExpr ->
-                    evalCase caseExpr cfg env
-
-                Expression.LambdaExpression lambda ->
-                    Types.succeedPartial <| PartiallyApplied env [] lambda.args Nothing lambda.expression
-
-                Expression.RecordExpr fields ->
-                    evalRecord fields cfg env
-
-                Expression.ListExpr elements ->
-                    evalList elements cfg env
-
-                Expression.RecordAccess recordExpr field ->
-                    evalRecordAccess recordExpr field cfg env
-
-                Expression.RecordAccessFunction field ->
-                    Types.succeedPartial <| evalRecordAccessFunction field
-
-                Expression.RecordUpdateExpression name setters ->
-                    evalRecordUpdate name setters cfg env
-
-                Expression.GLSLExpression _ ->
-                    Types.failPartial <| unsupported env "GLSL not supported"
-
-        expressionToString : Expression -> String
-        expressionToString expr =
-            Elm.Writer.write <| Elm.Writer.writeExpression <| fakeNode expr
-
-        expressionString : String
-        expressionString =
-            expressionToString expression
+        ( result, logLines ) =
+            innerEvalExpr expression cfg env
 
         equal : String -> String -> String
         equal l r =
@@ -135,23 +33,19 @@ evalExpression (Node _ expression) cfg env =
                 l ++ " ==> " ++ r
     in
     case result of
-        PartialValue ( v, callTrees, logLines ) ->
-            ( v
-            , if cfg.trace then
-                Tuple.first (applyCallTreeContinuation cfg.callTreeContinuation callTrees v)
+        Err e ->
+            ( Err e, logLines )
 
-              else
-                Rope.empty
+        Ok (Value v) ->
+            ( Ok v
             , if cfg.trace then
                 logLines
                     |> Rope.prepend
-                        { stack = env.callStack
-                        , message = expressionString
+                        { message = Expr.toString expression
                         , env = relevantEnv env expression
                         }
                     |> Rope.append
-                        { stack = env.callStack
-                        , message = equal expressionString (Types.partialResultToString result)
+                        { message = equal (Expr.toString expression) (Expr.valueToString v)
                         , env = relevantEnv env expression
                         }
                     |> applyLogContinuation cfg.logContinuation
@@ -160,70 +54,133 @@ evalExpression (Node _ expression) cfg env =
                 Rope.empty
             )
 
-        PartialExpression next newConfig newEnv ->
-            evalExpression next
-                { newConfig
+        Ok (Expr nextEnv nextExpr) ->
+            evalExpression nextExpr
+                { cfg
                     | logContinuation =
                         if cfg.trace then
                             cfg.logContinuation
-                                |> Log.Prepend
+                                |> LogPrepend
                                     { stack = env.callStack
-                                    , message = expressionString
+                                    , message = Expr.toString expression
                                     , env = relevantEnv env expression
                                     }
 
                         else
-                            Log.Done
+                            LogDone
                 }
-                newEnv
+                nextEnv
 
 
-applyCallTreeContinuation : CallTreeContinuation -> Rope CallTree -> Result EvalError Value -> ( Rope CallTree, CallTreeContinuation )
-applyCallTreeContinuation k children result =
-    case k of
-        CTCRoot ->
-            ( children, CTCRoot )
+innerEvalExpr : Expr -> Eval ExprOrValue
+innerEvalExpr expr cfg env =
+    case expr of
+        BinOp l "||" r ->
+            evalShortCircuitOr l r cfg env
 
-        CTCWithMoreChildren moreChildren andThen ->
-            ( Rope.prependTo children moreChildren, andThen )
+        BinOp l "&&" r ->
+            evalShortCircuitAnd l r cfg env
 
-        CTCCall name values andThen ->
-            ( Rope.singleton
-                (CallNode name
-                    { args = values
-                    , result = result
-                    , children = children
-                    }
-                )
-            , andThen
-            )
+        BinOp l opName r ->
+            evalBinOp l opName r cfg env
+
+        Apply first rest ->
+            evalApplication first rest cfg env
+
+        Custom moduleName name ->
+            evalFunctionOrValue moduleName name cfg env
+
+        IfThenElse cond true false ->
+            evalIfThenElse cond true false cfg env
+
+        PrefixOperator opName ->
+            evalOperator opName cfg env
+
+        Operator opName ->
+            evalOperator opName cfg env
+
+        Negation child ->
+            evalNegation child cfg env
+
+        TupledExpression exprs ->
+            evalTuple exprs cfg env
+
+        ParenthesizedExpression child ->
+            Expr child cfg env
+
+        LetExpression letBlock ->
+            evalLetBlock letBlock cfg env
+
+        CaseExpression caseExpr ->
+            evalCase caseExpr cfg env
+
+        LambdaExpression lambda ->
+            Eval.succeed <| PartiallyApplied env [] lambda.args Nothing lambda.expression
+
+        RecordExpr fields ->
+            evalRecord fields cfg env
+
+        RecordAccess recordExpr field ->
+            evalRecordAccess recordExpr field cfg env
+
+        RecordAccessFunction field ->
+            Eval.succeed <| evalRecordAccessFunction field
+
+        RecordUpdateExpression name setters ->
+            evalRecordUpdate name setters cfg env
+
+        GLSLExpression _ ->
+            Eval.fail <| unsupported env "GLSL not supported"
+
+        RecordUpdate _ _ ->
+            Debug.todo "branch 'RecordUpdate _ _' not implemented"
+
+        Variable _ ->
+            Debug.todo "branch 'Variable _' not implemented"
+
+        Case _ _ ->
+            Debug.todo "branch 'Case _ _' not implemented"
+
+        Lambda _ _ _ ->
+            Debug.todo "branch 'Lambda _ _ _' not implemented"
+
+        Negate _ ->
+            Debug.todo "branch 'Negate _' not implemented"
+
+        LetIn _ _ ->
+            Debug.todo "branch 'LetIn _ _' not implemented"
 
 
-applyLogContinuation : Log.Continuation -> Rope Log.Line -> Rope Log.Line
+evalBinOp : Expr -> BinOp -> Expr -> EvalConfig -> Env -> EvalResult Expr
+evalBinOp arg1 arg2 arg3 arg4 arg5 =
+    Debug.todo "TODO"
+
+
+applyLogContinuation : LogContinuation -> Rope LogLine -> Rope LogLine
 applyLogContinuation k lines =
     case k of
-        Log.Done ->
+        LogDone ->
             lines
 
-        Log.AppendTo before andThen ->
+        LogAppendTo before andThen ->
             lines
                 |> Rope.appendTo before
                 |> applyLogContinuation andThen
 
-        Log.Prepend line andThen ->
+        LogPrepend line andThen ->
             lines
                 |> Rope.prepend line
                 |> applyLogContinuation andThen
 
-        Log.Append line andThen ->
+        LogAppend line andThen ->
             lines
                 |> Rope.append line
                 |> applyLogContinuation andThen
 
 
-relevantEnv : Env -> Expression -> Dict String Value
-relevantEnv env expression =
-    freeVariables (fakeNode expression)
+relevantEnv : Env -> Expr -> Dict String Value
+relevantEnv env expr =
+    freeVariables expr
         |> Set.foldl
             (\var acc ->
                 case Dict.get var env.values of
@@ -236,85 +193,85 @@ relevantEnv env expression =
             Dict.empty
 
 
-evalShortCircuitAnd : Node Expression -> Node Expression -> PartialEval
+evalShortCircuitAnd : Expr -> Expr -> Eval Expr
 evalShortCircuitAnd l r cfg env =
     evalExpression l cfg env
-        |> Types.andThenPartial
+        |> Eval.andThen
             (\value ->
                 case value of
                     Bool False ->
-                        Types.succeedPartial <| Bool False
+                        Eval.succeed <| Bool False
 
                     Bool True ->
-                        PartialExpression r cfg env
+                        Eval.succeed r
 
                     v ->
-                        Types.failPartial <| typeError env <| "&& applied to non-Bool " ++ Value.toString v
+                        Eval.fail <| typeError env <| "&& applied to non-Bool " ++ Expr.toString v
             )
 
 
-evalShortCircuitOr : Node Expression -> Node Expression -> PartialEval
+evalShortCircuitOr : Expr -> Expr -> Eval Expr
 evalShortCircuitOr l r cfg env =
     evalExpression l cfg env
-        |> Types.andThenPartial
+        |> Eval.andThen
             (\value ->
                 case value of
                     Bool True ->
-                        Types.succeedPartial <| Bool True
+                        Eval.succeed <| Bool True
 
                     Bool False ->
-                        PartialExpression r cfg env
+                        Eval.succeed r
 
                     v ->
-                        Types.failPartial <| typeError env <| "|| applied to non-Bool " ++ Value.toString v
+                        Eval.fail <| typeError env <| "|| applied to non-Bool " ++ Expr.toString v
             )
 
 
-evalTuple : List (Node Expression) -> PartialEval
+evalTuple : List Expr -> Eval Expr
 evalTuple exprs cfg env =
     case exprs of
         [] ->
-            Types.succeedPartial Value.Unit
+            Eval.succeed Expr.Unit
 
         [ c ] ->
-            PartialExpression c cfg env
+            Expr c cfg env
 
         [ l, r ] ->
-            evalExpression l cfg env
-                |> Types.andThen
+            Expr l cfg env
+                |> Eval.andThen
                     (\lValue ->
-                        evalExpression r cfg env
-                            |> Types.andThen
+                        Expr r cfg env
+                            |> Eval.andThen
                                 (\rValue ->
-                                    Types.succeed (Tuple lValue rValue)
+                                    Eval.succeed (Tuple lValue rValue)
                                 )
                     )
                 |> PartialValue
 
         [ l, m, r ] ->
-            evalExpression l cfg env
-                |> Types.andThen
+            Expr l cfg env
+                |> Eval.andThen
                     (\lValue ->
-                        evalExpression m cfg env
-                            |> Types.andThen
+                        Expr m cfg env
+                            |> Eval.andThen
                                 (\mValue ->
-                                    evalExpression r cfg env
-                                        |> Types.andThen
+                                    Expr r cfg env
+                                        |> Eval.andThen
                                             (\rValue ->
-                                                Types.succeed (Triple lValue mValue rValue)
+                                                Eval.succeed (Triple lValue mValue rValue)
                                             )
                                 )
                     )
                 |> PartialValue
 
         _ :: _ :: _ :: _ :: _ ->
-            Types.failPartial <| typeError env "Tuples with more than three elements are not supported"
+            Eval.fail <| typeError env "Tuples with more than three elements are not supported"
 
 
-evalApplication : Node Expression -> List (Node Expression) -> PartialEval
+evalApplication : Expr -> List Expr -> Eval Expr
 evalApplication first rest cfg env =
     let
-        inner : Env -> List Value -> List (Node Pattern) -> Maybe QualifiedNameRef -> Node Expression -> PartialResult
+        inner : Env -> List Value -> List (Node Pattern) -> Maybe QualifiedNameRef -> Expr -> PartialResult
         inner localEnv oldArgs patterns maybeQualifiedName implementation =
             let
                 ( used, leftover ) =
@@ -330,11 +287,11 @@ evalApplication first rest cfg env =
             in
             if not (List.isEmpty leftover) then
                 -- Too many args, we split
-                PartialExpression
+                Expr
                     (fakeNode <|
-                        Expression.Application
+                        Expr.Application
                             (fakeNode
-                                (Expression.Application (first :: used))
+                                (Expr.Application (first :: used))
                                 :: leftover
                             )
                     )
@@ -342,8 +299,8 @@ evalApplication first rest cfg env =
                     env
 
             else
-                Types.combineMap evalExpression rest cfg env
-                    |> Types.andThenPartial
+                Types.combineMap Expr rest cfg env
+                    |> Eval.andThen
                         (\values ->
                             let
                                 restLength : Int
@@ -356,35 +313,35 @@ evalApplication first rest cfg env =
                             in
                             if oldArgsLength + restLength < patternsLength then
                                 -- Still not enough
-                                Types.succeedPartial <| Value.PartiallyApplied localEnv args patterns maybeQualifiedName implementation
+                                Eval.succeed <| Expr.PartiallyApplied localEnv args patterns maybeQualifiedName implementation
 
                             else
                                 -- Just right, we special case this for TCO
                                 evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg env
                         )
     in
-    evalExpression first cfg env
-        |> Types.andThenPartial
+    Expr first cfg env
+        |> Eval.andThen
             (\firstValue ->
                 case firstValue of
-                    Value.Custom name customArgs ->
-                        Types.combineMap evalExpression rest cfg env
-                            |> Types.map (\values -> Value.Custom name (customArgs ++ values))
+                    Expr.Custom name customArgs ->
+                        Types.combineMap Expr rest cfg env
+                            |> Types.map (\values -> Expr.Custom name (customArgs ++ values))
                             |> PartialValue
 
-                    Value.PartiallyApplied localEnv oldArgs patterns maybeQualifiedName implementation ->
+                    Expr.PartiallyApplied localEnv oldArgs patterns maybeQualifiedName implementation ->
                         inner localEnv oldArgs patterns maybeQualifiedName implementation
 
                     other ->
-                        Types.failPartial <|
+                        Eval.fail <|
                             typeError env <|
                                 "Trying to apply "
-                                    ++ Value.toString other
+                                    ++ Expr.toString other
                                     ++ ", which is a non-lambda non-variant"
             )
 
 
-evalFullyApplied : Env -> List Value -> List (Node Pattern) -> Maybe QualifiedNameRef -> Node Expression -> PartialEval
+evalFullyApplied : Env -> List Value -> List (Node Pattern) -> Maybe QualifiedNameRef -> Expr -> Eval Expr
 evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg env =
     let
         maybeNewEnvValues : Result EvalError (Maybe EnvValues)
@@ -395,14 +352,14 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
     in
     case maybeNewEnvValues of
         Err e ->
-            Types.failPartial e
+            Eval.fail e
 
         Ok Nothing ->
-            Types.failPartial <| typeError env "Could not match lambda patterns"
+            Eval.fail <| typeError env "Could not match lambda patterns"
 
         Ok (Just newEnvValues) ->
             case implementation of
-                Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
+                Node _ (FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
                     let
                         qualifiedName : QualifiedNameRef
                         qualifiedName =
@@ -416,35 +373,17 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
                     in
                     case Dict.get moduleName kernelFunctions of
                         Nothing ->
-                            Types.failPartial <| nameError env fullName
+                            Eval.fail <| nameError env fullName
 
                         Just kernelModule ->
                             case Dict.get name kernelModule of
                                 Nothing ->
-                                    Types.failPartial <| nameError env fullName
+                                    Eval.fail <| nameError env fullName
 
                                 Just ( _, f ) ->
-                                    let
-                                        ( kernelResult, children, logLines ) =
-                                            f args
-                                                cfg
-                                                (Environment.call moduleName name env)
-                                    in
-                                    ( kernelResult
-                                    , if cfg.trace then
-                                        CallNode
-                                            qualifiedName
-                                            { args = args
-                                            , result = kernelResult
-                                            , children = children
-                                            }
-                                            |> Rope.singleton
-
-                                      else
-                                        Rope.empty
-                                    , logLines
-                                    )
-                                        |> PartialValue
+                                    f args
+                                        cfg
+                                        (Environment.call qualifiedName env)
 
                 _ ->
                     call
@@ -455,11 +394,11 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
                         (localEnv |> Environment.with newEnvValues)
 
 
-call : Maybe QualifiedNameRef -> Node Expression -> List Value -> PartialEval
+call : Maybe QualifiedNameRef -> Expr -> List Expr -> Eval Expr
 call maybeQualifiedName implementation values cfg env =
     case maybeQualifiedName of
         Just qualifiedName ->
-            PartialExpression implementation
+            Expr implementation
                 { cfg
                     | callTreeContinuation =
                         if cfg.trace then
@@ -471,10 +410,10 @@ call maybeQualifiedName implementation values cfg env =
                 (Environment.call qualifiedName.moduleName qualifiedName.name env)
 
         Nothing ->
-            PartialExpression implementation cfg env
+            Expr implementation cfg env
 
 
-evalFunctionOrValue : ModuleName -> String -> PartialEval
+evalFunctionOrValue : ModuleName -> String -> Eval Expr
 evalFunctionOrValue moduleName name cfg env =
     if isVariant name then
         evalVariant moduleName env name
@@ -501,18 +440,18 @@ evalVariant moduleName env name =
     let
         variant0 : ModuleName -> String -> PartialResult
         variant0 modName ctorName =
-            Types.succeedPartial <| Value.Custom { moduleName = modName, name = ctorName } []
+            Eval.succeed <| Expr.Custom { moduleName = modName, name = ctorName } []
 
         variant1 : ModuleName -> String -> PartialResult
         variant1 modName ctorName =
-            Types.succeedPartial <|
-                Value.PartiallyApplied
+            Eval.succeed <|
+                Expr.PartiallyApplied
                     (Environment.empty modName)
                     []
                     [ fakeNode <| VarPattern "$x" ]
                     Nothing
                     (fakeNode <|
-                        Expression.Application
+                        Expr.Application
                             [ fakeNode <| FunctionOrValue modName ctorName
                             , fakeNode <| FunctionOrValue [] "$x"
                             ]
@@ -520,10 +459,10 @@ evalVariant moduleName env name =
     in
     case ( moduleName, name ) of
         ( [], "True" ) ->
-            Types.succeedPartial <| Value.Bool True
+            Eval.succeed <| Expr.Bool True
 
         ( [], "False" ) ->
-            Types.succeedPartial <| Value.Bool False
+            Eval.succeed <| Expr.Bool False
 
         ( [], "Nothing" ) ->
             variant0 [ "Maybe" ] "Nothing"
@@ -556,10 +495,10 @@ evalVariant moduleName env name =
                 qualifiedNameRef =
                     { moduleName = fixedModuleName, name = name }
             in
-            Types.succeedPartial <| Value.Custom qualifiedNameRef []
+            Eval.succeed <| Expr.Custom qualifiedNameRef []
 
 
-evalNonVariant : ModuleName -> String -> PartialEval
+evalNonVariant : ModuleName -> String -> Eval Expr
 evalNonVariant moduleName name cfg env =
     case moduleName of
         "Elm" :: "Kernel" :: _ ->
@@ -579,7 +518,7 @@ evalNonVariant moduleName name cfg env =
                                 function.arguments
                                 (Just { moduleName = moduleName, name = name })
                                 function.expression
-                                |> Types.succeedPartial
+                                |> Eval.succeed
 
         _ ->
             case ( moduleName, Dict.get name env.values ) of
@@ -587,7 +526,7 @@ evalNonVariant moduleName name cfg env =
                     call maybeName implementation [] cfg localEnv
 
                 ( [], Just value ) ->
-                    Types.succeedPartial value
+                    Eval.succeed value
 
                 _ ->
                     let
@@ -595,10 +534,10 @@ evalNonVariant moduleName name cfg env =
                         fixedModuleName =
                             fixModuleName moduleName env
 
-                        maybeFunction : Maybe Expression.FunctionImplementation
+                        maybeFunction : Maybe FunctionImplementation
                         maybeFunction =
                             let
-                                fromModule : Maybe Expression.FunctionImplementation
+                                fromModule : Maybe FunctionImplementation
                                 fromModule =
                                     Dict.get fixedModuleName env.functions
                                         |> Maybe.andThen (Dict.get name)
@@ -631,7 +570,7 @@ evalNonVariant moduleName name cfg env =
                                     function.arguments
                                     (Just qualifiedNameRef)
                                     function.expression
-                                    |> Types.succeedPartial
+                                    |> Eval.succeed
 
                         Nothing ->
                             Syntax.qualifiedNameToString
@@ -639,34 +578,34 @@ evalNonVariant moduleName name cfg env =
                                 , name = name
                                 }
                                 |> nameError env
-                                |> Types.failPartial
+                                |> Eval.fail
 
 
-evalIfBlock : Node Expression -> Node Expression -> Node Expression -> PartialEval
-evalIfBlock cond true false cfg env =
-    evalExpression cond cfg env
-        |> Types.andThenPartial
+evalIfThenElse : Expr -> Expr -> Expr -> Eval Expr
+evalIfThenElse cond true false cfg env =
+    Expr cond cfg env
+        |> Eval.andThen
             (\condValue ->
                 case condValue of
-                    Value.Bool True ->
-                        PartialExpression true cfg env
+                    Expr.Bool True ->
+                        Expr true cfg env
 
-                    Value.Bool False ->
-                        PartialExpression false cfg env
+                    Expr.Bool False ->
+                        Expr false cfg env
 
                     _ ->
-                        Types.failPartial <| typeError env "ifThenElse condition was not a boolean"
+                        Eval.fail <| typeError env "ifThenElse condition was not a boolean"
             )
 
 
-evalList : List (Node Expression) -> PartialEval
+evalList : List Expr -> Eval Expr
 evalList elements cfg env =
-    Types.combineMap evalExpression elements cfg env
+    Types.combineMap Expr elements cfg env
         |> Types.map List
         |> PartialValue
 
 
-evalRecord : List (Node Expression.RecordSetter) -> PartialEval
+evalRecord : List (Node RecordSetter) -> Eval Expr
 evalRecord fields cfg env =
     let
         ( fieldNames, expressions ) =
@@ -674,13 +613,13 @@ evalRecord fields cfg env =
                 |> List.map (\(Node _ ( Node _ name, expression )) -> ( name, expression ))
                 |> List.unzip
     in
-    Types.combineMap evalExpression expressions cfg env
+    Types.combineMap Expr expressions cfg env
         |> Types.map
             (\tuples ->
                 tuples
                     |> List.map2 Tuple.pair fieldNames
                     |> Dict.fromList
-                    |> Value.Record
+                    |> Expr.Record
             )
         |> PartialValue
 
@@ -703,27 +642,24 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
     in
     if oldArgsLength < patternsLength then
         -- Still not enough
-        Types.succeed <| Value.PartiallyApplied localEnv oldArgs patterns functionName implementation
+        Eval.succeed <| Expr.PartiallyApplied localEnv oldArgs patterns functionName implementation
 
     else
         -- Just right, we special case this for TCO
         let
-            maybeNewEnvValues : Result EvalError (Maybe EnvValues)
+            maybeNewEnvValues : Result EvalError (Dict String Expr)
             maybeNewEnvValues =
-                match localEnv
+                matchInfallible localEnv
                     (fakeNode <| ListPattern patterns)
                     (List oldArgs)
         in
         case maybeNewEnvValues of
             Err e ->
-                Types.fail e
-
-            Ok Nothing ->
-                Types.fail <| typeError localEnv "Could not match lambda patterns"
+                Eval.fail e
 
             Ok (Just newEnvValues) ->
                 case implementation of
-                    Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
+                    Node _ (FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
                         let
                             fullName : String
                             fullName =
@@ -731,12 +667,12 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
                         in
                         case Dict.get moduleName kernelFunctions of
                             Nothing ->
-                                Types.fail <| nameError localEnv fullName
+                                Eval.fail <| nameError localEnv fullName
 
                             Just kernelModule ->
                                 case Dict.get name kernelModule of
                                     Nothing ->
-                                        Types.fail <| nameError localEnv fullName
+                                        Eval.fail <| nameError localEnv fullName
 
                                     Just ( _, f ) ->
                                         f []
@@ -744,7 +680,7 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
                                             (Environment.call moduleName name localEnv)
 
                     _ ->
-                        evalExpression
+                        Expr
                             implementation
                             (case ( functionName, cfg.trace ) of
                                 ( Just { moduleName, name }, True ) ->
@@ -764,16 +700,16 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
                             (localEnv |> Environment.with newEnvValues)
 
 
-evalKernelFunction : ModuleName -> String -> PartialEval
+evalKernelFunction : ModuleName -> String -> Eval Expr
 evalKernelFunction moduleName name cfg env =
     case Dict.get moduleName kernelFunctions of
         Nothing ->
-            Types.failPartial <| nameError env (String.join "." moduleName)
+            Eval.fail <| nameError env (String.join "." moduleName)
 
         Just kernelModule ->
             case Dict.get name kernelModule of
                 Nothing ->
-                    Types.failPartial <| nameError env <| Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
+                    Eval.fail <| nameError env <| Syntax.qualifiedNameToString { moduleName = moduleName, name = name }
 
                 Just ( argCount, f ) ->
                     if argCount == 0 then
@@ -804,29 +740,29 @@ evalKernelFunction moduleName name cfg env =
                             []
                             (List.repeat argCount (fakeNode AllPattern))
                             (Just { moduleName = moduleName, name = name })
-                            (fakeNode <| Expression.FunctionOrValue moduleName name)
-                            |> Types.succeedPartial
+                            (fakeNode <| Expr.FunctionOrValue moduleName name)
+                            |> Eval.succeed
 
 
-evalNegation : Node Expression -> PartialEval
+evalNegation : Expr -> Eval Expr
 evalNegation child cfg env =
-    evalExpression child cfg env
-        |> Types.andThen
+    Expr child cfg env
+        |> Eval.andThen
             (\value ->
                 case value of
-                    Value.Int i ->
-                        Types.succeed <| Value.Int -i
+                    Expr.Int i ->
+                        Eval.succeed <| Expr.Int -i
 
-                    Value.Float f ->
-                        Types.succeed <| Value.Float -f
+                    Expr.Float f ->
+                        Eval.succeed <| Expr.Float -f
 
                     _ ->
-                        Types.fail <| typeError env "Trying to negate a non-number"
+                        Eval.fail <| typeError env "Trying to negate a non-number"
             )
         |> PartialValue
 
 
-evalLetBlock : Expression.LetBlock -> PartialEval
+evalLetBlock : LetBlock -> Eval Expr
 evalLetBlock letBlock cfg env =
     let
         envDefs : Set String
@@ -870,27 +806,27 @@ evalLetBlock letBlock cfg env =
         newEnv =
             case sortedDeclarations of
                 Err TopologicalSort.IllegalCycle ->
-                    Types.fail <| typeError env "illegal cycle in let block"
+                    Eval.fail <| typeError env "illegal cycle in let block"
 
                 Err TopologicalSort.InternalError ->
-                    Types.fail <| typeError env "internal error in let block"
+                    Eval.fail <| typeError env "internal error in let block"
 
                 Ok sd ->
                     -- We can't use combineMap and need to fold
                     -- because we need to change the environment for each call
                     List.foldl
                         (\declaration acc ->
-                            Types.andThen
+                            Eval.andThen
                                 (\e -> addLetDeclaration declaration cfg e)
                                 acc
                         )
-                        (Types.succeed env)
+                        (Eval.succeed env)
                         sd
     in
     newEnv
-        |> Types.andThenPartial
+        |> Eval.andThen
             (\ne ->
-                PartialExpression letBlock.expression
+                Expr letBlock.expression
                     cfg
                     ne
             )
@@ -899,7 +835,7 @@ evalLetBlock letBlock cfg env =
 isLetDeclarationFunction : Node LetDeclaration -> Bool
 isLetDeclarationFunction (Node _ d) =
     case d of
-        Expression.LetFunction { declaration } ->
+        LetFunction { declaration } ->
             List.length (Node.value declaration).arguments > 0
 
         _ ->
@@ -909,28 +845,25 @@ isLetDeclarationFunction (Node _ d) =
 addLetDeclaration : Node LetDeclaration -> Eval Env
 addLetDeclaration ((Node _ letDeclaration) as node) cfg env =
     case letDeclaration of
-        Expression.LetFunction { declaration } ->
+        LetFunction { declaration } ->
             case declaration of
                 Node _ ({ name, expression } as implementation) ->
                     if isLetDeclarationFunction node then
-                        Types.succeed <| Environment.addFunction env.currentModule implementation env
+                        Eval.succeed <| Environment.addFunction env.currentModule implementation env
 
                     else
-                        evalExpression expression cfg env
-                            |> Types.map (\value -> Environment.addValue (Node.value name) value env)
+                        Expr expression cfg env
+                            |> Types.map (\value -> Environment.withValue (Node.value name) value env)
 
-        Expression.LetDestructuring letPattern letExpression ->
-            evalExpression letExpression cfg env
+        LetDestructuring letPattern _ ->
+            Expr Expr cfg env
                 |> Types.onValue
                     (\letValue ->
-                        case match env letPattern letValue of
+                        case matchInfallible env letPattern letValue of
                             Err e ->
                                 Err e
 
-                            Ok Nothing ->
-                                Err <| typeError env "Could not match pattern inside let"
-
-                            Ok (Just patternEnv) ->
+                            Ok patternEnv ->
                                 Ok (Environment.with patternEnv env)
                     )
 
@@ -938,7 +871,7 @@ addLetDeclaration ((Node _ letDeclaration) as node) cfg env =
 declarationFreeVariables : Node LetDeclaration -> Set String
 declarationFreeVariables (Node _ letDeclaration) =
     case letDeclaration of
-        Expression.LetFunction { declaration } ->
+        LetFunction { declaration } ->
             let
                 { name, arguments, expression } =
                     Node.value declaration
@@ -949,74 +882,65 @@ declarationFreeVariables (Node _ letDeclaration) =
                     arguments
                 )
 
-        Expression.LetDestructuring pattern expression ->
+        LetDestructuring pattern expression ->
             Set.diff (freeVariables expression) (patternDefinedVariables pattern)
 
 
-letFreeVariables : Expression.LetBlock -> Set String
+letFreeVariables : LetBlock -> Set String
 letFreeVariables { declarations, expression } =
     Set.diff
         (List.foldl (\d -> Set.union (declarationFreeVariables d)) (freeVariables expression) declarations)
         (List.foldl (\d -> Set.union (declarationDefinedVariables d)) Set.empty declarations)
 
 
-caseFreeVariables : Expression.Case -> Set String
+caseFreeVariables : Case -> Set String
 caseFreeVariables ( pattern, expression ) =
     Set.diff (freeVariables expression) (patternDefinedVariables pattern)
 
 
-freeVariables : Node Expression -> Set String
-freeVariables (Node _ expr) =
+freeVariables : Expr -> Set String
+freeVariables expr =
     case expr of
-        Expression.Application expressions ->
-            List.foldl (\e -> Set.union (freeVariables e)) Set.empty expressions
-
-        Expression.OperatorApplication _ _ l r ->
+        Apply l r ->
             Set.union (freeVariables l) (freeVariables r)
 
-        Expression.FunctionOrValue [] name ->
-            if isVariant name then
-                Set.empty
+        BinOp l _ r ->
+            Set.union (freeVariables l) (freeVariables r)
 
-            else
-                Set.singleton name
+        Custom _ args ->
+            List.foldl (\arg -> Set.union (freeVariables arg)) Set.empty args
 
-        Expression.IfBlock cond true false ->
-            Set.union (freeVariables cond) (Set.union (freeVariables true) (freeVariables false))
+        IfThenElse cond true false ->
+            Set.union (freeVariables cond)
+                (Set.union (freeVariables true) (freeVariables false))
 
-        Expression.Negation child ->
+        Negate child ->
             freeVariables child
 
-        Expression.TupledExpression expressions ->
+        Tuple expressions ->
             List.foldl (\e -> Set.union (freeVariables e)) Set.empty expressions
 
-        Expression.ParenthesizedExpression child ->
-            freeVariables child
-
-        Expression.LetExpression block ->
+        LetExpression block ->
             letFreeVariables block
 
-        Expression.CaseExpression { expression, cases } ->
+        CaseExpression { expression, cases } ->
             List.foldl (\c -> Set.union (caseFreeVariables c)) (freeVariables expression) cases
 
-        Expression.LambdaExpression { expression, args } ->
+        LambdaExpression { expression, args } ->
             Set.diff (freeVariables expression)
                 (List.foldl (\p -> Set.union (patternDefinedVariables p)) Set.empty args)
 
-        Expression.RecordExpr setters ->
+        RecordExpr setters ->
             List.foldl (\(Node _ ( _, e )) -> Set.union (freeVariables e)) Set.empty setters
 
-        Expression.ListExpr expressions ->
+        ListExpr expressions ->
             List.foldl (\e -> Set.union (freeVariables e)) Set.empty expressions
 
-        Expression.RecordAccess record _ ->
+        RecordAccess record _ ->
             freeVariables record
 
-        Expression.RecordUpdateExpression (Node _ s) setters ->
+        RecordUpdateExpression (Node _ s) setters ->
             List.foldl (\(Node _ ( _, e )) -> Set.union (freeVariables e)) (Set.singleton s) setters
-
-        _ ->
-            Set.empty
 
 
 patternDefinedVariables : Node Pattern -> Set String
@@ -1053,34 +977,34 @@ patternDefinedVariables (Node _ pattern) =
 declarationDefinedVariables : Node LetDeclaration -> Set String
 declarationDefinedVariables (Node _ letDeclaration) =
     case letDeclaration of
-        Expression.LetFunction { declaration } ->
+        LetFunction { declaration } ->
             Set.singleton <| Node.value (Node.value declaration).name
 
-        Expression.LetDestructuring letPattern _ ->
+        LetDestructuring letPattern _ ->
             patternDefinedVariables letPattern
 
 
-evalRecordAccess : Node Expression -> Node String -> PartialEval
+evalRecordAccess : Expr -> Node String -> Eval Expr
 evalRecordAccess recordExpr (Node _ field) cfg env =
-    evalExpression recordExpr cfg env
-        |> Types.andThen
+    Expr recordExpr cfg env
+        |> Eval.andThen
             (\value ->
                 case value of
-                    Value.Record fields ->
+                    Expr.Record fields ->
                         case Dict.get field fields of
                             Just fieldValue ->
-                                Types.succeed fieldValue
+                                Eval.succeed fieldValue
 
                             Nothing ->
-                                Types.fail <| typeError env <| "Field " ++ field ++ " not found [record access]"
+                                Eval.fail <| typeError env <| "Field " ++ field ++ " not found [record access]"
 
                     _ ->
-                        Types.fail <| typeError env "Trying to access a field on a non-record value"
+                        Eval.fail <| typeError env "Trying to access a field on a non-record value"
             )
         |> PartialValue
 
 
-evalRecordAccessFunction : String -> Value
+evalRecordAccessFunction : String -> Expr
 evalRecordAccessFunction field =
     PartiallyApplied
         (Environment.empty [])
@@ -1088,49 +1012,49 @@ evalRecordAccessFunction field =
         [ fakeNode (VarPattern "$r") ]
         Nothing
         (fakeNode <|
-            Expression.RecordAccess
-                (fakeNode <| Expression.FunctionOrValue [] "$r")
+            Expr.RecordAccess
+                (fakeNode <| Expr.FunctionOrValue [] "$r")
                 (fakeNode <| String.dropLeft 1 field)
         )
 
 
-evalRecordUpdate : Node String -> List (Node Expression.RecordSetter) -> PartialEval
+evalRecordUpdate : Node String -> List (Node RecordSetter) -> Eval Expr
 evalRecordUpdate (Node _ name) setters cfg env =
-    evalExpression (fakeNode <| Expression.FunctionOrValue [] name) cfg env
-        |> Types.andThen
+    Expr (fakeNode <| Expr.FunctionOrValue [] name) cfg env
+        |> Eval.andThen
             (\value ->
                 case value of
-                    Value.Record _ ->
+                    Expr.Record _ ->
                         let
-                            ( fieldNames, fieldExpressions ) =
+                            ( fieldNames, _ ) =
                                 setters
                                     |> List.map
                                         (\(Node _ ( Node _ fieldName, fieldExpression )) ->
                                             ( fieldName
-                                            , fieldExpression
+                                            , Expr
                                             )
                                         )
                                     |> List.unzip
                         in
-                        Types.combineMap evalExpression fieldExpressions cfg env
+                        Types.combineMap Expr Exprs cfg env
                             |> Types.map
                                 (\fieldValues ->
                                     List.map2 Tuple.pair fieldNames fieldValues
                                         |> Dict.fromList
-                                        |> Value.Record
+                                        |> Expr.Record
                                 )
 
                     _ ->
-                        Types.fail <| typeError env "Trying to update fields on a value which is not a record"
+                        Eval.fail <| typeError env "Trying to update fields on a value which is not a record"
             )
         |> PartialValue
 
 
-evalOperator : String -> PartialEval
+evalOperator : String -> Eval Expr
 evalOperator opName _ env =
     case Dict.get opName Core.operators of
         Nothing ->
-            Types.failPartial <| nameError env opName
+            Eval.fail <| nameError env opName
 
         Just kernelFunction ->
             PartiallyApplied
@@ -1139,13 +1063,13 @@ evalOperator opName _ env =
                 [ fakeNode <| VarPattern "$l", fakeNode <| VarPattern "$r" ]
                 Nothing
                 (fakeNode <|
-                    Expression.Application
-                        [ fakeNode <| Expression.FunctionOrValue kernelFunction.moduleName kernelFunction.name
-                        , fakeNode <| Expression.FunctionOrValue [] "$l"
-                        , fakeNode <| Expression.FunctionOrValue [] "$r"
+                    Expr.Application
+                        [ fakeNode <| Expr.FunctionOrValue kernelFunction.moduleName kernelFunction.name
+                        , fakeNode <| Expr.FunctionOrValue [] "$l"
+                        , fakeNode <| Expr.FunctionOrValue [] "$r"
                         ]
                 )
-                |> Types.succeedPartial
+                |> Eval.succeed
 
 
 isVariant : String -> Bool
@@ -1158,13 +1082,13 @@ isVariant name =
             Unicode.isUpper first
 
 
-evalCase : Expression.CaseBlock -> PartialEval
+evalCase : CaseBlock -> Eval Expr
 evalCase { expression, cases } cfg env =
-    evalExpression expression cfg env
-        |> Types.andThenPartial
+    Expr expression cfg env
+        |> Eval.andThen
             (\exprValue ->
                 let
-                    maybePartial : Result EvalError (Maybe PartialResult)
+                    maybePartial : Result EvalError (Maybe (Eval Expr))
                     maybePartial =
                         cases
                             |> Result.MyExtra.combineFoldl
@@ -1182,7 +1106,7 @@ evalCase { expression, cases } cfg env =
                                                     Ok Nothing
 
                                                 Ok (Just additionalEnv) ->
-                                                    PartialExpression result2
+                                                    Expr result2
                                                         cfg
                                                         (Environment.with additionalEnv env)
                                                         |> Just
@@ -1192,220 +1116,11 @@ evalCase { expression, cases } cfg env =
                 in
                 case maybePartial of
                     Ok Nothing ->
-                        Types.failPartial <| typeError env <| "Missing case branch for " ++ Value.toString exprValue
+                        Eval.fail <| typeError env <| "Missing case branch for " ++ Expr.toString exprValue
 
                     Ok (Just res) ->
                         res
 
                     Err e ->
-                        Types.failPartial e
+                        Eval.fail e
             )
-
-
-match : Env -> Node Pattern -> Value -> Result EvalError (Maybe EnvValues)
-match env (Node _ pattern) value =
-    let
-        ok : a -> Result error (Maybe a)
-        ok val =
-            Ok (Just val)
-
-        noMatch : Result error (Maybe a)
-        noMatch =
-            Ok Nothing
-
-        andThen : (a -> Result error (Maybe a)) -> Result error (Maybe a) -> Result error (Maybe a)
-        andThen f v =
-            case v of
-                Err _ ->
-                    v
-
-                Ok Nothing ->
-                    v
-
-                Ok (Just w) ->
-                    f w
-    in
-    case ( pattern, value ) of
-        ( UnitPattern, Value.Unit ) ->
-            ok Dict.empty
-
-        ( UnitPattern, _ ) ->
-            noMatch
-
-        ( AllPattern, _ ) ->
-            ok Dict.empty
-
-        ( ParenthesizedPattern subPattern, _ ) ->
-            match env subPattern value
-
-        ( NamedPattern namePattern argsPatterns, Value.Custom variant args ) ->
-            -- Two names from different modules can never have the same type
-            -- so if we assume the code typechecks we can skip the module name check
-            if namePattern.name == variant.name then
-                let
-                    matchNamedPatternHelper :
-                        EnvValues
-                        -> ( List (Node Pattern), List Value )
-                        -> Result EvalError (Maybe EnvValues)
-                    matchNamedPatternHelper envValues queue =
-                        case queue of
-                            ( [], [] ) ->
-                                ok envValues
-
-                            ( patternHead :: patternTail, argHead :: argTail ) ->
-                                match env patternHead argHead
-                                    |> andThen
-                                        (\newEnvValues ->
-                                            matchNamedPatternHelper (Dict.union newEnvValues envValues) ( patternTail, argTail )
-                                        )
-
-                            _ ->
-                                Err <| typeError env "Mismatched number of arguments to variant"
-                in
-                matchNamedPatternHelper Dict.empty ( argsPatterns, args )
-
-            else
-                noMatch
-
-        ( NamedPattern _ _, _ ) ->
-            noMatch
-
-        ( ListPattern [], List [] ) ->
-            -- We assume the code typechecks!
-            ok Dict.empty
-
-        ( ListPattern (patternHead :: patternTail), List (listHead :: listTail) ) ->
-            match env patternHead listHead
-                |> andThen
-                    (\headEnv ->
-                        match env (fakeNode <| ListPattern patternTail) (List listTail)
-                            |> andThen
-                                (\tailEnv ->
-                                    ok
-                                        (Dict.union tailEnv headEnv)
-                                )
-                    )
-
-        ( UnConsPattern patternHead patternTail, Value.List (listHead :: listTail) ) ->
-            match env patternHead listHead
-                |> andThen
-                    (\headEnv ->
-                        match env patternTail (List listTail)
-                            |> andThen
-                                (\tailEnv ->
-                                    ok
-                                        (Dict.union tailEnv headEnv)
-                                )
-                    )
-
-        ( UnConsPattern _ _, _ ) ->
-            noMatch
-
-        ( VarPattern name, _ ) ->
-            ok <| Dict.insert name value Dict.empty
-
-        ( ListPattern _, _ ) ->
-            noMatch
-
-        ( CharPattern c, Value.Char d ) ->
-            if c == d then
-                ok Dict.empty
-
-            else
-                noMatch
-
-        ( CharPattern _, _ ) ->
-            noMatch
-
-        ( StringPattern c, Value.String d ) ->
-            if c == d then
-                ok Dict.empty
-
-            else
-                noMatch
-
-        ( StringPattern _, _ ) ->
-            noMatch
-
-        ( IntPattern c, Value.Int d ) ->
-            if c == d then
-                ok Dict.empty
-
-            else
-                noMatch
-
-        ( IntPattern _, _ ) ->
-            noMatch
-
-        ( HexPattern c, Value.Int d ) ->
-            if c == d then
-                ok Dict.empty
-
-            else
-                noMatch
-
-        ( HexPattern _, _ ) ->
-            noMatch
-
-        ( FloatPattern c, Value.Float d ) ->
-            if c == d then
-                ok Dict.empty
-
-            else
-                noMatch
-
-        ( FloatPattern _, _ ) ->
-            noMatch
-
-        ( TuplePattern [ lpattern, rpattern ], Value.Tuple lvalue rvalue ) ->
-            match env lpattern lvalue
-                |> andThen
-                    (\lenv ->
-                        match env rpattern rvalue
-                            |> andThen
-                                (\renv ->
-                                    ok <| Dict.union renv lenv
-                                )
-                    )
-
-        ( TuplePattern [ lpattern, mpattern, rpattern ], Value.Triple lvalue mvalue rvalue ) ->
-            match env lpattern lvalue
-                |> andThen
-                    (\lenv ->
-                        match env mpattern mvalue
-                            |> andThen
-                                (\menv ->
-                                    match env rpattern rvalue
-                                        |> andThen
-                                            (\renv ->
-                                                ok <| Dict.union renv <| Dict.union menv lenv
-                                            )
-                                )
-                    )
-
-        ( TuplePattern _, _ ) ->
-            noMatch
-
-        ( AsPattern childPattern (Node _ asName), _ ) ->
-            match env childPattern value
-                |> andThen
-                    (\e -> ok <| Dict.insert asName value e)
-
-        ( RecordPattern fields, Value.Record fieldValues ) ->
-            List.foldl
-                (\(Node _ fieldName) ->
-                    andThen
-                        (\acc ->
-                            case Dict.get fieldName fieldValues of
-                                Nothing ->
-                                    Err <| typeError env <| "Field " ++ fieldName ++ " not found in record"
-
-                                Just fieldValue ->
-                                    ok <| Dict.insert fieldName fieldValue acc
-                        )
-                )
-                (ok Dict.empty)
-                fields
-
-        ( RecordPattern _, _ ) ->
-            noMatch

@@ -1,11 +1,12 @@
 module TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, result, slowTest, tuple, withInt)
 
 import Eval
-import Eval.Types exposing (Error(..))
+import Eval.Module
 import Expect
+import Expr
 import Syntax
 import Test exposing (Test, test)
-import Value exposing (Value(..))
+import Types exposing (Error(..), Value(..))
 
 
 evalTest_ : String -> (a -> Value) -> a -> Test
@@ -27,9 +28,9 @@ evalExpect expression toValue a =
         res =
             toValue a
     in
-    case ( Eval.eval expression, res ) of
-        ( Ok (Int i), Float _ ) ->
-            (Float <| toFloat i)
+    case ( Eval.Module.eval (Eval.toModule expression) (Expr.val "main"), res ) of
+        ( Ok (VInt i), VFloat _ ) ->
+            (VFloat <| toFloat i)
                 |> Expect.equal res
 
         ( Err (EvalError e), _ ) ->

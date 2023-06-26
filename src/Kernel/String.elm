@@ -1,37 +1,38 @@
 module Kernel.String exposing (filter, foldl, foldr, fromNumber)
 
-import Eval.Types as Types exposing (Eval)
-import Value exposing (Value(..), typeError)
+import Eval exposing (typeError)
+import Expr
+import Types exposing (Eval, Expr(..))
 
 
-fromNumber : Value -> Eval String
+fromNumber : Expr -> Eval String
 fromNumber s _ env =
     case s of
         Int i ->
-            Types.succeed <| String.fromInt i
+            Eval.succeed <| String.fromInt i
 
         Float f ->
-            Types.succeed <| String.fromFloat f
+            Eval.succeed <| String.fromFloat f
 
         _ ->
-            Types.fail <| typeError env <| "Cannot convert " ++ Value.toString s ++ " to a string"
+            Eval.fail <| typeError env <| "Cannot convert " ++ Expr.toString s ++ " to a string"
 
 
-foldr : (Char -> Eval (Value -> Eval Value)) -> Value -> String -> Eval Value
+foldr : (Char -> Eval (Expr -> Eval Expr)) -> Expr -> String -> Eval Expr
 foldr f i xs =
-    Types.foldr
+    Eval.foldr
         (\el acc c e ->
-            Types.andThen (\fe -> fe acc c e) (f el c e)
+            Eval.andThen (\fe -> fe acc c e) (f el c e)
         )
         i
         (String.toList xs)
 
 
-foldl : (Char -> Eval (Value -> Eval Value)) -> Value -> String -> Eval Value
+foldl : (Char -> Eval (Expr -> Eval Expr)) -> Expr -> String -> Eval Expr
 foldl f i xs =
-    Types.foldl
+    Eval.foldl
         (\el acc c e ->
-            Types.andThen (\fe -> fe acc c e) (f el c e)
+            Eval.andThen (\fe -> fe acc c e) (f el c e)
         )
         i
         (String.toList xs)
@@ -39,9 +40,9 @@ foldl f i xs =
 
 filter : (Char -> Eval Bool) -> String -> Eval String
 filter f s cfg env =
-    Types.foldr
+    Eval.foldr
         (\char acc c e ->
-            Types.map
+            Eval.map
                 (\fc ->
                     if fc then
                         char :: acc
@@ -55,4 +56,4 @@ filter f s cfg env =
         (String.toList s)
         cfg
         env
-        |> Types.map String.fromList
+        |> Eval.map String.fromList

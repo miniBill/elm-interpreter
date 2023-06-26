@@ -10,22 +10,18 @@ import Elm.Processing
 import Elm.Syntax.Declaration as Declaration
 import Elm.Syntax.Expression as Expression
 import Elm.Syntax.File as File
-import Elm.Syntax.Infix as Infix
 import Elm.Syntax.Module as Module
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
-import Elm.Syntax.Range as Range
 import Gen.CodeGen.Generate as Generate exposing (Directory(..))
-import Gen.Elm.Syntax.Expression
-import Gen.Elm.Syntax.Infix
-import Gen.Elm.Syntax.ModuleName
-import Gen.Elm.Syntax.Node
-import Gen.Elm.Syntax.Pattern
-import Gen.Elm.Syntax.Range
+import Gen.Debug
+import Gen.Elm.CodeGen
+import Gen.Expr
 import Gen.FastDict
 import Gen.List
 import Gen.Maybe
+import Gen.Types
 import Json.Decode exposing (Value)
 import List.Extra
 import Result.Extra
@@ -95,10 +91,10 @@ toFiles modulesSource =
                         |> Gen.FastDict.fromList
                         |> Elm.withType
                             (Gen.FastDict.annotation_.dict
-                                Gen.Elm.Syntax.ModuleName.annotation_.moduleName
+                                (Type.list Type.string)
                                 (Gen.FastDict.annotation_.dict
                                     Type.string
-                                    Gen.Elm.Syntax.Expression.annotation_.functionImplementation
+                                    Gen.Types.annotation_.expr
                                 )
                             )
                         |> Elm.declaration "functions"
@@ -122,7 +118,7 @@ toFiles modulesSource =
                         |> Elm.withType
                             (Gen.FastDict.annotation_.dict
                                 Type.string
-                                Gen.Elm.Syntax.Pattern.annotation_.qualifiedNameRef
+                                Gen.Types.annotation_.qualifiedNameRef
                             )
                         |> Elm.declaration "operators"
                         |> Elm.expose
@@ -197,7 +193,7 @@ normalModuleToFile (Node _ moduleName) file =
         namesAndDeclarations : List ( String, Elm.Declaration )
         namesAndDeclarations =
             file.declarations
-                |> List.filterMap (declarationToGen moduleName)
+                |> List.filterMap declarationToGen
 
         names : List String
         names =
@@ -218,8 +214,7 @@ normalModuleToFile (Node _ moduleName) file =
                                 { importFrom = []
                                 , name = name
                                 , annotation =
-                                    Just
-                                        Gen.Elm.Syntax.Expression.annotation_.functionImplementation
+                                    Just Gen.Types.annotation_.expr
                                 }
                             )
                     )
@@ -240,6 +235,7 @@ normalModuleToFile (Node _ moduleName) file =
                             case List.reverse <| List.map Elm.string <| String.split "." functionName of
                                 name :: reverseModule ->
                                     let
+                                        fixedModule : List Elm.Expression
                                         fixedModule =
                                             if List.isEmpty reverseModule then
                                                 List.map Elm.string moduleName
@@ -250,7 +246,7 @@ normalModuleToFile (Node _ moduleName) file =
                                     Just
                                         (Elm.tuple
                                             (Elm.string <| Node.value operator)
-                                            (Gen.Elm.Syntax.Pattern.make_.qualifiedNameRef
+                                            (Gen.Types.make_.qualifiedNameRef
                                                 { moduleName = Elm.list fixedModule
                                                 , name = name
                                                 }
@@ -287,8 +283,8 @@ normalModuleToFile (Node _ moduleName) file =
     }
 
 
-declarationToGen : ModuleName -> Node Declaration.Declaration -> Maybe ( String, Elm.Declaration )
-declarationToGen moduleName (Node _ declaration) =
+declarationToGen : Node Declaration.Declaration -> Maybe ( String, Elm.Declaration )
+declarationToGen (Node _ declaration) =
     case declaration of
         Declaration.FunctionDeclaration function ->
             let
@@ -302,13 +298,11 @@ declarationToGen moduleName (Node _ declaration) =
             in
             Just
                 ( name
-                , functionImplementationToGen
-                    { implementation
-                        | name =
-                            Node
-                                (Node.range implementation.name)
-                                (String.join "." (moduleName ++ [ name ]))
+                , lambdaToGen
+                    { args = implementation.arguments
+                    , expression = implementation.expression
                     }
+                    |> Elm.withType Gen.Types.annotation_.expr
                     |> Elm.declaration name
                     |> Elm.expose
                 )
@@ -317,244 +311,300 @@ declarationToGen moduleName (Node _ declaration) =
             Nothing
 
 
-functionImplementationToGen : Expression.FunctionImplementation -> Elm.Expression
-functionImplementationToGen { name, arguments, expression } =
-    Gen.Elm.Syntax.Expression.make_.functionImplementation
-        { name = renode Elm.string name
-        , arguments = arguments |> List.map (\pattern -> renode patternToGen pattern) |> Elm.list
-        , expression = renode expressionToGen expression
-        }
+lambdaToGen :
+    { args : List (Node Pattern.Pattern)
+    , expression : Node Expression.Expression
+    }
+    -> Elm.Expression
+lambdaToGen { args, expression } =
+    case args of
+        [] ->
+            expressionToGen expression
+
+        head :: tail ->
+            Gen.Expr.lambda
+                (patternToGen head)
+                (lambdaToGen { args = tail, expression = expression })
 
 
-patternToGen : Pattern.Pattern -> Elm.Expression
-patternToGen pattern =
+patternToGen : Node Pattern.Pattern -> Elm.Expression
+patternToGen (Node _ pattern) =
     case pattern of
         Pattern.AllPattern ->
-            Gen.Elm.Syntax.Pattern.make_.allPattern
+            Gen.Types.make_.allPattern
 
         Pattern.UnitPattern ->
-            Gen.Elm.Syntax.Pattern.make_.unitPattern
+            Gen.Types.make_.unitPattern
 
         Pattern.CharPattern c ->
-            Gen.Elm.Syntax.Pattern.make_.charPattern (Elm.char c)
+            Gen.Types.make_.charPattern (Elm.char c)
 
         Pattern.StringPattern s ->
-            Gen.Elm.Syntax.Pattern.make_.stringPattern (Elm.string s)
+            Gen.Types.make_.stringPattern (Elm.string s)
 
         Pattern.IntPattern i ->
-            Gen.Elm.Syntax.Pattern.make_.intPattern (Elm.int i)
+            Gen.Types.make_.intPattern (Elm.int i)
 
         Pattern.HexPattern x ->
-            Gen.Elm.Syntax.Pattern.make_.hexPattern (Elm.hex x)
+            Gen.Types.make_.hexPattern (Elm.hex x)
 
         Pattern.FloatPattern f ->
-            Gen.Elm.Syntax.Pattern.make_.floatPattern (Elm.float f)
+            Gen.Types.make_.floatPattern (Elm.float f)
 
         Pattern.TuplePattern children ->
-            Gen.Elm.Syntax.Pattern.make_.tuplePattern (renodeList patternToGen children)
+            Gen.Types.make_.tuplePattern (Elm.list <| List.map patternToGen children)
 
         Pattern.RecordPattern fields ->
-            Gen.Elm.Syntax.Pattern.make_.recordPattern (renodeList Elm.string fields)
+            fields
+                |> List.map (\(Node _ field) -> Elm.string field)
+                |> Elm.list
+                |> Gen.Types.make_.recordPattern
 
         Pattern.VarPattern name ->
-            Gen.Elm.Syntax.Pattern.make_.varPattern (Elm.string name)
+            Gen.Types.make_.varPattern (Elm.string name)
 
         Pattern.ParenthesizedPattern child ->
-            Gen.Elm.Syntax.Pattern.make_.parenthesizedPattern (renode patternToGen child)
+            Gen.Types.make_.parenthesizedPattern (patternToGen child)
 
-        Pattern.AsPattern child name ->
-            Gen.Elm.Syntax.Pattern.make_.asPattern (renode patternToGen child) (renode Elm.string name)
+        Pattern.AsPattern child (Node _ name) ->
+            Gen.Types.make_.asPattern
+                (patternToGen child)
+                (Elm.string name)
 
         Pattern.UnConsPattern head tail ->
-            Gen.Elm.Syntax.Pattern.make_.unConsPattern (renode patternToGen head) (renode patternToGen tail)
+            Gen.Types.make_.unConsPattern (patternToGen head) (patternToGen tail)
 
         Pattern.ListPattern children ->
-            Gen.Elm.Syntax.Pattern.make_.listPattern (renodeList patternToGen children)
+            Gen.Types.make_.listPattern (Elm.list <| List.map patternToGen children)
 
         Pattern.NamedPattern qualifiedNameRef children ->
-            Gen.Elm.Syntax.Pattern.make_.namedPattern (qualifiedNameRefToGen qualifiedNameRef) (renodeList patternToGen children)
+            Gen.Types.make_.namedPattern (qualifiedNameRefToGen qualifiedNameRef) (Elm.list <| List.map patternToGen children)
 
 
 qualifiedNameRefToGen : Pattern.QualifiedNameRef -> Elm.Expression
 qualifiedNameRefToGen { name, moduleName } =
-    Gen.Elm.Syntax.Pattern.make_.qualifiedNameRef
+    Gen.Types.make_.qualifiedNameRef
         { name = Elm.string name
         , moduleName = Elm.list (List.map Elm.string moduleName)
         }
 
 
-renode : (a -> Elm.Expression) -> Node a -> Elm.Expression
-renode toGen (Node range value) =
-    Gen.Elm.Syntax.Node.make_.node (rangeToGen range) (toGen value)
-
-
-rangeToGen : Range.Range -> Elm.Expression
-rangeToGen range =
-    Gen.Elm.Syntax.Range.make_.range
-        { start = locationToGen range.start
-        , end = locationToGen range.end
-        }
-
-
-locationToGen : Range.Location -> Elm.Expression
-locationToGen location =
-    Gen.Elm.Syntax.Range.make_.location
-        { row = Elm.int location.row
-        , column = Elm.int location.column
-        }
-
-
-renodeList : (a -> Elm.Expression) -> List (Node a) -> Elm.Expression
-renodeList f list =
-    Elm.list (List.map (renode f) list)
-
-
-expressionToGen : Expression.Expression -> Elm.Expression
-expressionToGen expression =
+expressionToGen : Node Expression.Expression -> Elm.Expression
+expressionToGen (Node _ expression) =
     case expression of
         Expression.UnitExpr ->
-            Gen.Elm.Syntax.Expression.make_.unitExpr
+            Gen.Types.make_.unit
 
-        Expression.Application children ->
-            Gen.Elm.Syntax.Expression.make_.application (renodeList expressionToGen children)
+        Expression.Application [] ->
+            Gen.Types.make_.unit
 
-        Expression.OperatorApplication opName infix_ l r ->
-            Gen.Elm.Syntax.Expression.make_.operatorApplication
-                (Elm.string opName)
-                (infixToGen infix_)
-                (renode expressionToGen l)
-                (renode expressionToGen r)
+        Expression.Application (head :: tail) ->
+            List.foldl Gen.Types.make_.apply
+                (expressionToGen head)
+                (List.map expressionToGen tail)
+
+        Expression.OperatorApplication opName _ l r ->
+            Gen.Types.make_.binOp
+                (expressionToGen l)
+                (opNameToGen opName)
+                (expressionToGen r)
 
         Expression.FunctionOrValue moduleName name ->
-            Gen.Elm.Syntax.Expression.make_.functionOrValue (Elm.list <| List.map Elm.string moduleName) (Elm.string name)
+            qualifiedNameRefToGen
+                { moduleName = moduleName
+                , name = name
+                }
+                |> Gen.Types.make_.variable
 
         Expression.IfBlock cond true false ->
-            Gen.Elm.Syntax.Expression.make_.ifBlock
-                (renode expressionToGen cond)
-                (renode expressionToGen true)
-                (renode expressionToGen false)
+            Gen.Types.make_.ifThenElse
+                (expressionToGen cond)
+                (expressionToGen true)
+                (expressionToGen false)
 
         Expression.PrefixOperator opName ->
-            Gen.Elm.Syntax.Expression.make_.prefixOperator (Elm.string opName)
+            operatorToGen opName
 
         Expression.Operator opName ->
-            Gen.Elm.Syntax.Expression.make_.operator (Elm.string opName)
+            operatorToGen opName
 
         Expression.Integer i ->
-            Gen.Elm.Syntax.Expression.make_.integer (Elm.int i)
+            Gen.Types.make_.int (Elm.int i)
 
         Expression.Hex x ->
-            Gen.Elm.Syntax.Expression.make_.hex (Elm.hex x)
+            Gen.Types.make_.int (Elm.hex x)
 
         Expression.Floatable f ->
-            Gen.Elm.Syntax.Expression.make_.floatable (Elm.float f)
+            Gen.Types.make_.float (Elm.float f)
 
         Expression.Negation child ->
-            Gen.Elm.Syntax.Expression.make_.negation (renode expressionToGen child)
+            Gen.Types.make_.negation (expressionToGen child)
 
         Expression.Literal s ->
-            Gen.Elm.Syntax.Expression.make_.literal (Elm.string s)
+            Gen.Types.make_.string (Elm.string s)
 
         Expression.CharLiteral c ->
-            Gen.Elm.Syntax.Expression.make_.charLiteral (Elm.char c)
+            Gen.Types.make_.char (Elm.char c)
 
         Expression.TupledExpression children ->
-            Gen.Elm.Syntax.Expression.make_.tupledExpression (renodeList expressionToGen children)
+            Gen.Expr.tuple (List.map expressionToGen children)
 
         Expression.ParenthesizedExpression child ->
-            Gen.Elm.Syntax.Expression.make_.parenthesizedExpression (renode expressionToGen child)
+            expressionToGen child
 
         Expression.LetExpression letBlock ->
-            Gen.Elm.Syntax.Expression.make_.letExpression (letBlockToGen letBlock)
+            letBlockToGen letBlock
 
         Expression.CaseExpression caseBlock ->
-            Gen.Elm.Syntax.Expression.make_.caseExpression (caseBlockToGen caseBlock)
+            Gen.Expr.case_
+                (expressionToGen caseBlock.expression)
+                (List.map caseBranchToGen caseBlock.cases)
 
         Expression.LambdaExpression lambda ->
-            Gen.Elm.Syntax.Expression.make_.lambdaExpression (lambdaToGen lambda)
+            lambdaToGen lambda
 
         Expression.RecordExpr setters ->
-            Gen.Elm.Syntax.Expression.make_.recordExpr (renodeList recordSetterToGen setters)
+            Gen.Expr.record (List.map recordSetterToGen setters)
 
         Expression.ListExpr children ->
-            Gen.Elm.Syntax.Expression.make_.listExpr (renodeList expressionToGen children)
+            Gen.Expr.list (List.map expressionToGen children)
 
-        Expression.RecordAccess child field ->
-            Gen.Elm.Syntax.Expression.make_.recordAccess (renode expressionToGen child) (renode Elm.string field)
+        Expression.RecordAccess child (Node _ field) ->
+            Gen.Types.make_.recordAccess (expressionToGen child) (Elm.string field)
 
         Expression.RecordAccessFunction name ->
-            Gen.Elm.Syntax.Expression.make_.recordAccessFunction (Elm.string name)
+            Gen.Types.make_.recordAccessFunction (Elm.string name)
 
-        Expression.RecordUpdateExpression name setters ->
-            Gen.Elm.Syntax.Expression.make_.recordUpdateExpression (renode Elm.string name) (renodeList recordSetterToGen setters)
+        Expression.RecordUpdateExpression (Node _ name) setters ->
+            Gen.Expr.recordUpdate name (List.map recordSetterToGen setters)
 
         Expression.GLSLExpression s ->
-            Gen.Elm.Syntax.Expression.make_.gLSLExpression (Elm.string s)
+            Gen.Types.make_.gLSLExpression (Elm.string s)
 
 
-caseBlockToGen : Expression.CaseBlock -> Elm.Expression
-caseBlockToGen { expression, cases } =
-    Gen.Elm.Syntax.Expression.make_.caseBlock
-        { expression = renode expressionToGen expression
-        , cases = Elm.list <| List.map caseToGen cases
-        }
+operatorToGen : String -> Elm.Expression
+operatorToGen opName =
+    Gen.Expr.lambda
+        (Gen.Types.make_.varPattern <| Elm.string "$l")
+        (Gen.Expr.lambda
+            (Gen.Types.make_.varPattern <| Elm.string "$r")
+            (Gen.Types.make_.binOp
+                (Gen.Expr.val "$l")
+                (opNameToGen opName)
+                (Gen.Expr.val "$r")
+            )
+        )
 
 
-caseToGen : Expression.Case -> Elm.Expression
-caseToGen ( pattern, expression ) =
+opNameToGen : String -> Elm.Expression
+opNameToGen opName =
+    case opName of
+        "+" ->
+            Gen.Elm.CodeGen.plus
+
+        ">>" ->
+            Gen.Elm.CodeGen.composer
+
+        "<<" ->
+            Gen.Elm.CodeGen.composel
+
+        "^" ->
+            Gen.Elm.CodeGen.power
+
+        "*" ->
+            Gen.Elm.CodeGen.mult
+
+        "/" ->
+            Gen.Elm.CodeGen.div
+
+        "//" ->
+            Gen.Elm.CodeGen.intDiv
+
+        "%" ->
+            Gen.Elm.CodeGen.modulo
+
+        "+" ->
+            Gen.Elm.CodeGen.plus
+
+        "-" ->
+            Gen.Elm.CodeGen.minus
+
+        "++" ->
+            Gen.Elm.CodeGen.append
+
+        "::" ->
+            Gen.Elm.CodeGen.cons
+
+        "==" ->
+            Gen.Elm.CodeGen.equals
+
+        "/=" ->
+            Gen.Elm.CodeGen.notEqual
+
+        "<" ->
+            Gen.Elm.CodeGen.lt
+
+        ">" ->
+            Gen.Elm.CodeGen.gt
+
+        "<=" ->
+            Gen.Elm.CodeGen.lte
+
+        ">=" ->
+            Gen.Elm.CodeGen.gte
+
+        "&&" ->
+            Gen.Elm.CodeGen.and
+
+        "||" ->
+            Gen.Elm.CodeGen.or
+
+        "|>" ->
+            Gen.Elm.CodeGen.piper
+
+        "<|" ->
+            Gen.Elm.CodeGen.pipel
+
+        _ ->
+            Gen.Debug.todo "TODO"
+
+
+caseBranchToGen : Expression.Case -> Elm.Expression
+caseBranchToGen ( pattern, expression ) =
     Elm.tuple
-        (renode patternToGen pattern)
-        (renode expressionToGen expression)
-
-
-lambdaToGen : Expression.Lambda -> Elm.Expression
-lambdaToGen { args, expression } =
-    Gen.Elm.Syntax.Expression.make_.lambda
-        { args = renodeList patternToGen args
-        , expression = renode expressionToGen expression
-        }
+        (patternToGen pattern)
+        (expressionToGen expression)
 
 
 letBlockToGen : Expression.LetBlock -> Elm.Expression
 letBlockToGen { declarations, expression } =
-    Gen.Elm.Syntax.Expression.make_.letBlock
-        { declarations = renodeList letDeclarationToGen declarations
-        , expression = renode expressionToGen expression
-        }
+    Gen.Expr.letIn
+        (List.map letDeclarationToGen declarations)
+        (expressionToGen expression)
 
 
-letDeclarationToGen : Expression.LetDeclaration -> Elm.Expression
-letDeclarationToGen declaration =
+letDeclarationToGen : Node Expression.LetDeclaration -> Elm.Expression
+letDeclarationToGen (Node _ declaration) =
     case declaration of
         Expression.LetFunction function ->
-            Gen.Elm.Syntax.Expression.make_.letFunction (functionToGen function)
+            let
+                (Node _ implementation) =
+                    function.declaration
+            in
+            Elm.tuple
+                (Gen.Types.make_.varPattern <| Elm.string <| Node.value implementation.name)
+                (lambdaToGen
+                    { args = implementation.arguments
+                    , expression = implementation.expression
+                    }
+                )
 
         Expression.LetDestructuring pattern expression ->
-            Gen.Elm.Syntax.Expression.make_.letDestructuring (renode patternToGen pattern) (renode expressionToGen expression)
+            Elm.tuple
+                (patternToGen pattern)
+                (expressionToGen expression)
 
 
-functionToGen : Expression.Function -> Elm.Expression
-functionToGen { declaration } =
-    Gen.Elm.Syntax.Expression.make_.function
-        { documentation = Gen.Maybe.make_.nothing
-        , signature = Gen.Maybe.make_.nothing
-        , declaration = renode functionImplementationToGen declaration
-        }
-
-
-recordSetterToGen : Expression.RecordSetter -> Elm.Expression
-recordSetterToGen ( name, value ) =
-    Elm.tuple (renode Elm.string name) (renode expressionToGen value)
-
-
-infixToGen : Infix.InfixDirection -> Elm.Expression
-infixToGen direction =
-    case direction of
-        Infix.Left ->
-            Gen.Elm.Syntax.Infix.make_.left
-
-        Infix.Right ->
-            Gen.Elm.Syntax.Infix.make_.right
-
-        Infix.Non ->
-            Gen.Elm.Syntax.Infix.make_.non
+recordSetterToGen : Node Expression.RecordSetter -> Elm.Expression
+recordSetterToGen (Node _ ( name, value )) =
+    Elm.tuple (Elm.string <| Node.value name) (expressionToGen value)

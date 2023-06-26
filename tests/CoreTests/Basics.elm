@@ -2,10 +2,10 @@ module CoreTests.Basics exposing (suite)
 
 import Array
 import Dict
+import Types exposing (Value(..))
 import Set
 import Test exposing (Test, describe)
 import TestUtils exposing (evalTest, evalTest_, list)
-import Value exposing (Value(..))
 
 
 suite : Test
@@ -28,10 +28,10 @@ suite =
                 , evalTest_ "5 <= 6" Bool <| 5 <= 6
                 , evalTest_ "6 <= 5" Bool <| 6 <= 5
                 , evalTest_ "6 <= 6" Bool <| 6 <= 6
-                , evalTest_ "compare \"A\" \"B\"" identity <| Value.fromOrder (compare "A" "B")
-                , evalTest_ "compare 'f' 'f'" identity <| Value.fromOrder (compare 'f' 'f')
-                , evalTest_ "compare (1, 2, 3) (0, 1, 2)" identity <| Value.fromOrder (compare ( 1, 2, 3 ) ( 0, 1, 2 ))
-                , evalTest_ "compare ['a'] ['b']" identity <| Value.fromOrder (compare [ 'a' ] [ 'b' ])
+                , evalTest_ "compare \"A\" \"B\"" identity <| Types.fromOrder (compare "A" "B")
+                , evalTest_ "compare 'f' 'f'" identity <| Types.fromOrder (compare 'f' 'f')
+                , evalTest_ "compare (1, 2, 3) (0, 1, 2)" identity <| Types.fromOrder (compare ( 1, 2, 3 ) ( 0, 1, 2 ))
+                , evalTest_ "compare ['a'] ['b']" identity <| Types.fromOrder (compare [ 'a' ] [ 'b' ])
                 , evalTest "array equality" "Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1" Bool <| Array.fromList [ 1, 1, 1, 1 ] == Array.repeat 4 1
                 , evalTest "set equality" "Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]" Bool <| Set.fromList [ 1, 2 ] == Set.fromList [ 2, 1 ]
                 , evalTest "dict equality" "Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]" Bool <| Dict.fromList [ ( 1, 1 ), ( 2, 2 ) ] == Dict.fromList [ ( 2, 2 ), ( 1, 1 ) ]

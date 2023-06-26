@@ -1,50 +1,60 @@
 module Kernel.Utils exposing (append, compare, comparison)
 
 import Array
-import Elm.Syntax.ModuleName exposing (ModuleName)
-import Eval.Types as Types exposing (Eval)
+import Eval exposing (typeError)
+import Expr
 import FastDict as Dict exposing (Dict)
-import Value exposing (EvalError, Value(..), typeError)
+import Types exposing (Env, Eval, EvalErrorData, Expr(..))
 
 
-append : Value -> Value -> Eval Value
+append : Expr -> Expr -> Eval Expr
 append l r _ env =
     case ( l, r ) of
         ( String ls, String rs ) ->
-            Types.succeed <| String (ls ++ rs)
+            Eval.succeed <| String (ls ++ rs)
 
         ( List ll, List rl ) ->
-            Types.succeed <| List (ll ++ rl)
+            Eval.succeed <| List (ll ++ rl)
 
         _ ->
-            Types.fail <| typeError env <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
+            Eval.fail <| typeError env <| "Cannot append " ++ Expr.toString l ++ " and " ++ Expr.toString r
 
 
-compare : Value -> Value -> Eval Order
+compare : Expr -> Expr -> Eval Order
 compare l r _ env =
-    Types.fromResult (innerCompare l r env)
+    Eval.fromResult (innerCompare l r env)
 
 
-innerCompare : Value -> Value -> Value.Env -> Result EvalError Order
+innerCompare : Expr -> Expr -> Env -> Result EvalErrorData Order
 innerCompare l r env =
     let
-        inner : comparable -> comparable -> Result EvalError Order
+        inner : comparable -> comparable -> Result EvalErrorData Order
         inner lv rv =
             Ok <| Basics.compare lv rv
 
-        uncomparable : () -> Result EvalError value
+        uncomparable : () -> Result EvalErrorData value
         uncomparable () =
             Err <|
                 typeError env
                     ("Cannot compare "
-                        ++ Value.toString l
+                        ++ Expr.toString l
                         ++ " and "
-                        ++ Value.toString r
+                        ++ Expr.toString r
                         ++ " because they have different types"
+                    )
+
+        unreduced : () -> Result EvalErrorData value
+        unreduced () =
+            Err <|
+                typeError env
+                    ("Cannot compare "
+                        ++ Expr.toString l
+                        ++ " and "
+                        ++ Expr.toString r
+                        ++ " because they are not values"
                     )
     in
     case ( l, r ) of
-        -- TODO: Implement all cases
         ( Int lv, Int rv ) ->
             inner lv rv
 
@@ -75,7 +85,7 @@ innerCompare l r env =
         ( Char _, _ ) ->
             uncomparable ()
 
-        ( Tuple la lb, Tuple ra rb ) ->
+        ( Tuple [ la, lb ], Tuple [ ra, rb ] ) ->
             innerCompare la ra env
                 |> Result.andThen
                     (\a ->
@@ -86,10 +96,7 @@ innerCompare l r env =
                             innerCompare lb rb env
                     )
 
-        ( Tuple _ _, _ ) ->
-            uncomparable ()
-
-        ( Triple la lb lc, Triple ra rb rc ) ->
+        ( Tuple [ la, lb, lc ], Tuple [ ra, rb, rc ] ) ->
             innerCompare la ra env
                 |> Result.andThen
                     (\a ->
@@ -108,7 +115,7 @@ innerCompare l r env =
                                     )
                     )
 
-        ( Triple _ _ _, _ ) ->
+        ( Tuple _, _ ) ->
             uncomparable ()
 
         ( List [], List (_ :: _) ) ->
@@ -142,7 +149,7 @@ innerCompare l r env =
                 inner lname.name rname.name
 
             else
-                case ( Value.toArray l, Value.toArray r ) of
+                case ( Expr.toArray l, Expr.toArray r ) of
                     ( Just la, Just ra ) ->
                         innerCompare (List la) (List ra) env
 
@@ -154,14 +161,14 @@ innerCompare l r env =
 
         ( Record ldict, Record rdict ) ->
             let
-                toValue : Dict String Value -> Value
-                toValue dict =
+                toExpr : Dict String Expr -> Expr
+                toExpr dict =
                     dict
                         |> Dict.toList
-                        |> List.map (\( k, v ) -> Tuple (String k) v)
+                        |> List.map (\( k, v ) -> Tuple [ String k, v ])
                         |> List
             in
-            innerCompare (toValue ldict) (toValue rdict) env
+            innerCompare (toExpr ldict) (toExpr rdict) env
 
         ( Record _, _ ) ->
             uncomparable ()
@@ -191,25 +198,58 @@ innerCompare l r env =
         ( Unit, _ ) ->
             uncomparable ()
 
-        ( PartiallyApplied _ _ _ _ _, PartiallyApplied _ _ _ _ _ ) ->
-            Err <| typeError env "Cannot compare functions"
-
-        ( PartiallyApplied _ _ _ _ _, _ ) ->
+        ( Lambda _ _ _, _ ) ->
             uncomparable ()
 
+        ( Variable _, _ ) ->
+            unreduced ()
 
-comparison : List Order -> ModuleName -> ( Int, List Value -> Eval Value )
-comparison orders _ =
+        ( Case _ _, _ ) ->
+            unreduced ()
+
+        ( BinOp _ _ _, _ ) ->
+            unreduced ()
+
+        ( Negate _, _ ) ->
+            unreduced ()
+
+        ( Apply _ _, _ ) ->
+            unreduced ()
+
+        ( RecordAccess _ _, _ ) ->
+            unreduced ()
+
+        ( RecordAccessFunction _, _ ) ->
+            unreduced ()
+
+        ( RecordUpdate _ _, _ ) ->
+            unreduced ()
+
+        ( LetIn _ _, _ ) ->
+            unreduced ()
+
+        ( IfThenElse _ _ _, _ ) ->
+            unreduced ()
+
+        ( Negation _, _ ) ->
+            unreduced ()
+
+        ( GLSLExpression _, _ ) ->
+            unreduced ()
+
+
+comparison : List Order -> ( Int, List Expr -> Eval Expr )
+comparison orders =
     ( 2
     , \args cfg env ->
         case args of
             [ l, r ] ->
                 compare l r cfg env
-                    |> Types.map
+                    |> Eval.map
                         (\result ->
                             Bool (List.member result orders)
                         )
 
             _ ->
-                Types.fail <| typeError env "Comparison needs exactly two arguments"
+                Eval.fail <| typeError env "Comparison needs exactly two arguments"
     )

@@ -25,7 +25,7 @@ import Json.Encode
 import List.Extra
 import Rope
 import Syntax
-import Value
+import Types
 
 
 type Msg
@@ -128,20 +128,20 @@ viewParsed maybeExpr =
                     , Font.monospace
                     ]
                 ]
-                (viewExpression expr)
+                (viewTypesession expr)
 
 
 viewExpression : Node.Node Expression.Expression -> Element msg
 viewExpression (Node.Node _ expr) =
     case expr of
         Expression.OperatorApplication name _ l r ->
-            boxxxy name [ viewExpressions [ l, r ] ]
+            boxxxy name [ viewTypesessions [ l, r ] ]
 
         Expression.FunctionOrValue moduleName name ->
             boxxxy0 <| String.join "." (moduleName ++ [ name ])
 
         Expression.Application children ->
-            boxxxy "Application" [ viewExpressions children ]
+            boxxxy "Application" [ viewTypesessions children ]
 
         Expression.Literal s ->
             boxxxy0 <| Json.Encode.encode 0 <| Json.Encode.string s
@@ -161,14 +161,14 @@ viewExpression (Node.Node _ expr) =
         Expression.LetExpression { declarations, expression } ->
             boxxxy "let/in"
                 [ row [] <| List.map viewLetDeclaration declarations
-                , viewExpression expression
+                , viewTypesession expression
                 ]
 
         Expression.UnitExpr ->
             boxxxy0 "()"
 
         Expression.Negation expression ->
-            boxxxy "-" [ viewExpression expression ]
+            boxxxy "-" [ viewTypesession expression ]
 
         Expression.PrefixOperator name ->
             boxxxy0 <| "(" ++ name ++ ")"
@@ -177,14 +177,14 @@ viewExpression (Node.Node _ expr) =
             boxxxy0 <| "(" ++ name ++ ")"
 
         Expression.ParenthesizedExpression expression ->
-            boxxxy "()" [ viewExpression expression ]
+            boxxxy "()" [ viewTypesession expression ]
 
         Expression.IfBlock c t f ->
-            boxxxy_ [ text "if ", viewExpression c, text " then" ]
+            boxxxy_ [ text "if ", viewTypesession c, text " then" ]
                 [ row []
-                    [ viewExpression t
+                    [ viewTypesession t
                     , el [ alignTop ] <| text " else "
-                    , viewExpression f
+                    , viewTypesession f
                     ]
                 ]
 
@@ -196,13 +196,13 @@ viewExpression (Node.Node _ expr) =
                  else
                     "(,,)"
                 )
-                [ viewExpressions children ]
+                [ viewTypesessions children ]
 
         Expression.ListExpr children ->
-            boxxxy "[]" [ viewExpressions children ]
+            boxxxy "[]" [ viewTypesessions children ]
 
         Expression.RecordAccess chil (Node.Node _ name) ->
-            boxxxy "." [ row [] [ viewExpression chil, text <| " " ++ name ] ]
+            boxxxy "." [ row [] [ viewTypesession chil, text <| " " ++ name ] ]
 
         Expression.RecordUpdateExpression (Node.Node _ name) setters ->
             boxxxy ("{ " ++ name ++ " | }") [ viewSetters setters ]
@@ -231,7 +231,7 @@ viewSetters setters =
 
 viewSetter : Node.Node Expression.RecordSetter -> Element msg
 viewSetter (Node.Node _ ( Node.Node _ name, value )) =
-    boxxxy (name ++ " =") [ viewExpression value ]
+    boxxxy (name ++ " =") [ viewTypesession value ]
 
 
 boxxxy0 : String -> Element msg
@@ -264,7 +264,7 @@ viewLetDeclaration (Node.Node _ letDeclaration) =
         Expression.LetDestructuring pattern expression ->
             column []
                 [ viewPattern pattern
-                , viewExpression expression
+                , viewTypesession expression
                 ]
 
 
@@ -279,7 +279,7 @@ viewFunction function =
         (text (Node.value declaration.name)
             :: List.map viewPattern declaration.arguments
         )
-        [ viewExpression declaration.expression ]
+        [ viewTypesession declaration.expression ]
 
 
 viewPattern : Node.Node Pattern.Pattern -> Element msg
@@ -289,7 +289,7 @@ viewPattern (Node.Node _ pattern) =
 
 viewExpressions : List (Node.Node Expression.Expression) -> Element msg
 viewExpressions expressions =
-    row [] <| List.map viewExpression expressions
+    row [] <| List.map viewTypesession expressions
 
 
 viewOutput : Result String String -> Element Msg
@@ -354,7 +354,7 @@ viewCallTree budget (CallNode name { args, children, result }) =
             from : String
             from =
                 (Syntax.qualifiedNameToString name
-                    :: List.map (maybeParens << Value.toString) args
+                    :: List.map (maybeParens << Types.toString) args
                 )
                     |> String.join " "
 
@@ -367,7 +367,7 @@ viewCallTree budget (CallNode name { args, children, result }) =
             resultString =
                 case result of
                     Ok v ->
-                        Value.toString v
+                        Types.toString v
 
                     Err e ->
                         Types.evalErrorToString e
@@ -469,7 +469,7 @@ viewLogLines logLines =
                                 |> Dict.toList
                                 |> List.map
                                     (\( k, v ) ->
-                                        k ++ " = " ++ Value.toString v
+                                        k ++ " = " ++ Types.toString v
                                     )
                                 |> String.join "\n"
                   }
@@ -522,14 +522,14 @@ update msg model =
                 ( result, callTree, logLines ) =
                     if tracing then
                         if String.startsWith "module " model.input then
-                            Eval.Module.trace model.input (Expression.FunctionOrValue [] "main")
+                            Eval.Module.trace model.input (Typesession.FunctionOrValue [] "main")
 
                         else
                             Eval.trace model.input
 
                     else
                         ( if String.startsWith "module " model.input then
-                            Eval.Module.eval model.input (Expression.FunctionOrValue [] "main")
+                            Eval.Module.eval model.input (Typesession.FunctionOrValue [] "main")
 
                           else
                             Eval.eval model.input
@@ -596,4 +596,4 @@ resultToString result =
             Err <| Types.errorToString e
 
         Ok value ->
-            Ok <| Value.toString value
+            Ok <| Types.toString value

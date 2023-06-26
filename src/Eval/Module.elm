@@ -4,37 +4,33 @@ import Core
 import Elm.Parser
 import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
-import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Module exposing (Module(..))
-import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Environment
 import Eval.Expression
-import Eval.Log as Log
-import Eval.Types as Types exposing (CallTree, CallTreeContinuation(..), Error(..))
 import FastDict as Dict
 import Result.MyExtra
 import Rope exposing (Rope)
-import Syntax exposing (fakeNode)
-import Value exposing (Env, Value, unsupported)
+import Syntax
+import Types exposing (Env, Error(..), Expr, LogContinuation(..), LogLine, ModuleName, Value)
 
 
-eval : String -> Expression -> Result Error Value
+eval : String -> Expr -> Result Error Value
 eval source expression =
     let
-        ( result, _, _ ) =
+        ( result, _ ) =
             traceOrEvalModule { trace = False } source expression
     in
     result
 
 
-trace : String -> Expression -> ( Result Error Value, Rope CallTree, Rope Log.Line )
+trace : String -> Expr -> ( Result Error Value, Rope LogLine )
 trace source expression =
     traceOrEvalModule { trace = True } source expression
 
 
-traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, Rope CallTree, Rope Log.Line )
+traceOrEvalModule : { trace : Bool } -> String -> Expr -> ( Result Error Value, Rope LogLine )
 traceOrEvalModule cfg source expression =
     let
         maybeEnv : Result Error Env
@@ -55,25 +51,19 @@ traceOrEvalModule cfg source expression =
     in
     case maybeEnv of
         Err e ->
-            ( Err e, Rope.empty, Rope.empty )
+            ( Err e, Rope.empty )
 
         Ok env ->
             let
-                callTreeContinuation : CallTreeContinuation
-                callTreeContinuation =
-                    CTCRoot
-
-                ( result, callTrees, logLines ) =
+                ( result, logLines ) =
                     Eval.Expression.evalExpression
-                        (fakeNode expression)
+                        expression
                         { trace = cfg.trace
-                        , callTreeContinuation = callTreeContinuation
-                        , logContinuation = Log.Done
+                        , logContinuation = LogDone
                         }
                         env
             in
             ( Result.mapError Types.EvalError result
-            , callTrees
             , logLines
             )
 
@@ -95,10 +85,25 @@ buildInitialEnv file =
 
         coreEnv : Env
         coreEnv =
-            { currentModule = moduleName
-            , callStack = []
-            , functions = Core.functions
-            , values = Dict.empty
+            { callStack = []
+            , values =
+                Dict.foldl
+                    (\mn fs acc ->
+                        Dict.foldl
+                            (\fn f ->
+                                Dict.insert
+                                    (Syntax.qualifiedNameToString
+                                        { moduleName = mn
+                                        , name = fn
+                                        }
+                                    )
+                                    (Expr f)
+                            )
+                            acc
+                            fs
+                    )
+                    Dict.empty
+                    Core.functions
             }
 
         addDeclaration : Node Declaration -> Env -> Result Error Env
@@ -109,7 +114,7 @@ buildInitialEnv file =
                         (Node _ implementation) =
                             function.declaration
                     in
-                    Ok (Environment.addFunction moduleName implementation env)
+                    Ok (Environment.with moduleName implementation env)
 
                 PortDeclaration _ ->
                     Err <| Types.EvalError <| unsupported env "Port declaration"
