@@ -1,18 +1,25 @@
-module Environment exposing (call, empty, with, withValue)
+module Environment exposing (call, empty, with, withExpr, withValue)
 
 import Elm.Syntax.Pattern exposing (QualifiedNameRef)
 import FastDict as Dict exposing (Dict)
-import Types exposing (Env, Expr)
+import Types exposing (Env, Expr, ExprOrValue(..), Value)
 
 
-withValue : String -> Expr -> Env -> Env
-withValue name value env =
+withExpr : String -> Expr -> Env -> Env
+withExpr name value env =
     { env
-        | values = Dict.insert name value env.values
+        | values = Dict.insert name (Expr value) env.values
     }
 
 
-with : Dict String Expr -> Env -> Env
+withValue : String -> Value -> Env -> Env
+withValue name value env =
+    { env
+        | values = Dict.insert name (Value value) env.values
+    }
+
+
+with : Dict String ExprOrValue -> Env -> Env
 with newValues old =
     { old | values = Dict.union newValues old.values }
 
