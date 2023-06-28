@@ -5,10 +5,10 @@ import FastDict as Dict exposing (Dict)
 import Types exposing (Env, Expr, ExprOrValue(..), Value)
 
 
-withExpr : String -> Expr -> Env -> Env
-withExpr name value env =
+withExpr : String -> ( Env, Expr ) -> Env -> Env
+withExpr name ( valueEnv, value ) env =
     { env
-        | values = Dict.insert name (Expr value) env.values
+        | values = Dict.insert name (Expr valueEnv value) env.values
     }
 
 

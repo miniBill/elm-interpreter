@@ -109,6 +109,9 @@ valueToExpr value =
         VJsArray c ->
             JsArray <| Array.map valueToExpr c
 
+        VLambda env pattern c ->
+            Lambda env pattern c
+
 
 toExpression : Expr -> Expression
 toExpression value =
