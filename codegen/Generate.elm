@@ -523,9 +523,6 @@ opNameToGen opName =
         "%" ->
             Gen.Elm.CodeGen.modulo
 
-        "+" ->
-            Gen.Elm.CodeGen.plus
-
         "-" ->
             Gen.Elm.CodeGen.minus
 
