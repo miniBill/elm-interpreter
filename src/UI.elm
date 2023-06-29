@@ -318,13 +318,13 @@ viewCallTrees callTree =
             [ Font.family [ Font.monospace ]
             , spacing 10
             ]
-            (List.map (viewCallTree 4) callTree)
+            (List.map (viewCallTree 16) callTree)
 
 
 viewCallTree : Int -> CallTree -> Element msg
 viewCallTree budget (CallNode { expression, children, result }) =
     if budget <= 0 then
-        Element.none
+        text "<depth exceeded>"
 
     else
         let
@@ -339,7 +339,7 @@ viewCallTree budget (CallNode { expression, children, result }) =
             nameRow =
                 text
                     (String.trim expressionString
-                        ++ (if String.endsWith "\n" expressionString then
+                        ++ (if String.contains "\n" expressionString then
                                 "\n= "
 
                             else
