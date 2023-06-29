@@ -1,4 +1,4 @@
-module Eval.Types exposing (CallTree(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult, andThen, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, recurseMapThen, recurseThen, succeed, succeedPartial, toResult, wrapThen)
+module Eval.Types exposing (CallTree(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult, andThen, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, recurseMapThen, recurseThen, succeed, succeedPartial, toResult)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
