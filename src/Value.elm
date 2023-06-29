@@ -1,4 +1,4 @@
-module Value exposing (Env, EnvValues, EvalError, EvalErrorKind(..), Value(..), fromOrder, nameError, toArray, toOrder, toString, todo, typeError, unsupported)
+module Value exposing (Env, EnvValues, EvalError, EvalErrorKind(..), Value(..), fromOrder, nameError, toArray, toExpression, toOrder, toString, todo, typeError, unsupported)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)

@@ -13,6 +13,7 @@ import Elm.Syntax.Expression as Expression
 import Elm.Syntax.File as File
 import Elm.Syntax.Node as Node
 import Elm.Syntax.Pattern as Pattern
+import Elm.Writer
 import Eval
 import Eval.Module
 import Eval.Types as Types exposing (CallTree(..), Error)
@@ -327,12 +328,16 @@ viewCallTree budget (CallNode { expression, children, result }) =
 
     else
         let
+            expressionString : String
+            expressionString =
+                expression
+                    |> fakeNode
+                    |> Elm.Writer.writeExpression
+                    |> Elm.Writer.write
+
             nameRow : Element msg
             nameRow =
-                row []
-                    [ viewExpression <| fakeNode <| expression
-                    , text (" = " ++ resultString)
-                    ]
+                text (expressionString ++ " = " ++ resultString)
 
             resultString : String
             resultString =

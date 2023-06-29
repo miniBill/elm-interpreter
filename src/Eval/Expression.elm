@@ -320,7 +320,10 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
                                     ( kernelResult
                                     , if cfg.trace then
                                         CallNode
-                                            { expression = Debug.todo "expression"
+                                            { expression =
+                                                Application <|
+                                                    fakeNode (FunctionOrValue moduleName name)
+                                                        :: List.map Value.toExpression args
                                             , result = kernelResult
                                             , children = children
                                             }

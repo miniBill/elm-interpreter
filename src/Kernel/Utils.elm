@@ -44,7 +44,6 @@ innerCompare l r env =
                     )
     in
     case ( l, r ) of
-        -- TODO: Implement all cases
         ( Int lv, Int rv ) ->
             inner lv rv
 
