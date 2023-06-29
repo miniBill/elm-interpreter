@@ -337,7 +337,16 @@ viewCallTree budget (CallNode { expression, children, result }) =
 
             nameRow : Element msg
             nameRow =
-                text (expressionString ++ " = " ++ resultString)
+                text
+                    (String.trim expressionString
+                        ++ (if String.endsWith "\n" expressionString then
+                                "\n= "
+
+                            else
+                                " = "
+                           )
+                        ++ resultString
+                    )
 
             resultString : String
             resultString =

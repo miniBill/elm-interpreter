@@ -1,4 +1,4 @@
-module Eval.Types exposing (CallTree(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult, andThen, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, recurseMapThen, recurseThen, succeed, succeedPartial, toResult)
+module Eval.Types exposing (CallTree(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult, andThen, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, recurseMapThen, recurseThen, succeed, succeedPartial, toResult, wrapThen)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
@@ -10,15 +10,15 @@ import Syntax
 import Value exposing (Env, EvalError, EvalErrorKind(..), Value)
 
 
-type alias PartialEval =
-    Config -> Env -> PartialResult
+type alias PartialEval out =
+    Config -> Env -> PartialResult out
 
 
-type alias PartialResult =
+type alias PartialResult out =
     Rec
         ( Node Expression, Config, Env )
-        (EvalResult Value)
-        (EvalResult Value)
+        (EvalResult out)
+        (EvalResult out)
 
 
 type alias Eval out =
@@ -130,6 +130,16 @@ fail e =
     fromResult <| Err e
 
 
+succeedPartial : v -> PartialResult v
+succeedPartial v =
+    Recursion.base (succeed v)
+
+
+failPartial : EvalError -> PartialResult v
+failPartial e =
+    Recursion.base (fail e)
+
+
 fromResult : Result EvalError a -> EvalResult a
 fromResult x =
     ( x, Rope.empty, Rope.empty )
@@ -191,43 +201,41 @@ evalErrorToString { callStack, error } =
         ++ String.join "\n - " (List.reverse <| List.map Syntax.qualifiedNameToString callStack)
 
 
-succeedPartial : Value -> PartialResult
-succeedPartial v =
-    Recursion.base (succeed v)
-
-
-failPartial : EvalError -> PartialResult
-failPartial e =
-    Recursion.base (fail e)
-
-
 recurseThen :
     ( Node Expression, Config, Env )
-    -> (Value -> PartialResult)
-    -> PartialResult
+    -> (out -> PartialResult out)
+    -> PartialResult out
 recurseThen expr f =
     Recursion.recurseThen expr
-        (\( value, trees, logs ) ->
-            case value of
-                Err e ->
-                    Recursion.base ( Err e, trees, logs )
+        (wrapThen f)
 
-                Ok v ->
-                    f v
-                        |> Recursion.map
-                            (\( result, ftrees, flogs ) ->
-                                ( result
-                                , Rope.appendTo trees ftrees
-                                , Rope.appendTo logs flogs
-                                )
-                            )
-        )
+
+wrapThen :
+    (value
+     -> Rec r t (EvalResult a)
+    )
+    -> EvalResult value
+    -> Rec r t (EvalResult a)
+wrapThen f ( value, trees, logs ) =
+    case value of
+        Err e ->
+            Recursion.base ( Err e, trees, logs )
+
+        Ok v ->
+            f v
+                |> Recursion.map
+                    (\( result, ftrees, flogs ) ->
+                        ( result
+                        , Rope.appendTo trees ftrees
+                        , Rope.appendTo logs flogs
+                        )
+                    )
 
 
 recurseMapThen :
     ( List (Node Expression), Config, Env )
-    -> (List Value -> PartialResult)
-    -> PartialResult
+    -> (List out -> PartialResult out)
+    -> PartialResult out
 recurseMapThen ( exprs, cfg, env ) f =
     Recursion.Traverse.sequenceListThen (List.map (\e -> ( e, cfg, env )) exprs)
         (\results ->
