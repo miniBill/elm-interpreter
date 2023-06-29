@@ -11,8 +11,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Environment
 import Eval.Expression
-import Eval.Log as Log
-import Eval.Types as Types exposing (CallTree, CallTreeContinuation(..), Error(..))
+import Eval.Types as Types exposing (CallTree, Error(..))
 import FastDict as Dict
 import Result.MyExtra
 import Rope exposing (Rope)
@@ -29,12 +28,12 @@ eval source expression =
     result
 
 
-trace : String -> Expression -> ( Result Error Value, Rope CallTree, Rope Log.Line )
+trace : String -> Expression -> ( Result Error Value, Rope CallTree, Rope String )
 trace source expression =
     traceOrEvalModule { trace = True } source expression
 
 
-traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, Rope CallTree, Rope Log.Line )
+traceOrEvalModule : { trace : Bool } -> String -> Expression -> ( Result Error Value, Rope CallTree, Rope String )
 traceOrEvalModule cfg source expression =
     let
         maybeEnv : Result Error Env
@@ -59,17 +58,10 @@ traceOrEvalModule cfg source expression =
 
         Ok env ->
             let
-                callTreeContinuation : CallTreeContinuation
-                callTreeContinuation =
-                    CTCRoot
-
                 ( result, callTrees, logLines ) =
                     Eval.Expression.evalExpression
                         (fakeNode expression)
-                        { trace = cfg.trace
-                        , callTreeContinuation = callTreeContinuation
-                        , logContinuation = Log.Done
-                        }
+                        { trace = cfg.trace }
                         env
             in
             ( Result.mapError Types.EvalError result

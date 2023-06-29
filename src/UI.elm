@@ -1,8 +1,7 @@
 module UI exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, IndexedColumn, alignTop, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, rgb, row, shrink, spacing, text, textColumn, width)
-import Element.Background as Background
+import Element exposing (Element, alignTop, column, el, fill, htmlAttribute, padding, paddingEach, paragraph, row, spacing, text, textColumn, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -15,16 +14,15 @@ import Elm.Syntax.File as File
 import Elm.Syntax.Node as Node
 import Elm.Syntax.Pattern as Pattern
 import Eval
-import Eval.Log as Log
 import Eval.Module
 import Eval.Types as Types exposing (CallTree(..), Error)
-import FastDict as Dict
 import Hex
+import Html
 import Html.Attributes
 import Json.Encode
 import List.Extra
 import Rope
-import Syntax
+import Syntax exposing (fakeNode)
 import Value
 
 
@@ -38,7 +36,7 @@ type alias Model =
     , parsed : Maybe (Node.Node Expression.Expression)
     , output : Result String String
     , callTree : List CallTree
-    , logLines : List Log.Line
+    , logLines : List String
     }
 
 
@@ -323,45 +321,18 @@ viewCallTrees callTree =
 
 
 viewCallTree : Int -> CallTree -> Element msg
-viewCallTree budget (CallNode name { args, children, result }) =
+viewCallTree budget (CallNode { expression, children, result }) =
     if budget <= 0 then
         Element.none
 
     else
         let
-            maybeParens : String -> String
-            maybeParens s =
-                case String.uncons s of
-                    Just ( '[', _ ) ->
-                        s
-
-                    Just ( '(', _ ) ->
-                        s
-
-                    Just ( '{', _ ) ->
-                        s
-
-                    Nothing ->
-                        s
-
-                    Just _ ->
-                        if String.contains " " s then
-                            "(" ++ s ++ ")"
-
-                        else
-                            s
-
-            from : String
-            from =
-                (Syntax.qualifiedNameToString name
-                    :: List.map (maybeParens << Value.toString) args
-                )
-                    |> String.join " "
-
             nameRow : Element msg
             nameRow =
-                (from ++ " = " ++ resultString)
-                    |> text
+                row []
+                    [ viewExpression <| fakeNode <| expression
+                    , text (" = " ++ resultString)
+                    ]
 
             resultString : String
             resultString =
@@ -394,108 +365,13 @@ viewCallTree budget (CallNode name { args, children, result }) =
                 ]
 
 
-viewLogLines : List Log.Line -> Element msg
+viewLogLines : List String -> Element msg
 viewLogLines logLines =
     if List.isEmpty logLines then
         Element.none
 
     else
-        let
-            cell : Int -> Int -> String -> Element msg
-            cell row columnIndex c =
-                c
-                    |> String.split "\n"
-                    |> List.map
-                        (\line ->
-                            if String.isEmpty line then
-                                el [ height <| px 10 ] Element.none
-
-                            else if line == "==>" || row < 0 then
-                                el [ Font.bold ] (text line)
-
-                            else
-                                el
-                                    [ htmlAttribute <| Html.Attributes.style "white-space" "pre" ]
-                                    (text line)
-                        )
-                    |> column
-                        [ if modBy 2 row == 0 then
-                            Background.color <| rgb 0.85 0.85 0.9
-
-                          else
-                            Background.color <| rgb 0.75 0.75 0.8
-                        , paddingEach
-                            { left =
-                                if columnIndex == 0 then
-                                    5
-
-                                else
-                                    10
-                            , right =
-                                if columnIndex == List.length rawColumns - 1 then
-                                    5
-
-                                else
-                                    10
-                            , top = 5
-                            , bottom = 5
-                            }
-                        , height fill
-                        ]
-
-            rawColumns : List { header : String, view : Log.Line -> String }
-            rawColumns =
-                [ { header = "Stack"
-                  , view =
-                        \logLine ->
-                            logLine.stack
-                                |> List.reverse
-                                |> List.map Syntax.qualifiedNameToString
-                                |> List.Extra.group
-                                |> List.map
-                                    (\( name, tail ) ->
-                                        if List.isEmpty tail then
-                                            name
-
-                                        else
-                                            name ++ "*" ++ String.fromInt (1 + List.length tail)
-                                    )
-                                |> String.join "\n"
-                  }
-                , { header = "Environment"
-                  , view =
-                        \logLine ->
-                            logLine.env
-                                |> Dict.toList
-                                |> List.map
-                                    (\( k, v ) ->
-                                        k ++ " = " ++ Value.toString v
-                                    )
-                                |> String.join "\n"
-                  }
-                , { header = "Expression"
-                  , view = \logLine -> String.trim logLine.message
-                  }
-                ]
-
-            columns : List (IndexedColumn Log.Line msg)
-            columns =
-                List.indexedMap
-                    (\columnIndex column ->
-                        { header = cell -1 columnIndex column.header
-                        , view = \i logLine -> cell i columnIndex (column.view logLine)
-                        , width = shrink
-                        }
-                    )
-                    rawColumns
-        in
-        Element.indexedTable
-            [ width shrink
-            , Font.family [ Font.monospace ]
-            ]
-            { columns = columns
-            , data = logLines
-            }
+        Element.html <| Html.pre [] [ Html.text <| String.join "\n" logLines ]
 
 
 init : Model

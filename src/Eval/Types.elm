@@ -1,11 +1,10 @@
-module Eval.Types exposing (CallTree(..), CallTreeContinuation(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult(..), andThen, andThenPartial, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, partialResultToString, succeed, succeedPartial, toResult)
+module Eval.Types exposing (CallTree(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult, andThen, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, recurseMapThen, recurseThen, succeed, succeedPartial, toResult)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
-import Elm.Syntax.Pattern exposing (QualifiedNameRef)
-import Elm.Writer
-import Eval.Log as Log
 import Parser exposing (DeadEnd)
+import Recursion exposing (Rec)
+import Recursion.Traverse
 import Rope exposing (Rope)
 import Syntax
 import Value exposing (Env, EvalError, EvalErrorKind(..), Value)
@@ -15,6 +14,13 @@ type alias PartialEval =
     Config -> Env -> PartialResult
 
 
+type alias PartialResult =
+    Rec
+        ( Node Expression, Config, Env )
+        (EvalResult Value)
+        (EvalResult Value)
+
+
 type alias Eval out =
     Config -> Env -> EvalResult out
 
@@ -22,7 +28,7 @@ type alias Eval out =
 type alias EvalResult out =
     ( Result EvalError out
     , Rope CallTree
-    , Rope Log.Line
+    , Rope String
     )
 
 
@@ -131,21 +137,12 @@ fromResult x =
 
 type alias Config =
     { trace : Bool
-    , callTreeContinuation : CallTreeContinuation
-    , logContinuation : Log.Continuation
     }
-
-
-type CallTreeContinuation
-    = CTCRoot
-    | CTCWithMoreChildren (Rope CallTree) CallTreeContinuation
-    | CTCCall QualifiedNameRef (List Value) CallTreeContinuation
 
 
 type CallTree
     = CallNode
-        QualifiedNameRef
-        { args : List Value
+        { expression : Expression
         , result : Result EvalError Value
         , children : Rope CallTree
         }
@@ -156,65 +153,9 @@ type Error
     | EvalError EvalError
 
 
-{-| Represent the result of a computation inside one of the branches of `evalExpression`.
-
-This is needed because to get TCO we need to return an expression, rather than calling `evalExpression` recursively.
-
--}
-type PartialResult
-    = PartialExpression (Node Expression) Config Env
-    | PartialValue (EvalResult Value)
-
-
-succeedPartial : Value -> PartialResult
-succeedPartial v =
-    PartialValue (succeed v)
-
-
-failPartial : EvalError -> PartialResult
-failPartial e =
-    PartialValue (fail e)
-
-
-andThenPartial : (a -> PartialResult) -> EvalResult a -> PartialResult
-andThenPartial f x =
-    case x of
-        ( Err e, callTrees, logs ) ->
-            PartialValue ( Err e, callTrees, logs )
-
-        ( Ok w, callTrees, logs ) ->
-            case f w of
-                PartialValue y ->
-                    PartialValue <| map2 (\_ vy -> vy) x y
-
-                PartialExpression expr newConfig newEnv ->
-                    PartialExpression
-                        expr
-                        { newConfig
-                            | callTreeContinuation = CTCWithMoreChildren callTrees newConfig.callTreeContinuation
-                            , logContinuation = Log.AppendTo logs newConfig.logContinuation
-                        }
-                        newEnv
-
-
 toResult : EvalResult out -> Result EvalError out
 toResult ( res, _, _ ) =
     res
-
-
-partialResultToString : PartialResult -> String
-partialResultToString result =
-    case result of
-        PartialValue evalResult ->
-            case toResult evalResult of
-                Ok v ->
-                    Value.toString v
-
-                Err e ->
-                    errorToString (EvalError e)
-
-        PartialExpression expr _ _ ->
-            Elm.Writer.write (Elm.Writer.writeExpression expr)
 
 
 errorToString : Error -> String
@@ -248,3 +189,81 @@ evalErrorToString { callStack, error } =
     messageWithType
         ++ "\nCall stack:\n - "
         ++ String.join "\n - " (List.reverse <| List.map Syntax.qualifiedNameToString callStack)
+
+
+succeedPartial : Value -> PartialResult
+succeedPartial v =
+    Recursion.base (succeed v)
+
+
+failPartial : EvalError -> PartialResult
+failPartial e =
+    Recursion.base (fail e)
+
+
+recurseThen :
+    ( Node Expression, Config, Env )
+    -> (Value -> PartialResult)
+    -> PartialResult
+recurseThen expr f =
+    Recursion.recurseThen expr
+        (\( value, trees, logs ) ->
+            case value of
+                Err e ->
+                    Recursion.base ( Err e, trees, logs )
+
+                Ok v ->
+                    f v
+                        |> Recursion.map
+                            (\( result, ftrees, flogs ) ->
+                                ( result
+                                , Rope.appendTo trees ftrees
+                                , Rope.appendTo logs flogs
+                                )
+                            )
+        )
+
+
+recurseMapThen :
+    ( List (Node Expression), Config, Env )
+    -> (List Value -> PartialResult)
+    -> PartialResult
+recurseMapThen ( exprs, cfg, env ) f =
+    Recursion.Traverse.sequenceListThen (List.map (\e -> ( e, cfg, env )) exprs)
+        (\results ->
+            let
+                ( values, trees, logs ) =
+                    combine results
+            in
+            case values of
+                Err e ->
+                    Recursion.base ( Err e, trees, logs )
+
+                Ok vs ->
+                    f vs
+                        |> Recursion.map
+                            (\( result, ftrees, flogs ) ->
+                                ( result
+                                , Rope.appendTo trees ftrees
+                                , Rope.appendTo logs flogs
+                                )
+                            )
+        )
+
+
+combine : List (EvalResult t) -> EvalResult (List t)
+combine ls =
+    let
+        go : List (EvalResult t) -> ( List t, Rope CallTree, Rope String ) -> EvalResult (List t)
+        go queue ( vacc, tacc, lacc ) =
+            case queue of
+                [] ->
+                    ( Ok <| List.reverse vacc, tacc, lacc )
+
+                ( Err e, trees, logs ) :: _ ->
+                    ( Err e, Rope.appendTo tacc trees, Rope.appendTo lacc logs )
+
+                ( Ok v, trees, logs ) :: tail ->
+                    go tail ( v :: vacc, Rope.appendTo tacc trees, Rope.appendTo lacc logs )
+    in
+    go ls ( [], Rope.empty, Rope.empty )
