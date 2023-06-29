@@ -21,7 +21,8 @@ build/elm-core-${ELM_CORE_VERSION}.tar.gz:
 build/src/core-${ELM_CORE_VERSION}/src/Basics.elm: build/elm-core-${ELM_CORE_VERSION}.tar.gz
 	mkdir -p build/src
 	tar -xf $< -C build/src -m
-	sed -i 's/n-1/n - 1/g' build/src/core-${ELM_CORE_VERSION}/src/List.elm
+	sed -i.bck 's/n-1/n - 1/g' build/src/core-${ELM_CORE_VERSION}/src/List.elm
+	rm build/src/core-${ELM_CORE_VERSION}/src/List.elm.bck
 
 build/src/codegen/Elm/Kernel/List.elm: ${KERNELS}
 	mkdir -p build/src/codegen
