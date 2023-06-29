@@ -1,7 +1,7 @@
 module UI exposing (Model, Msg, main)
 
 import Browser
-import Element exposing (Element, alignTop, column, el, fill, htmlAttribute, padding, paddingEach, paragraph, row, spacing, text, textColumn, width)
+import Element exposing (Element, alignTop, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, row, spacing, text, textColumn, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -23,6 +23,7 @@ import Html.Attributes
 import Json.Encode
 import List.Extra
 import Rope
+import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import Value
 
@@ -30,14 +31,17 @@ import Value
 type Msg
     = Input String
     | Eval Bool
+    | Open String
+    | Close String
 
 
 type alias Model =
     { input : String
     , parsed : Maybe (Node.Node Expression.Expression)
     , output : Result String String
-    , callTree : List CallTree
+    , callTrees : List CallTree
     , logLines : List String
+    , open : Set String
     }
 
 
@@ -109,7 +113,9 @@ innerView model =
                 }
             ]
         , Element.Lazy.lazy viewOutput model.output
-        , Element.Lazy.lazy viewCallTrees model.callTree
+        , model.callTrees
+            |> List.indexedMap (\i tree -> Element.Lazy.lazy3 viewCallTree [ i ] model.open tree)
+            |> column [ spacing 10 ]
         , Element.Lazy.lazy viewLogLines model.logLines
         ]
 
@@ -308,75 +314,84 @@ viewOutput output =
                 |> textColumn [ Font.family [ Font.monospace ] ]
 
 
-viewCallTrees : List CallTree -> Element Msg
-viewCallTrees callTree =
-    if List.isEmpty callTree then
-        Element.none
+viewCallTree : List Int -> Set String -> CallTree -> Element Msg
+viewCallTree currentList open (CallNode { expression, children, result }) =
+    let
+        current : String
+        current =
+            String.join "." (List.map String.fromInt currentList)
 
-    else
-        column
-            [ Font.family [ Font.monospace ]
+        expressionString : String
+        expressionString =
+            expression
+                |> fakeNode
+                |> Elm.Writer.writeExpression
+                |> Elm.Writer.write
+
+        nameRow : Element msg
+        nameRow =
+            text
+                (String.trim expressionString
+                    ++ (if String.contains "\n" expressionString then
+                            "\n= "
+
+                        else
+                            " = "
+                       )
+                    ++ resultString
+                )
+
+        resultString : String
+        resultString =
+            case result of
+                Ok v ->
+                    Value.toString v
+
+                Err e ->
+                    Types.evalErrorToString e
+
+        toggleButton : Element Msg
+        toggleButton =
+            Input.button
+                [ Border.width 1
+                , height <| px 40
+                , width <| px 40
+                ]
+                { label = text " "
+                , onPress =
+                    Just <|
+                        if Set.member current open then
+                            Close current
+
+                        else
+                            Open current
+                }
+    in
+    (if Set.member current open then
+        nameRow
+            :: (List.indexedMap (\i -> viewCallTree (i :: currentList) open) <| Rope.toList children)
+
+     else
+        [ nameRow ]
+    )
+        |> column
+            [ Border.widthEach
+                { top = 0
+                , left = 1
+                , right = 0
+                , bottom = 0
+                }
+            , paddingEach
+                { top = 0
+                , bottom = 0
+                , left = 10
+                , right = 0
+                }
             , spacing 10
             ]
-            (List.map (viewCallTree 16) callTree)
-
-
-viewCallTree : Int -> CallTree -> Element msg
-viewCallTree budget (CallNode { expression, children, result }) =
-    if budget <= 0 then
-        text "<depth exceeded>"
-
-    else
-        let
-            expressionString : String
-            expressionString =
-                expression
-                    |> fakeNode
-                    |> Elm.Writer.writeExpression
-                    |> Elm.Writer.write
-
-            nameRow : Element msg
-            nameRow =
-                text
-                    (String.trim expressionString
-                        ++ (if String.contains "\n" expressionString then
-                                "\n= "
-
-                            else
-                                " = "
-                           )
-                        ++ resultString
-                    )
-
-            resultString : String
-            resultString =
-                case result of
-                    Ok v ->
-                        Value.toString v
-
-                    Err e ->
-                        Types.evalErrorToString e
-
-            childrenRows : List (Element msg)
-            childrenRows =
-                List.map (viewCallTree (budget - 1)) <| Rope.toList children
-        in
-        (nameRow :: childrenRows)
-            |> column
-                [ Border.widthEach
-                    { top = 0
-                    , left = 1
-                    , right = 0
-                    , bottom = 0
-                    }
-                , paddingEach
-                    { top = 0
-                    , bottom = 0
-                    , left = 10
-                    , right = 0
-                    }
-                , spacing 10
-                ]
+        |> List.singleton
+        |> (::) toggleButton
+        |> row [ spacing 10 ]
 
 
 viewLogLines : List String -> Element msg
@@ -393,8 +408,9 @@ init =
     { input = """List.sum (List.range 0 3)"""
     , parsed = Nothing
     , output = Ok ""
-    , callTree = []
+    , callTrees = []
     , logLines = []
+    , open = Set.empty
     }
 
 
@@ -429,9 +445,15 @@ update msg model =
             in
             { model
                 | output = resultToString result
-                , callTree = Rope.toList callTree
+                , callTrees = Rope.toList callTree
                 , logLines = Rope.toList logLines
             }
+
+        Open path ->
+            { model | open = Set.insert path model.open }
+
+        Close path ->
+            { model | open = Set.remove path model.open }
 
 
 tryParse : String -> Maybe (Node.Node Expression.Expression)
