@@ -20,7 +20,7 @@ build/elm-core-${ELM_CORE_VERSION}.tar.gz:
 
 build/core-${ELM_CORE_VERSION}/src/Basics.elm: build/elm-core-${ELM_CORE_VERSION}.tar.gz
 	(cd build; tar -xf elm-core-${ELM_CORE_VERSION}.tar.gz)
-	sed -i 's/n-1/n - 1/g' build/src/core-${ELM_CORE_VERSION}/src/List.elm
+	sed -i 's/n-1/n - 1/g' build/core-${ELM_CORE_VERSION}/src/List.elm
 	touch $@
 
 build/modules.elms: ${KERNELS} build/core-${ELM_CORE_VERSION}/src/Basics.elm Makefile
