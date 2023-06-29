@@ -184,7 +184,6 @@ conversionTests =
           --         in
           --         toList (fromList ls)
           --             |> Expect.equal ls,
-          --   Test.skip <|
           fuzzEvalTest "indexed"
             "Array.toIndexedList (Array.initialize size ((+) 1)) == Array.toList (Array.initialize size (\\idx -> ( idx, idx + 1 )))"
             Bool
@@ -289,22 +288,21 @@ sliceTests =
 runtimeCrashTests : Test
 runtimeCrashTests =
     describe "Runtime crashes in core"
-        [ Test.skip <|
-            evalTest "magic slice"
-                """Array.initialize 40 identity
+        [ evalTest "magic slice"
+            """Array.initialize 40 identity
                     |> Array.slice 10 40
                     |> Array.slice 10 30
                     |> Array.slice 10 20
                     |> Array.slice 10 10
                     |> (\\a -> a == a)"""
-                Bool
-                (Array.initialize 40 identity
-                    |> Array.slice 10 40
-                    |> Array.slice 10 30
-                    |> Array.slice 10 20
-                    |> Array.slice 10 10
-                    |> (\a -> a == a)
-                )
+            Bool
+            (Array.initialize 40 identity
+                |> Array.slice 10 40
+                |> Array.slice 10 30
+                |> Array.slice 10 20
+                |> Array.slice 10 10
+                |> (\a -> a == a)
+            )
 
         -- , test "magic slice 2" <|
         --     \() ->
