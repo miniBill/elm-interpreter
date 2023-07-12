@@ -1,78 +1,37 @@
-module Value exposing (Env, EnvValues, EvalError, EvalErrorKind(..), Value(..), fromOrder, nameError, toArray, toExpression, toOrder, toString, todo, typeError, unsupported)
+module Value exposing (fromOrder, nameError, toArray, toExpression, toOrder, toString, todo, typeError, unsupported)
 
 import Array exposing (Array)
-import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
-import Elm.Syntax.ModuleName exposing (ModuleName)
+import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
-import Elm.Syntax.Pattern exposing (Pattern, QualifiedNameRef)
 import Elm.Writer
-import FastDict as Dict exposing (Dict)
+import FastDict as Dict
+import Json.Decode exposing (Value)
+import String exposing (String)
 import Syntax exposing (fakeNode)
+import Types exposing (Env, Error(..), EvalErrorData, EvalErrorKind(..), Value(..))
 
 
-type Value
-    = String String
-    | Int Int
-    | Float Float
-    | Char Char
-    | Bool Bool
-    | Unit
-    | Tuple Value Value
-    | Triple Value Value Value
-    | Record (Dict String Value)
-    | Custom QualifiedNameRef (List Value)
-    | PartiallyApplied Env (List Value) (List (Node Pattern)) (Maybe QualifiedNameRef) (Node Expression)
-    | JsArray (Array Value)
-    | List (List Value)
-
-
-type alias Env =
-    { currentModule : ModuleName
-    , functions : Dict ModuleName (Dict String FunctionImplementation)
-    , values : EnvValues
-    , callStack : List QualifiedNameRef
-    }
-
-
-type alias EnvValues =
-    Dict String Value
-
-
-type alias EvalError =
-    { currentModule : ModuleName
-    , callStack : List QualifiedNameRef
-    , error : EvalErrorKind
-    }
-
-
-type EvalErrorKind
-    = TypeError String
-    | Unsupported String
-    | NameError String
-    | Todo String
-
-
-typeError : Env -> String -> EvalError
+typeError : Env -> String -> EvalErrorData
 typeError env msg =
     error env (TypeError msg)
 
 
-nameError : Env -> String -> EvalError
+nameError : Env -> String -> EvalErrorData
 nameError env msg =
     error env (NameError msg)
 
 
-unsupported : Env -> String -> EvalError
+unsupported : Env -> String -> EvalErrorData
 unsupported env msg =
     error env (Unsupported msg)
 
 
-todo : Env -> String -> EvalError
+todo : Env -> String -> EvalErrorData
 todo env msg =
     error env (Todo msg)
 
 
-error : Env -> EvalErrorKind -> EvalError
+error : Env -> EvalErrorKind -> EvalErrorData
 error env msg =
     { currentModule = env.currentModule
     , callStack = env.callStack

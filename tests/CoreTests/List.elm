@@ -2,7 +2,7 @@ module CoreTests.List exposing (suite)
 
 import Test exposing (Test, describe)
 import TestUtils exposing (evalTest, list, maybe, slowTest, tuple)
-import Value exposing (Value(..))
+import Types exposing (Value(..))
 
 
 suite : Test

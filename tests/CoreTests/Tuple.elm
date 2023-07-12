@@ -2,7 +2,7 @@ module CoreTests.Tuple exposing (suite)
 
 import Test exposing (Test, describe)
 import TestUtils exposing (evalTest, tuple)
-import Value exposing (Value(..))
+import Types exposing (Value(..))
 
 
 suite : Test

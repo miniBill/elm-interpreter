@@ -15,7 +15,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Environment
-import Eval.Types as Types exposing (Eval, EvalResult)
+import Eval.Types as Types
 import FastDict as Dict exposing (Dict)
 import Kernel.Debug
 import Kernel.JsArray
@@ -23,7 +23,8 @@ import Kernel.String
 import Kernel.Utils
 import Maybe.Extra
 import Syntax exposing (fakeNode)
-import Value exposing (EvalError, Value(..), typeError)
+import Types exposing (Eval, EvalErrorData, EvalResult, Value(..))
+import Value exposing (typeError)
 
 
 type alias EvalFunction =
@@ -488,7 +489,7 @@ zero _ output f =
 zeroWithError :
     To
     -> OutSelector out ox
-    -> Result EvalError out
+    -> Result EvalErrorData out
     -> ModuleName
     -> ( Int, List Value -> Eval Value )
 zeroWithError _ output f _ =

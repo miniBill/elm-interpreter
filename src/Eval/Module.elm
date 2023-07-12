@@ -11,12 +11,13 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Environment
 import Eval.Expression
-import Eval.Types as Types exposing (CallTree, Error(..))
+import Eval.Types as Types
 import FastDict as Dict
 import Result.MyExtra
 import Rope exposing (Rope)
 import Syntax exposing (fakeNode)
-import Value exposing (Env, Value, unsupported)
+import Types exposing (CallTree, Env, Error(..), Value)
+import Value exposing (unsupported)
 
 
 eval : String -> Expression -> Result Error Value

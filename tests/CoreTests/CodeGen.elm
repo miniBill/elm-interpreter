@@ -2,7 +2,7 @@ module CoreTests.CodeGen exposing (suite)
 
 import Test exposing (Test, describe)
 import TestUtils exposing (evalTest, evalTest_)
-import Value exposing (Value(..))
+import Types exposing (Value(..))
 
 
 type Wrapper a

@@ -2,9 +2,8 @@ module Eval exposing (eval, toModule, trace)
 
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Eval.Module
-import Eval.Types exposing (CallTree, Error)
 import Rope exposing (Rope)
-import Value exposing (Value)
+import Types exposing (CallTree, Error, Value)
 
 
 eval : String -> Result Error Value

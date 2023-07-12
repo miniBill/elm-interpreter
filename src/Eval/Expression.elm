@@ -7,7 +7,7 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Environment
-import Eval.Types as Types exposing (CallTree(..), Eval, EvalResult, PartialEval, PartialResult)
+import Eval.Types as Types
 import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
@@ -17,8 +17,9 @@ import Rope
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import TopologicalSort
+import Types exposing (CallTree(..), Env, EnvValues, Eval, EvalErrorData, EvalResult, PartialEval, PartialResult, Value(..))
 import Unicode
-import Value exposing (Env, EnvValues, EvalError, Value(..), nameError, typeError, unsupported)
+import Value exposing (nameError, typeError, unsupported)
 
 
 evalExpression : Node Expression -> Eval Value
@@ -29,22 +30,22 @@ evalExpression initExpression initCfg initEnv =
                 result =
                     case expression of
                         Expression.UnitExpr ->
-                            Types.succeedPartial Value.Unit
+                            Types.succeedPartial Unit
 
                         Expression.Integer i ->
-                            Types.succeedPartial <| Value.Int i
+                            Types.succeedPartial <| Int i
 
                         Expression.Hex i ->
-                            Types.succeedPartial <| Value.Int i
+                            Types.succeedPartial <| Int i
 
                         Expression.Floatable f ->
-                            Types.succeedPartial <| Value.Float f
+                            Types.succeedPartial <| Float f
 
                         Expression.Literal string ->
-                            Types.succeedPartial <| Value.String string
+                            Types.succeedPartial <| String string
 
                         Expression.CharLiteral c ->
-                            Types.succeedPartial <| Value.Char c
+                            Types.succeedPartial <| Char c
 
                         Expression.OperatorApplication "||" _ l r ->
                             evalShortCircuitOr l r cfg env
@@ -171,7 +172,7 @@ evalTuple : List (Node Expression) -> PartialEval Value
 evalTuple exprs cfg env =
     case exprs of
         [] ->
-            Types.succeedPartial Value.Unit
+            Types.succeedPartial Unit
 
         [ c ] ->
             Recursion.recurse ( c, cfg, env )
@@ -245,7 +246,7 @@ evalApplication first rest cfg env =
                         in
                         if oldArgsLength + restLength < patternsLength then
                             -- Still not enough
-                            Types.succeedPartial <| Value.PartiallyApplied localEnv args patterns maybeQualifiedName implementation
+                            Types.succeedPartial <| PartiallyApplied localEnv args patterns maybeQualifiedName implementation
 
                         else
                             -- Just right, we special case this for TCO
@@ -255,11 +256,11 @@ evalApplication first rest cfg env =
     Types.recurseThen ( first, cfg, env )
         (\firstValue ->
             case firstValue of
-                Value.Custom name customArgs ->
+                Custom name customArgs ->
                     Types.recurseMapThen ( rest, cfg, env )
-                        (\values -> Types.succeedPartial <| Value.Custom name (customArgs ++ values))
+                        (\values -> Types.succeedPartial <| Custom name (customArgs ++ values))
 
-                Value.PartiallyApplied localEnv oldArgs patterns maybeQualifiedName implementation ->
+                PartiallyApplied localEnv oldArgs patterns maybeQualifiedName implementation ->
                     inner localEnv oldArgs patterns maybeQualifiedName implementation
 
                 other ->
@@ -274,7 +275,7 @@ evalApplication first rest cfg env =
 evalFullyApplied : Env -> List Value -> List (Node Pattern) -> Maybe QualifiedNameRef -> Node Expression -> PartialEval Value
 evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg env =
     let
-        maybeNewEnvValues : Result EvalError (Maybe EnvValues)
+        maybeNewEnvValues : Result EvalErrorData (Maybe EnvValues)
         maybeNewEnvValues =
             match env
                 (fakeNode <| ListPattern patterns)
@@ -384,12 +385,12 @@ evalVariant moduleName env name =
     let
         variant0 : ModuleName -> String -> PartialResult Value
         variant0 modName ctorName =
-            Types.succeedPartial <| Value.Custom { moduleName = modName, name = ctorName } []
+            Types.succeedPartial <| Custom { moduleName = modName, name = ctorName } []
 
         variant1 : ModuleName -> String -> PartialResult Value
         variant1 modName ctorName =
             Types.succeedPartial <|
-                Value.PartiallyApplied
+                PartiallyApplied
                     (Environment.empty modName)
                     []
                     [ fakeNode <| VarPattern "$x" ]
@@ -403,10 +404,10 @@ evalVariant moduleName env name =
     in
     case ( moduleName, name ) of
         ( [], "True" ) ->
-            Types.succeedPartial <| Value.Bool True
+            Types.succeedPartial <| Bool True
 
         ( [], "False" ) ->
-            Types.succeedPartial <| Value.Bool False
+            Types.succeedPartial <| Bool False
 
         ( [], "Nothing" ) ->
             variant0 [ "Maybe" ] "Nothing"
@@ -439,7 +440,7 @@ evalVariant moduleName env name =
                 qualifiedNameRef =
                     { moduleName = fixedModuleName, name = name }
             in
-            Types.succeedPartial <| Value.Custom qualifiedNameRef []
+            Types.succeedPartial <| Custom qualifiedNameRef []
 
 
 evalNonVariant : ModuleName -> String -> PartialEval Value
@@ -530,10 +531,10 @@ evalIfBlock cond true false cfg env =
     Types.recurseThen ( cond, cfg, env )
         (\condValue ->
             case condValue of
-                Value.Bool True ->
+                Bool True ->
                     Recursion.recurse ( true, cfg, env )
 
-                Value.Bool False ->
+                Bool False ->
                     Recursion.recurse ( false, cfg, env )
 
                 _ ->
@@ -560,7 +561,7 @@ evalRecord fields cfg env =
             tuples
                 |> List.map2 Tuple.pair fieldNames
                 |> Dict.fromList
-                |> Value.Record
+                |> Record
                 |> Types.succeedPartial
         )
 
@@ -583,12 +584,12 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
     in
     if oldArgsLength < patternsLength then
         -- Still not enough
-        Types.succeed <| Value.PartiallyApplied localEnv oldArgs patterns functionName implementation
+        Types.succeed <| PartiallyApplied localEnv oldArgs patterns functionName implementation
 
     else
         -- Just right, we special case this for TCO
         let
-            maybeNewEnvValues : Result EvalError (Maybe EnvValues)
+            maybeNewEnvValues : Result EvalErrorData (Maybe EnvValues)
             maybeNewEnvValues =
                 match localEnv
                     (fakeNode <| ListPattern patterns)
@@ -676,11 +677,11 @@ evalNegation child cfg env =
     Types.recurseThen ( child, cfg, env )
         (\value ->
             case value of
-                Value.Int i ->
-                    Types.succeedPartial <| Value.Int -i
+                Int i ->
+                    Types.succeedPartial <| Int -i
 
-                Value.Float f ->
-                    Types.succeedPartial <| Value.Float -f
+                Float f ->
+                    Types.succeedPartial <| Float -f
 
                 _ ->
                     Types.failPartial <| typeError env "Trying to negate a non-number"
@@ -926,7 +927,7 @@ evalRecordAccess recordExpr (Node _ field) cfg env =
     Types.recurseThen ( recordExpr, cfg, env )
         (\value ->
             case value of
-                Value.Record fields ->
+                Record fields ->
                     case Dict.get field fields of
                         Just fieldValue ->
                             Types.succeedPartial fieldValue
@@ -958,7 +959,7 @@ evalRecordUpdate (Node _ name) setters cfg env =
     Types.recurseThen ( fakeNode <| Expression.FunctionOrValue [] name, cfg, env )
         (\value ->
             case value of
-                Value.Record _ ->
+                Record _ ->
                     let
                         ( fieldNames, fieldExpressions ) =
                             setters
@@ -974,7 +975,7 @@ evalRecordUpdate (Node _ name) setters cfg env =
                         (\fieldValues ->
                             List.map2 Tuple.pair fieldNames fieldValues
                                 |> Dict.fromList
-                                |> Value.Record
+                                |> Record
                                 |> Types.succeedPartial
                         )
 
@@ -1020,7 +1021,7 @@ evalCase { expression, cases } cfg env =
     Types.recurseThen ( expression, cfg, env )
         (\exprValue ->
             let
-                maybePartial : Result EvalError (Maybe ( EnvValues, Node Expression ))
+                maybePartial : Result EvalErrorData (Maybe ( EnvValues, Node Expression ))
                 maybePartial =
                     Result.MyExtra.combineFoldl
                         (\( pattern, branchExpression ) acc ->
@@ -1058,7 +1059,7 @@ evalCase { expression, cases } cfg env =
         )
 
 
-match : Env -> Node Pattern -> Value -> Result EvalError (Maybe EnvValues)
+match : Env -> Node Pattern -> Value -> Result EvalErrorData (Maybe EnvValues)
 match env (Node _ pattern) value =
     let
         ok : a -> Result error (Maybe a)
@@ -1082,7 +1083,7 @@ match env (Node _ pattern) value =
                     f w
     in
     case ( pattern, value ) of
-        ( UnitPattern, Value.Unit ) ->
+        ( UnitPattern, Unit ) ->
             ok Dict.empty
 
         ( UnitPattern, _ ) ->
@@ -1094,7 +1095,7 @@ match env (Node _ pattern) value =
         ( ParenthesizedPattern subPattern, _ ) ->
             match env subPattern value
 
-        ( NamedPattern namePattern argsPatterns, Value.Custom variant args ) ->
+        ( NamedPattern namePattern argsPatterns, Custom variant args ) ->
             -- Two names from different modules can never have the same type
             -- so if we assume the code typechecks we can skip the module name check
             if namePattern.name == variant.name then
@@ -1102,7 +1103,7 @@ match env (Node _ pattern) value =
                     matchNamedPatternHelper :
                         EnvValues
                         -> ( List (Node Pattern), List Value )
-                        -> Result EvalError (Maybe EnvValues)
+                        -> Result EvalErrorData (Maybe EnvValues)
                     matchNamedPatternHelper envValues queue =
                         case queue of
                             ( [], [] ) ->
@@ -1142,7 +1143,7 @@ match env (Node _ pattern) value =
                                 )
                     )
 
-        ( UnConsPattern patternHead patternTail, Value.List (listHead :: listTail) ) ->
+        ( UnConsPattern patternHead patternTail, List (listHead :: listTail) ) ->
             match env patternHead listHead
                 |> andThen
                     (\headEnv ->
@@ -1163,7 +1164,7 @@ match env (Node _ pattern) value =
         ( ListPattern _, _ ) ->
             noMatch
 
-        ( CharPattern c, Value.Char d ) ->
+        ( CharPattern c, Char d ) ->
             if c == d then
                 ok Dict.empty
 
@@ -1173,7 +1174,7 @@ match env (Node _ pattern) value =
         ( CharPattern _, _ ) ->
             noMatch
 
-        ( StringPattern c, Value.String d ) ->
+        ( StringPattern c, String d ) ->
             if c == d then
                 ok Dict.empty
 
@@ -1183,7 +1184,7 @@ match env (Node _ pattern) value =
         ( StringPattern _, _ ) ->
             noMatch
 
-        ( IntPattern c, Value.Int d ) ->
+        ( IntPattern c, Int d ) ->
             if c == d then
                 ok Dict.empty
 
@@ -1193,7 +1194,7 @@ match env (Node _ pattern) value =
         ( IntPattern _, _ ) ->
             noMatch
 
-        ( HexPattern c, Value.Int d ) ->
+        ( HexPattern c, Int d ) ->
             if c == d then
                 ok Dict.empty
 
@@ -1203,7 +1204,7 @@ match env (Node _ pattern) value =
         ( HexPattern _, _ ) ->
             noMatch
 
-        ( FloatPattern c, Value.Float d ) ->
+        ( FloatPattern c, Float d ) ->
             if c == d then
                 ok Dict.empty
 
@@ -1213,7 +1214,7 @@ match env (Node _ pattern) value =
         ( FloatPattern _, _ ) ->
             noMatch
 
-        ( TuplePattern [ lpattern, rpattern ], Value.Tuple lvalue rvalue ) ->
+        ( TuplePattern [ lpattern, rpattern ], Tuple lvalue rvalue ) ->
             match env lpattern lvalue
                 |> andThen
                     (\lenv ->
@@ -1224,7 +1225,7 @@ match env (Node _ pattern) value =
                                 )
                     )
 
-        ( TuplePattern [ lpattern, mpattern, rpattern ], Value.Triple lvalue mvalue rvalue ) ->
+        ( TuplePattern [ lpattern, mpattern, rpattern ], Triple lvalue mvalue rvalue ) ->
             match env lpattern lvalue
                 |> andThen
                     (\lenv ->
@@ -1247,7 +1248,7 @@ match env (Node _ pattern) value =
                 |> andThen
                     (\e -> ok <| Dict.insert asName value e)
 
-        ( RecordPattern fields, Value.Record fieldValues ) ->
+        ( RecordPattern fields, Record fieldValues ) ->
             List.foldl
                 (\(Node _ fieldName) ->
                     andThen

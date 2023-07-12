@@ -1,8 +1,9 @@
 module Kernel.Debug exposing (log, todo)
 
-import Eval.Types as Types exposing (Eval)
+import Eval.Types as Types
 import Rope
-import Value exposing (Value)
+import Types exposing (Eval, Value)
+import Value
 
 
 log : String -> Value -> Eval Value

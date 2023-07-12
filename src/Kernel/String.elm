@@ -1,7 +1,8 @@
 module Kernel.String exposing (filter, foldl, foldr, fromNumber)
 
-import Eval.Types as Types exposing (Eval)
-import Value exposing (Value(..), typeError)
+import Eval.Types as Types
+import Types exposing (Eval, Value(..))
+import Value exposing (typeError)
 
 
 fromNumber : Value -> Eval String

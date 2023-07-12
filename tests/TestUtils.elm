@@ -1,11 +1,10 @@
 module TestUtils exposing (evalExpect, evalTest, evalTest_, list, maybe, result, slowTest, tuple, withInt)
 
 import Eval
-import Eval.Types exposing (Error(..))
 import Expect
 import Syntax
 import Test exposing (Test, test)
-import Value exposing (Value(..))
+import Types exposing (Error(..), Value(..))
 
 
 evalTest_ : String -> (a -> Value) -> a -> Test

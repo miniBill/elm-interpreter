@@ -1,38 +1,17 @@
-module Eval.Types exposing (CallTree(..), Config, Error(..), Eval, EvalResult, PartialEval, PartialResult, andThen, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, recurseMapThen, recurseThen, succeed, succeedPartial, toResult)
+module Eval.Types exposing (andThen, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, recurseMapThen, recurseThen, succeed, succeedPartial, toResult)
 
+import Browser.Dom exposing (Error)
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
-import Parser exposing (DeadEnd)
+import Parser
 import Recursion exposing (Rec)
 import Recursion.Traverse
 import Rope exposing (Rope)
 import Syntax
-import Value exposing (Env, EvalError, EvalErrorKind(..), Value)
+import Types exposing (CallTree, Config, Env, Error(..), Eval, EvalErrorData, EvalErrorKind(..), EvalResult, PartialResult)
 
 
-type alias PartialEval out =
-    Config -> Env -> PartialResult out
-
-
-type alias PartialResult out =
-    Rec
-        ( Node Expression, Config, Env )
-        (EvalResult out)
-        (EvalResult out)
-
-
-type alias Eval out =
-    Config -> Env -> EvalResult out
-
-
-type alias EvalResult out =
-    ( Result EvalError out
-    , Rope CallTree
-    , Rope String
-    )
-
-
-onValue : (a -> Result EvalError out) -> EvalResult a -> EvalResult out
+onValue : (a -> Result EvalErrorData out) -> EvalResult a -> EvalResult out
 onValue f ( x, callTrees, logs ) =
     ( Result.andThen f x
     , callTrees
@@ -125,7 +104,7 @@ succeed x =
     fromResult <| Ok x
 
 
-fail : EvalError -> EvalResult a
+fail : EvalErrorData -> EvalResult a
 fail e =
     fromResult <| Err e
 
@@ -135,35 +114,17 @@ succeedPartial v =
     Recursion.base (succeed v)
 
 
-failPartial : EvalError -> PartialResult v
+failPartial : EvalErrorData -> PartialResult v
 failPartial e =
     Recursion.base (fail e)
 
 
-fromResult : Result EvalError a -> EvalResult a
+fromResult : Result EvalErrorData a -> EvalResult a
 fromResult x =
     ( x, Rope.empty, Rope.empty )
 
 
-type alias Config =
-    { trace : Bool
-    }
-
-
-type CallTree
-    = CallNode
-        { expression : Expression
-        , result : Result EvalError Value
-        , children : Rope CallTree
-        }
-
-
-type Error
-    = ParsingError (List DeadEnd)
-    | EvalError EvalError
-
-
-toResult : EvalResult out -> Result EvalError out
+toResult : EvalResult out -> Result EvalErrorData out
 toResult ( res, _, _ ) =
     res
 
@@ -178,7 +139,7 @@ errorToString err =
             evalErrorToString evalError
 
 
-evalErrorToString : EvalError -> String
+evalErrorToString : EvalErrorData -> String
 evalErrorToString { callStack, error } =
     let
         messageWithType : String

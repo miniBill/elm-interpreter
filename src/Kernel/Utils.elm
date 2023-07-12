@@ -2,9 +2,10 @@ module Kernel.Utils exposing (append, compare, comparison)
 
 import Array
 import Elm.Syntax.ModuleName exposing (ModuleName)
-import Eval.Types as Types exposing (Eval)
+import Eval.Types as Types
 import FastDict as Dict exposing (Dict)
-import Value exposing (EvalError, Value(..), typeError)
+import Types exposing (Env, Eval, EvalErrorData, Value(..))
+import Value exposing (typeError)
 
 
 append : Value -> Value -> Eval Value
@@ -25,14 +26,14 @@ compare l r _ env =
     Types.fromResult (innerCompare l r env)
 
 
-innerCompare : Value -> Value -> Value.Env -> Result EvalError Order
+innerCompare : Value -> Value -> Env -> Result EvalErrorData Order
 innerCompare l r env =
     let
-        inner : comparable -> comparable -> Result EvalError Order
+        inner : comparable -> comparable -> Result EvalErrorData Order
         inner lv rv =
             Ok <| Basics.compare lv rv
 
-        uncomparable : () -> Result EvalError value
+        uncomparable : () -> Result EvalErrorData value
         uncomparable () =
             Err <|
                 typeError env
