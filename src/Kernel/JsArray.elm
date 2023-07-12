@@ -59,7 +59,7 @@ foldr : (Value -> Eval (Value -> Eval Value)) -> Value -> Array Value -> Eval Va
 foldr f init arr cfg env =
     Array.foldr
         (\e acc ->
-            case Types.toResult acc of
+            case EvalResult.toResult acc of
                 Err _ ->
                     acc
 
@@ -67,7 +67,7 @@ foldr f init arr cfg env =
                     EvalResult.map2 Tuple.pair (f e cfg env) acc
                         |> EvalResult.andThen (\( g, y ) -> g y cfg env)
         )
-        (Types.succeed init)
+        (EvalResult.succeed init)
         arr
 
 
@@ -75,7 +75,7 @@ foldl : (Value -> Eval (Value -> Eval Value)) -> Value -> Array Value -> Eval Va
 foldl f init arr cfg env =
     Array.foldl
         (\e acc ->
-            case Types.toResult acc of
+            case EvalResult.toResult acc of
                 Err _ ->
                     acc
 
@@ -83,7 +83,7 @@ foldl f init arr cfg env =
                     EvalResult.map2 Tuple.pair (f e cfg env) acc
                         |> EvalResult.andThen (\( g, y ) -> g y cfg env)
         )
-        (Types.succeed init)
+        (EvalResult.succeed init)
         arr
 
 
@@ -111,7 +111,7 @@ unsafeGet : Int -> Array Value -> Eval Value
 unsafeGet index array _ env =
     case Array.get index array of
         Just v ->
-            Types.succeed v
+            EvalResult.succeed v
 
         Nothing ->
-            Types.fail <| Value.typeError env "Out of bounds access"
+            EvalResult.fail <| Value.typeError env "Out of bounds access"

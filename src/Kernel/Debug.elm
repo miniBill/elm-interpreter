@@ -1,6 +1,6 @@
 module Kernel.Debug exposing (log, todo)
 
-import Eval.Types as Types
+import EvalResult
 import Rope
 import Types exposing (Eval, Value)
 import Value
@@ -21,4 +21,4 @@ log key value _ _ =
 
 todo : String -> Eval Value
 todo msg _ env =
-    Types.fail <| Value.todo env msg
+    EvalResult.fail <| Value.todo env msg

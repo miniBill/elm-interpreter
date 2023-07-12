@@ -10,13 +10,13 @@ fromNumber : Value -> Eval String
 fromNumber s _ env =
     case s of
         Int i ->
-            Types.succeed <| String.fromInt i
+            EvalResult.succeed <| String.fromInt i
 
         Float f ->
-            Types.succeed <| String.fromFloat f
+            EvalResult.succeed <| String.fromFloat f
 
         _ ->
-            Types.fail <| typeError env <| "Cannot convert " ++ Value.toString s ++ " to a string"
+            EvalResult.fail <| typeError env <| "Cannot convert " ++ Value.toString s ++ " to a string"
 
 
 foldr : (Char -> Eval (Value -> Eval Value)) -> Value -> String -> Eval Value

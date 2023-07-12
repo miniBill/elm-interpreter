@@ -1,7 +1,27 @@
-module EvalResult exposing (andThen, map, map2, onValue)
+module EvalResult exposing (andThen, combine, fail, fromResult, map, map2, onValue, succeed, toResult)
 
-import Rope
-import Types exposing (EvalErrorData, EvalResult)
+import Rope exposing (Rope)
+import Types exposing (CallTree, EvalErrorData, EvalResult)
+
+
+succeed : a -> EvalResult a
+succeed x =
+    fromResult <| Ok x
+
+
+fail : EvalErrorData -> EvalResult a
+fail e =
+    fromResult <| Err e
+
+
+fromResult : Result EvalErrorData a -> EvalResult a
+fromResult x =
+    ( x, Rope.empty, Rope.empty )
+
+
+toResult : EvalResult out -> Result EvalErrorData out
+toResult ( res, _, _ ) =
+    res
 
 
 map : (a -> out) -> EvalResult a -> EvalResult out
@@ -43,3 +63,21 @@ onValue f ( x, callTrees, logs ) =
     , callTrees
     , logs
     )
+
+
+combine : List (EvalResult t) -> EvalResult (List t)
+combine ls =
+    let
+        go : List (EvalResult t) -> ( List t, Rope CallTree, Rope String ) -> EvalResult (List t)
+        go queue ( vacc, tacc, lacc ) =
+            case queue of
+                [] ->
+                    ( Ok <| List.reverse vacc, tacc, lacc )
+
+                ( Err e, trees, logs ) :: _ ->
+                    ( Err e, Rope.appendTo tacc trees, Rope.appendTo lacc logs )
+
+                ( Ok v, trees, logs ) :: tail ->
+                    go tail ( v :: vacc, Rope.appendTo tacc trees, Rope.appendTo lacc logs )
+    in
+    go ls ( [], Rope.empty, Rope.empty )

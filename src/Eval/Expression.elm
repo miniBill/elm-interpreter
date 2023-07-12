@@ -586,7 +586,7 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
     in
     if oldArgsLength < patternsLength then
         -- Still not enough
-        Types.succeed <| PartiallyApplied localEnv oldArgs patterns functionName implementation
+        EvalResult.succeed <| PartiallyApplied localEnv oldArgs patterns functionName implementation
 
     else
         -- Just right, we special case this for TCO
@@ -599,10 +599,10 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
         in
         case maybeNewEnvValues of
             Err e ->
-                Types.fail e
+                EvalResult.fail e
 
             Ok Nothing ->
-                Types.fail <| typeError localEnv "Could not match lambda patterns"
+                EvalResult.fail <| typeError localEnv "Could not match lambda patterns"
 
             Ok (Just newEnvValues) ->
                 case implementation of
@@ -614,12 +614,12 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
                         in
                         case Dict.get moduleName kernelFunctions of
                             Nothing ->
-                                Types.fail <| nameError localEnv fullName
+                                EvalResult.fail <| nameError localEnv fullName
 
                             Just kernelModule ->
                                 case Dict.get name kernelModule of
                                     Nothing ->
-                                        Types.fail <| nameError localEnv fullName
+                                        EvalResult.fail <| nameError localEnv fullName
 
                                     Just ( _, f ) ->
                                         f []
@@ -663,7 +663,7 @@ evalKernelFunction moduleName name cfg env =
                             Recursion.base ( result, Rope.singleton callTree, logLines )
 
                         else
-                            Recursion.base <| Types.fromResult result
+                            Recursion.base <| EvalResult.fromResult result
 
                     else
                         PartiallyApplied (Environment.empty moduleName)
@@ -734,10 +734,10 @@ evalLetBlock letBlock cfg env =
         newEnv =
             case sortedDeclarations of
                 Err TopologicalSort.IllegalCycle ->
-                    Types.fail <| typeError env "illegal cycle in let block"
+                    EvalResult.fail <| typeError env "illegal cycle in let block"
 
                 Err TopologicalSort.InternalError ->
-                    Types.fail <| typeError env "internal error in let block"
+                    EvalResult.fail <| typeError env "internal error in let block"
 
                 Ok sd ->
                     -- We can't use combineMap and need to fold
@@ -748,7 +748,7 @@ evalLetBlock letBlock cfg env =
                                 (\e -> addLetDeclaration declaration cfg e)
                                 acc
                         )
-                        (Types.succeed env)
+                        (EvalResult.succeed env)
                         sd
     in
     case newEnv of
@@ -777,7 +777,7 @@ addLetDeclaration ((Node _ letDeclaration) as node) cfg env =
             case declaration of
                 Node _ ({ name, expression } as implementation) ->
                     if isLetDeclarationFunction node then
-                        Types.succeed <| Environment.addFunction env.currentModule implementation env
+                        EvalResult.succeed <| Environment.addFunction env.currentModule implementation env
 
                     else
                         evalExpression expression cfg env

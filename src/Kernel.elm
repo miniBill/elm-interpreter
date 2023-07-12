@@ -15,7 +15,6 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Environment
-import Eval.Types as Types
 import EvalResult
 import FastDict as Dict exposing (Dict)
 import Kernel.Debug
@@ -470,10 +469,10 @@ constant selector const _ =
     , \args _ env ->
         case args of
             [] ->
-                Types.succeed <| selector.toValue const
+                EvalResult.succeed <| selector.toValue const
 
             _ ->
-                Types.fail <| typeError env <| "Didn't expect any args"
+                EvalResult.fail <| typeError env <| "Didn't expect any args"
     )
 
 
@@ -498,10 +497,10 @@ zeroWithError _ output f _ =
     , \args _ env ->
         case args of
             [] ->
-                Types.fromResult <| Result.map output.toValue f
+                EvalResult.fromResult <| Result.map output.toValue f
 
             _ ->
-                Types.fail <| typeError env <| "Expected zero args, got more"
+                EvalResult.fail <| typeError env <| "Expected zero args, got more"
     )
 
 
@@ -514,7 +513,7 @@ one :
     -> ModuleName
     -> ( Int, List Value -> Eval Value )
 one firstSelector _ output f =
-    oneWithError firstSelector To output (\v _ _ -> Types.succeed (f v))
+    oneWithError firstSelector To output (\v _ _ -> EvalResult.succeed (f v))
 
 
 oneWithError :
@@ -531,7 +530,7 @@ oneWithError firstSelector _ output f implementation moduleName =
         let
             err : String -> EvalResult value
             err got =
-                Types.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
+                EvalResult.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
         in
         case args of
             [ arg ] ->
@@ -561,7 +560,7 @@ two :
     -> ModuleName
     -> ( Int, List Value -> Eval Value )
 two firstSelector secondSelector _ output f =
-    twoWithError firstSelector secondSelector To output (\l r _ _ -> Types.succeed (f l r))
+    twoWithError firstSelector secondSelector To output (\l r _ _ -> EvalResult.succeed (f l r))
 
 
 twoWithError :
@@ -579,7 +578,7 @@ twoWithError firstSelector secondSelector _ output f implementation moduleName =
         let
             typeError_ : String -> EvalResult value
             typeError_ msg =
-                Types.fail (typeError env msg)
+                EvalResult.fail (typeError env msg)
         in
         case args of
             [ firstArg, secondArg ] ->
@@ -627,7 +626,7 @@ three :
     -> ModuleName
     -> ( Int, List Value -> Eval Value )
 three firstSelector secondSelector thirdSelector _ output f =
-    threeWithError firstSelector secondSelector thirdSelector To output (\l m r _ _ -> Types.succeed (f l m r))
+    threeWithError firstSelector secondSelector thirdSelector To output (\l m r _ _ -> EvalResult.succeed (f l m r))
 
 
 threeWithError :
@@ -647,10 +646,10 @@ threeWithError firstSelector secondSelector thirdSelector _ output f implementat
             err : String -> EvalResult value
             err got =
                 if firstSelector.name == secondSelector.name && secondSelector.name == thirdSelector.name then
-                    Types.fail <| typeError env <| "Expected three " ++ firstSelector.name ++ "s, got " ++ got
+                    EvalResult.fail <| typeError env <| "Expected three " ++ firstSelector.name ++ "s, got " ++ got
 
                 else
-                    Types.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", one " ++ secondSelector.name ++ " and one " ++ thirdSelector.name ++ ", got " ++ got
+                    EvalResult.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", one " ++ secondSelector.name ++ " and one " ++ thirdSelector.name ++ ", got " ++ got
         in
         case args of
             [ firstArg, secondArg, thirdArg ] ->
@@ -678,7 +677,7 @@ threeWithError firstSelector secondSelector thirdSelector _ output f implementat
 
 partiallyApply : ModuleName -> List Value -> FunctionImplementation -> EvalResult Value
 partiallyApply moduleName args implementation =
-    Types.fromResult <|
+    EvalResult.fromResult <|
         Ok <|
             PartiallyApplied
                 (Environment.empty moduleName)
@@ -703,16 +702,16 @@ twoNumbers fInt fFloat implementation moduleName =
     , \args _ env ->
         case args of
             [ Int li, Int ri ] ->
-                Types.succeed <| Int (fInt li ri)
+                EvalResult.succeed <| Int (fInt li ri)
 
             [ Int li, Float rf ] ->
-                Types.succeed <| Float (fFloat (toFloat li) rf)
+                EvalResult.succeed <| Float (fFloat (toFloat li) rf)
 
             [ Float lf, Int ri ] ->
-                Types.succeed <| Float (fFloat lf (toFloat ri))
+                EvalResult.succeed <| Float (fFloat lf (toFloat ri))
 
             [ Float lf, Float rf ] ->
-                Types.succeed <| Float (fFloat lf rf)
+                EvalResult.succeed <| Float (fFloat lf rf)
 
             [ _ ] ->
                 partiallyApply moduleName args implementation
@@ -721,5 +720,5 @@ twoNumbers fInt fFloat implementation moduleName =
                 partiallyApply moduleName args implementation
 
             _ ->
-                Types.fail <| typeError env "Expected two numbers"
+                EvalResult.fail <| typeError env "Expected two numbers"
     )

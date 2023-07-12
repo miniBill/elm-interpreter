@@ -1,4 +1,4 @@
-module Eval.Types exposing (combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, recurseMapThen, recurseThen, succeed, succeedPartial, toResult)
+module Eval.Types exposing (combineMap, errorToString, evalErrorToString, failPartial, foldl, foldr, recurseMapThen, recurseThen, succeedPartial)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
@@ -6,16 +6,16 @@ import EvalResult
 import Parser
 import Recursion exposing (Rec)
 import Recursion.Traverse
-import Rope exposing (Rope)
+import Rope
 import Syntax
-import Types exposing (CallTree, Config, Env, Error(..), Eval, EvalErrorData, EvalErrorKind(..), EvalResult, PartialResult)
+import Types exposing (Config, Env, Error(..), Eval, EvalErrorData, EvalErrorKind(..), EvalResult, PartialResult)
 
 
 combineMap : (a -> Eval b) -> List a -> Eval (List b)
 combineMap f xs cfg env =
     List.foldr
         (\el acc ->
-            case toResult acc of
+            case EvalResult.toResult acc of
                 Err _ ->
                     acc
 
@@ -24,7 +24,7 @@ combineMap f xs cfg env =
                         (f el cfg env)
                         acc
         )
-        (succeed [])
+        (EvalResult.succeed [])
         xs
 
 
@@ -32,14 +32,14 @@ foldl : (a -> out -> Eval out) -> out -> List a -> Eval out
 foldl f init xs cfg env =
     List.foldl
         (\el acc ->
-            case toResult acc of
+            case EvalResult.toResult acc of
                 Err _ ->
                     acc
 
                 Ok a ->
                     f el a cfg env
         )
-        (succeed init)
+        (EvalResult.succeed init)
         xs
 
 
@@ -47,45 +47,25 @@ foldr : (a -> out -> Eval out) -> out -> List a -> Eval out
 foldr f init xs cfg env =
     List.foldr
         (\el acc ->
-            case toResult acc of
+            case EvalResult.toResult acc of
                 Err _ ->
                     acc
 
                 Ok a ->
                     f el a cfg env
         )
-        (succeed init)
+        (EvalResult.succeed init)
         xs
-
-
-succeed : a -> EvalResult a
-succeed x =
-    fromResult <| Ok x
-
-
-fail : EvalErrorData -> EvalResult a
-fail e =
-    fromResult <| Err e
 
 
 succeedPartial : v -> PartialResult v
 succeedPartial v =
-    Recursion.base (succeed v)
+    Recursion.base (EvalResult.succeed v)
 
 
 failPartial : EvalErrorData -> PartialResult v
 failPartial e =
-    Recursion.base (fail e)
-
-
-fromResult : Result EvalErrorData a -> EvalResult a
-fromResult x =
-    ( x, Rope.empty, Rope.empty )
-
-
-toResult : EvalResult out -> Result EvalErrorData out
-toResult ( res, _, _ ) =
-    res
+    Recursion.base (EvalResult.fail e)
 
 
 errorToString : Error -> String
@@ -161,7 +141,7 @@ recurseMapThen ( exprs, cfg, env ) f =
         (\results ->
             let
                 ( values, trees, logs ) =
-                    combine results
+                    EvalResult.combine results
             in
             case values of
                 Err e ->
@@ -177,21 +157,3 @@ recurseMapThen ( exprs, cfg, env ) f =
                                 )
                             )
         )
-
-
-combine : List (EvalResult t) -> EvalResult (List t)
-combine ls =
-    let
-        go : List (EvalResult t) -> ( List t, Rope CallTree, Rope String ) -> EvalResult (List t)
-        go queue ( vacc, tacc, lacc ) =
-            case queue of
-                [] ->
-                    ( Ok <| List.reverse vacc, tacc, lacc )
-
-                ( Err e, trees, logs ) :: _ ->
-                    ( Err e, Rope.appendTo tacc trees, Rope.appendTo lacc logs )
-
-                ( Ok v, trees, logs ) :: tail ->
-                    go tail ( v :: vacc, Rope.appendTo tacc trees, Rope.appendTo lacc logs )
-    in
-    go ls ( [], Rope.empty, Rope.empty )

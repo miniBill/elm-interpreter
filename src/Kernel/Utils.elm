@@ -2,7 +2,6 @@ module Kernel.Utils exposing (append, compare, comparison)
 
 import Array
 import Elm.Syntax.ModuleName exposing (ModuleName)
-import Eval.Types as Types
 import EvalResult
 import FastDict as Dict exposing (Dict)
 import Types exposing (Env, Eval, EvalErrorData, Value(..))
@@ -13,18 +12,18 @@ append : Value -> Value -> Eval Value
 append l r _ env =
     case ( l, r ) of
         ( String ls, String rs ) ->
-            Types.succeed <| String (ls ++ rs)
+            EvalResult.succeed <| String (ls ++ rs)
 
         ( List ll, List rl ) ->
-            Types.succeed <| List (ll ++ rl)
+            EvalResult.succeed <| List (ll ++ rl)
 
         _ ->
-            Types.fail <| typeError env <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
+            EvalResult.fail <| typeError env <| "Cannot append " ++ Value.toString l ++ " and " ++ Value.toString r
 
 
 compare : Value -> Value -> Eval Order
 compare l r _ env =
-    Types.fromResult (innerCompare l r env)
+    EvalResult.fromResult (innerCompare l r env)
 
 
 innerCompare : Value -> Value -> Env -> Result EvalErrorData Order
@@ -212,5 +211,5 @@ comparison orders _ =
                         )
 
             _ ->
-                Types.fail <| typeError env "Comparison needs exactly two arguments"
+                EvalResult.fail <| typeError env "Comparison needs exactly two arguments"
     )
