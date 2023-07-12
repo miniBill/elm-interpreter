@@ -9,6 +9,7 @@ import Value
 log : String -> Value -> Eval Value
 log key value _ _ =
     let
+        message : String
         message =
             key ++ ": " ++ Value.toString value
     in

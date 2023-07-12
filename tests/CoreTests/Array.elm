@@ -5,7 +5,6 @@ import Fuzz exposing (Fuzzer, intRange)
 import Test exposing (Test, describe, fuzz)
 import TestUtils exposing (evalExpect, evalTest, list, maybe, withInt)
 import Types exposing (Value(..))
-import Value
 
 
 suite : Test

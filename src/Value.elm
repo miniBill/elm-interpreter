@@ -5,10 +5,9 @@ import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Writer
 import FastDict as Dict
-import Json.Decode exposing (Value)
 import String exposing (String)
 import Syntax exposing (fakeNode)
-import Types exposing (Env, Error(..), EvalErrorData, EvalErrorKind(..), Value(..))
+import Types exposing (Env, EvalErrorData, EvalErrorKind(..), Value(..))
 
 
 typeError : Env -> String -> EvalErrorData

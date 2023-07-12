@@ -11,7 +11,6 @@ import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Environment
 import Eval.Expression
-import Eval.Types as Types
 import FastDict as Dict
 import Result.MyExtra
 import Rope exposing (Rope)

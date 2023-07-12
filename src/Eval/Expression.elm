@@ -27,6 +27,7 @@ evalExpression initExpression initCfg initEnv =
     Recursion.runRecursion
         (\( Node _ expression, cfg, env ) ->
             let
+                result : PartialResult Value
                 result =
                     case expression of
                         Expression.UnitExpr ->
