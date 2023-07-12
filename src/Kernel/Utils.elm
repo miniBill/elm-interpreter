@@ -3,6 +3,7 @@ module Kernel.Utils exposing (append, compare, comparison)
 import Array
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Eval.Types as Types
+import EvalResult
 import FastDict as Dict exposing (Dict)
 import Types exposing (Env, Eval, EvalErrorData, Value(..))
 import Value exposing (typeError)
@@ -205,7 +206,7 @@ comparison orders _ =
         case args of
             [ l, r ] ->
                 compare l r cfg env
-                    |> Types.map
+                    |> EvalResult.map
                         (\result ->
                             Bool (List.member result orders)
                         )

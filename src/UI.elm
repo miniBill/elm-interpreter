@@ -16,7 +16,7 @@ import Elm.Syntax.Pattern as Pattern
 import Elm.Writer
 import Eval
 import Eval.Module
-import Eval.Types as Types exposing (CallTree(..), Error)
+import Eval.Types as Types
 import Hex
 import Html
 import Html.Attributes
@@ -25,6 +25,7 @@ import List.Extra
 import Rope
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
+import Types exposing (CallTree(..), Error, Value)
 import Value
 
 
@@ -544,7 +545,7 @@ findMain declaration =
             Nothing
 
 
-resultToString : Result Error Value.Value -> Result String String
+resultToString : Result Error Value -> Result String String
 resultToString result =
     case result of
         Err e ->

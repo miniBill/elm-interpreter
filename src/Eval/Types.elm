@@ -1,54 +1,14 @@
-module Eval.Types exposing (andThen, combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, map, map2, onValue, recurseMapThen, recurseThen, succeed, succeedPartial, toResult)
+module Eval.Types exposing (combineMap, errorToString, evalErrorToString, fail, failPartial, foldl, foldr, fromResult, recurseMapThen, recurseThen, succeed, succeedPartial, toResult)
 
 import Elm.Syntax.Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
+import EvalResult
 import Parser
 import Recursion exposing (Rec)
 import Recursion.Traverse
 import Rope exposing (Rope)
 import Syntax
 import Types exposing (CallTree, Config, Env, Error(..), Eval, EvalErrorData, EvalErrorKind(..), EvalResult, PartialResult)
-
-
-onValue : (a -> Result EvalErrorData out) -> EvalResult a -> EvalResult out
-onValue f ( x, callTrees, logs ) =
-    ( Result.andThen f x
-    , callTrees
-    , logs
-    )
-
-
-andThen : (a -> EvalResult b) -> EvalResult a -> EvalResult b
-andThen f ( v, callTrees, logs ) =
-    case v of
-        Err e ->
-            ( Err e, callTrees, logs )
-
-        Ok w ->
-            let
-                ( y, fxCallTrees, fxLogs ) =
-                    f w
-            in
-            ( y
-            , Rope.appendTo callTrees fxCallTrees
-            , Rope.appendTo logs fxLogs
-            )
-
-
-map : (a -> out) -> EvalResult a -> EvalResult out
-map f ( x, callTrees, logs ) =
-    ( Result.map f x
-    , callTrees
-    , logs
-    )
-
-
-map2 : (a -> b -> out) -> EvalResult a -> EvalResult b -> EvalResult out
-map2 f ( lv, lc, ll ) ( rv, rc, rl ) =
-    ( Result.map2 f lv rv
-    , Rope.appendTo lc rc
-    , Rope.appendTo ll rl
-    )
 
 
 combineMap : (a -> Eval b) -> List a -> Eval (List b)
@@ -60,7 +20,7 @@ combineMap f xs cfg env =
                     acc
 
                 Ok _ ->
-                    map2 (::)
+                    EvalResult.map2 (::)
                         (f el cfg env)
                         acc
         )

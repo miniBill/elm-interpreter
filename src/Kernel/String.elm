@@ -1,6 +1,7 @@
 module Kernel.String exposing (filter, foldl, foldr, fromNumber)
 
 import Eval.Types as Types
+import EvalResult
 import Types exposing (Eval, Value(..))
 import Value exposing (typeError)
 
@@ -22,7 +23,7 @@ foldr : (Char -> Eval (Value -> Eval Value)) -> Value -> String -> Eval Value
 foldr f i xs =
     Types.foldr
         (\el acc c e ->
-            Types.andThen (\fe -> fe acc c e) (f el c e)
+            EvalResult.andThen (\fe -> fe acc c e) (f el c e)
         )
         i
         (String.toList xs)
@@ -32,7 +33,7 @@ foldl : (Char -> Eval (Value -> Eval Value)) -> Value -> String -> Eval Value
 foldl f i xs =
     Types.foldl
         (\el acc c e ->
-            Types.andThen (\fe -> fe acc c e) (f el c e)
+            EvalResult.andThen (\fe -> fe acc c e) (f el c e)
         )
         i
         (String.toList xs)
@@ -42,7 +43,7 @@ filter : (Char -> Eval Bool) -> String -> Eval String
 filter f s cfg env =
     Types.foldr
         (\char acc c e ->
-            Types.map
+            EvalResult.map
                 (\fc ->
                     if fc then
                         char :: acc
@@ -56,4 +57,4 @@ filter f s cfg env =
         (String.toList s)
         cfg
         env
-        |> Types.map String.fromList
+        |> EvalResult.map String.fromList

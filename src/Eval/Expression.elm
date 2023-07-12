@@ -8,6 +8,7 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Environment
 import Eval.Types as Types
+import EvalResult
 import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
@@ -743,7 +744,7 @@ evalLetBlock letBlock cfg env =
                     -- because we need to change the environment for each call
                     List.foldl
                         (\declaration acc ->
-                            Types.andThen
+                            EvalResult.andThen
                                 (\e -> addLetDeclaration declaration cfg e)
                                 acc
                         )
@@ -780,11 +781,11 @@ addLetDeclaration ((Node _ letDeclaration) as node) cfg env =
 
                     else
                         evalExpression expression cfg env
-                            |> Types.map (\value -> Environment.addValue (Node.value name) value env)
+                            |> EvalResult.map (\value -> Environment.addValue (Node.value name) value env)
 
         Expression.LetDestructuring letPattern letExpression ->
             evalExpression letExpression cfg env
-                |> Types.onValue
+                |> EvalResult.onValue
                     (\letValue ->
                         case match env letPattern letValue of
                             Err e ->

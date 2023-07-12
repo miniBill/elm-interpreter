@@ -16,6 +16,7 @@ import Elm.Syntax.Node as Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
 import Environment
 import Eval.Types as Types
+import EvalResult
 import FastDict as Dict exposing (Dict)
 import Kernel.Debug
 import Kernel.JsArray
@@ -411,7 +412,7 @@ function evalFunctionWith inSelector _ outSelector =
                     Just
                         (\arg cfg _ ->
                             evalFunctionWith (oldArgs ++ [ inSelector.toValue arg ]) patterns maybeName implementation cfg localEnv
-                                |> Types.onValue
+                                |> EvalResult.onValue
                                     (\out ->
                                         case outSelector.fromValue out of
                                             Just ov ->
@@ -537,7 +538,7 @@ oneWithError firstSelector _ output f implementation moduleName =
                 case firstSelector.fromValue arg of
                     Just s ->
                         f s cfg env
-                            |> Types.map output.toValue
+                            |> EvalResult.map output.toValue
 
                     Nothing ->
                         err (Value.toString arg)
@@ -593,7 +594,7 @@ twoWithError firstSelector secondSelector _ output f implementation moduleName =
 
                             Just second ->
                                 f first second cfg env
-                                    |> Types.map output.toValue
+                                    |> EvalResult.map output.toValue
 
             [ _ ] ->
                 partiallyApply moduleName args implementation
@@ -656,7 +657,7 @@ threeWithError firstSelector secondSelector thirdSelector _ output f implementat
                 case ( firstSelector.fromValue firstArg, secondSelector.fromValue secondArg, thirdSelector.fromValue thirdArg ) of
                     ( Just first, Just second, Just third ) ->
                         f first second third cfg env
-                            |> Types.map output.toValue
+                            |> EvalResult.map output.toValue
 
                     _ ->
                         err (String.join ", " (List.map Value.toString args))
