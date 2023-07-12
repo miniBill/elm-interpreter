@@ -6,12 +6,12 @@ import Types exposing (CallTree, EvalErrorData, EvalResult)
 
 succeed : a -> EvalResult a
 succeed x =
-    fromResult <| Ok x
+    ( Ok x, Rope.empty, Rope.empty )
 
 
 fail : EvalErrorData -> EvalResult a
 fail e =
-    fromResult <| Err e
+    ( Err e, Rope.empty, Rope.empty )
 
 
 fromResult : Result EvalErrorData a -> EvalResult a
