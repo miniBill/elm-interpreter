@@ -221,12 +221,11 @@ viewExpression (Node.Node _ expr) =
         Expression.GLSLExpression code ->
             boxxxy "glsl" [ boxxxy0 code ]
 
-        -- Expression.CaseExpression _ ->
-        --     Debug.todo "branch 'CaseExpression _' not implemented"
-        -- Expression.LambdaExpression _ ->
-        --     Debug.todo "branch 'LambdaExpression _' not implemented"
-        _ ->
-            boxxxy0 <| Debug.toString expr
+        Expression.CaseExpression _ ->
+            boxxxy0 "branch 'CaseExpression _' not implemented"
+
+        Expression.LambdaExpression _ ->
+            boxxxy0 "branch 'LambdaExpression _' not implemented"
 
 
 viewSetters : List (Node.Node Expression.RecordSetter) -> Element msg
@@ -289,7 +288,51 @@ viewFunction function =
 
 viewPattern : Node.Node Pattern.Pattern -> Element msg
 viewPattern (Node.Node _ pattern) =
-    text <| Debug.toString pattern
+    case pattern of
+        Pattern.AllPattern ->
+            boxxxy0 "_"
+
+        Pattern.UnitPattern ->
+            boxxxy0 "branch 'UnitPattern' not implemented"
+
+        Pattern.CharPattern _ ->
+            boxxxy0 "branch 'CharPattern _' not implemented"
+
+        Pattern.StringPattern _ ->
+            boxxxy0 "branch 'StringPattern _' not implemented"
+
+        Pattern.IntPattern _ ->
+            boxxxy0 "branch 'IntPattern _' not implemented"
+
+        Pattern.HexPattern _ ->
+            boxxxy0 "branch 'HexPattern _' not implemented"
+
+        Pattern.FloatPattern _ ->
+            boxxxy0 "branch 'FloatPattern _' not implemented"
+
+        Pattern.TuplePattern _ ->
+            boxxxy0 "branch 'TuplePattern _' not implemented"
+
+        Pattern.RecordPattern _ ->
+            boxxxy0 "branch 'RecordPattern _' not implemented"
+
+        Pattern.UnConsPattern _ _ ->
+            boxxxy0 "branch 'UnConsPattern _ _' not implemented"
+
+        Pattern.ListPattern _ ->
+            boxxxy0 "branch 'ListPattern _' not implemented"
+
+        Pattern.VarPattern _ ->
+            boxxxy0 "branch 'VarPattern _' not implemented"
+
+        Pattern.NamedPattern _ _ ->
+            boxxxy0 "branch 'NamedPattern _ _' not implemented"
+
+        Pattern.AsPattern _ _ ->
+            boxxxy0 "branch 'AsPattern _ _' not implemented"
+
+        Pattern.ParenthesizedPattern _ ->
+            boxxxy0 "branch 'ParenthesizedPattern _' not implemented"
 
 
 viewExpressions : List (Node.Node Expression.Expression) -> Element msg
