@@ -218,7 +218,7 @@ viewExpression (Node.Node _ expr) =
         Expression.RecordAccessFunction name ->
             boxxxy0 name
 
-        Expression.GLSLExpression code ->
+        Expression.GLSL code ->
             boxxxy "glsl" [ boxxxy0 code ]
 
         -- Expression.CaseExpression _ ->

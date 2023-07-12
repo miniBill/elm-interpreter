@@ -4,30 +4,30 @@ import Elm.Syntax.Expression exposing (FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node
 import FastDict as Dict
-import Value exposing (Env, EnvValues, Value)
+import Types exposing (Env, EnvValues, ExprOrValue(..), Value)
 
 
 addValue : String -> Value -> Env -> Env
 addValue name value env =
     { env
-        | values = Dict.insert name value env.values
+        | values = Dict.insert name (Value value) env.values
     }
 
 
 addFunction : ModuleName -> FunctionImplementation -> Env -> Env
 addFunction moduleName function env =
     { env
-        | functions =
+        | values =
             Dict.insert
-                moduleName
-                (Dict.insert (Node.value function.name)
-                    function
-                    (Maybe.withDefault Dict.empty
-                        (Dict.get moduleName env.functions)
-                    )
-                )
-                env.functions
+                { moduleName = moduleName, name = Node.value function.name }
+                (functionToExpression function)
+                env.values
     }
+
+
+functionToExpression : FunctionImplementation -> a
+functionToExpression arg1 =
+    Debug.todo "TODO"
 
 
 with : EnvValues -> Env -> Env
@@ -35,11 +35,9 @@ with newValues old =
     { old | values = Dict.union newValues old.values }
 
 
-empty : ModuleName -> Env
-empty moduleName =
-    { currentModule = moduleName
-    , callStack = []
-    , functions = Dict.empty
+empty : Env
+empty =
+    { callStack = []
     , values = Dict.empty
     }
 
@@ -47,8 +45,7 @@ empty moduleName =
 call : ModuleName -> String -> Env -> Env
 call moduleName name env =
     { env
-        | currentModule = moduleName
-        , callStack =
+        | callStack =
             { moduleName = moduleName, name = name }
                 :: env.callStack
     }

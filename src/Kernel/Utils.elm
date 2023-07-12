@@ -4,7 +4,8 @@ import Array
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Eval.Types as Types exposing (Eval)
 import FastDict as Dict exposing (Dict)
-import Value exposing (EvalError, Value(..), typeError)
+import Types exposing (Value(..))
+import Value exposing (EvalError, typeError)
 
 
 append : Value -> Value -> Eval Value
@@ -74,7 +75,7 @@ innerCompare l r env =
         ( Char _, _ ) ->
             uncomparable ()
 
-        ( Tuple la lb, Tuple ra rb ) ->
+        ( Tuple [ la, lb ], Tuple [ ra, rb ] ) ->
             innerCompare la ra env
                 |> Result.andThen
                     (\a ->
@@ -85,10 +86,7 @@ innerCompare l r env =
                             innerCompare lb rb env
                     )
 
-        ( Tuple _ _, _ ) ->
-            uncomparable ()
-
-        ( Triple la lb lc, Triple ra rb rc ) ->
+        ( Tuple [ la, lb, lc ], Tuple [ ra, rb, rc ] ) ->
             innerCompare la ra env
                 |> Result.andThen
                     (\a ->
@@ -107,7 +105,7 @@ innerCompare l r env =
                                     )
                     )
 
-        ( Triple _ _ _, _ ) ->
+        ( Tuple _, _ ) ->
             uncomparable ()
 
         ( List [], List (_ :: _) ) ->
@@ -157,7 +155,7 @@ innerCompare l r env =
                 toValue dict =
                     dict
                         |> Dict.toList
-                        |> List.map (\( k, v ) -> Tuple (String k) v)
+                        |> List.map (\( k, v ) -> Tuple [ String k, v ])
                         |> List
             in
             innerCompare (toValue ldict) (toValue rdict) env
@@ -190,10 +188,10 @@ innerCompare l r env =
         ( Unit, _ ) ->
             uncomparable ()
 
-        ( PartiallyApplied _ _ _ _ _, PartiallyApplied _ _ _ _ _ ) ->
+        ( Lambda _ _ _, Lambda _ _ _ ) ->
             Err <| typeError env "Cannot compare functions"
 
-        ( PartiallyApplied _ _ _ _ _, _ ) ->
+        ( Lambda _ _ _, _ ) ->
             uncomparable ()
 
 

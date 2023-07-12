@@ -20,12 +20,16 @@
             "miniBill/elm-rope": "1.0.0",
             "miniBill/elm-unicode": "1.0.3",
             "rtfeldman/elm-hex": "1.0.0",
-            "stil4m/elm-syntax": "7.2.9"
+            "stil4m/elm-syntax": "7.2.9",
+            "the-sett/elm-pretty-printer": "3.0.0",
+            "the-sett/elm-syntax-dsl": "6.0.2"
         },
         "indirect": {
+            "Chadtech/elm-bool-extra": "2.4.2",
             "elm/time": "1.0.0",
             "elm/url": "1.0.0",
             "elm/virtual-dom": "1.0.3",
+            "elm-community/basics-extra": "4.1.0",
             "stil4m/structured-writer": "1.0.3"
         }
     },

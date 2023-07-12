@@ -1,4 +1,4 @@
-module Kernel exposing (EvalFunction, functions)
+module Kernel exposing (functions)
 
 import Array exposing (Array)
 import Bitwise
@@ -12,30 +12,22 @@ import Core.List
 import Core.String
 import Elm.Syntax.Expression as Expression exposing (Expression(..), FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
-import Elm.Syntax.Node as Node exposing (Node)
-import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
-import Environment
-import Eval.Types as Types exposing (Eval, EvalResult)
+import Elm.Syntax.Pattern exposing (Pattern(..))
+import Eval.Types as Types exposing (Eval, EvalResult, PartialEval, PartialResult)
 import FastDict as Dict exposing (Dict)
 import Kernel.Debug
 import Kernel.JsArray
 import Kernel.String
 import Kernel.Utils
 import Maybe.Extra
+import Recursion
 import Syntax exposing (fakeNode)
-import Value exposing (EvalError, Value(..), typeError)
+import Types exposing (Value(..))
+import Value exposing (EvalError, typeError)
 
 
-type alias EvalFunction =
-    List Value
-    -> List (Node Pattern)
-    -> Maybe QualifiedNameRef
-    -> Node Expression
-    -> Eval Value
-
-
-functions : EvalFunction -> Dict ModuleName (Dict String ( Int, List Value -> Eval Value ))
-functions evalFunction =
+functions : Dict ModuleName (Dict String (Value -> PartialEval Value))
+functions =
     [ -- Elm.Kernel.Basics
       ( [ "Elm", "Kernel", "Basics" ]
       , [ ( "acos", one float to float acos Core.Basics.acos )
@@ -406,10 +398,10 @@ function evalFunctionWith inSelector _ outSelector =
         fromValue : Value -> Maybe (from -> Eval to)
         fromValue value =
             case value of
-                PartiallyApplied localEnv oldArgs patterns maybeName implementation ->
+                Lambda localEnv arg implementation ->
                     Just
-                        (\arg cfg _ ->
-                            evalFunctionWith (oldArgs ++ [ inSelector.toValue arg ]) patterns maybeName implementation cfg localEnv
+                        (\w cfg _ ->
+                            evalFunctionWith (inSelector.toValue w) arg implementation cfg localEnv
                                 |> Types.onValue
                                     (\out ->
                                         case outSelector.fromValue out of
@@ -450,14 +442,14 @@ tuple firstSelector secondSelector =
     { fromValue =
         \value ->
             case value of
-                Tuple first second ->
+                Tuple [ first, second ] ->
                     Maybe.map2 Tuple.pair (firstSelector.fromValue first) (secondSelector.fromValue second)
 
                 _ ->
                     Nothing
     , toValue =
         \( first, second ) ->
-            Tuple (firstSelector.toValue first) (secondSelector.toValue second)
+            Tuple [ firstSelector.toValue first, secondSelector.toValue second ]
     , name = "( " ++ firstSelector.name ++ ", " ++ secondSelector.name ++ ")"
     }
 
@@ -510,7 +502,7 @@ one :
     -> (a -> out)
     -> FunctionImplementation
     -> ModuleName
-    -> ( Int, List Value -> Eval Value )
+    -> (Value -> PartialEval Value)
 one firstSelector _ output f =
     oneWithError firstSelector To output (\v _ _ -> Types.succeed (f v))
 
@@ -519,34 +511,17 @@ oneWithError :
     InSelector a xa
     -> To
     -> OutSelector out xo
-    -> (a -> Eval out)
-    -> FunctionImplementation
-    -> ModuleName
-    -> ( Int, List Value -> Eval Value )
-oneWithError firstSelector _ output f implementation moduleName =
-    ( 1
-    , \args cfg env ->
-        let
-            err : String -> EvalResult value
-            err got =
-                Types.fail <| typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got
-        in
-        case args of
-            [ arg ] ->
-                case firstSelector.fromValue arg of
-                    Just s ->
-                        f s cfg env
-                            |> Types.map output.toValue
+    -> (a -> PartialEval out)
+    -> Value
+    -> PartialEval Value
+oneWithError firstSelector _ output f arg cfg env =
+    case firstSelector.fromValue arg of
+        Just s ->
+            f s cfg env
+                |> Types.mapPartial output.toValue
 
-                    Nothing ->
-                        err (Value.toString arg)
-
-            [] ->
-                partiallyApply moduleName args implementation
-
-            _ ->
-                err "more"
-    )
+        Nothing ->
+            Types.failPartial <| typeError env <| "Expected one " ++ firstSelector.name ++ ", got " ++ got (Value.toString arg)
 
 
 two :
@@ -672,22 +647,6 @@ threeWithError firstSelector secondSelector thirdSelector _ output f implementat
             _ ->
                 err ("[ " ++ String.join ", " (List.map Value.toString args) ++ " ]")
     )
-
-
-partiallyApply : ModuleName -> List Value -> FunctionImplementation -> EvalResult Value
-partiallyApply moduleName args implementation =
-    Types.fromResult <|
-        Ok <|
-            PartiallyApplied
-                (Environment.empty moduleName)
-                args
-                implementation.arguments
-                (Just
-                    { moduleName = moduleName
-                    , name = Node.value implementation.name
-                    }
-                )
-                implementation.expression
 
 
 twoNumbers :

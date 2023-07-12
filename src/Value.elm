@@ -1,190 +1,43 @@
-module Value exposing (Env, EnvValues, EvalError, EvalErrorKind(..), Value(..), fromOrder, nameError, toArray, toExpression, toOrder, toString, todo, typeError, unsupported)
+module Value exposing (fromOrder, nameError, toArray, toOrder, toString, todo, typeError, unsupported)
 
 import Array exposing (Array)
-import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
-import Elm.Syntax.ModuleName exposing (ModuleName)
-import Elm.Syntax.Node exposing (Node)
-import Elm.Syntax.Pattern exposing (Pattern, QualifiedNameRef)
-import Elm.Writer
-import FastDict as Dict exposing (Dict)
-import Syntax exposing (fakeNode)
+import Elm.CodeGen
+import Elm.Pretty
+import Elm.RawFile exposing (moduleName)
+import Elm.Syntax.Expression as Expression exposing (Expression)
+import Elm.Syntax.Node as Node exposing (Node(..))
+import Elm.Syntax.Pattern exposing (Pattern(..))
+import FastDict as Dict
+import Pretty
+import Syntax
+import Types exposing (Env, EvalErrorData, EvalErrorKind(..), Value(..))
 
 
-type Value
-    = String String
-    | Int Int
-    | Float Float
-    | Char Char
-    | Bool Bool
-    | Unit
-    | Tuple Value Value
-    | Triple Value Value Value
-    | Record (Dict String Value)
-    | Custom QualifiedNameRef (List Value)
-    | PartiallyApplied Env (List Value) (List (Node Pattern)) (Maybe QualifiedNameRef) (Node Expression)
-    | JsArray (Array Value)
-    | List (List Value)
-
-
-type alias Env =
-    { currentModule : ModuleName
-    , functions : Dict ModuleName (Dict String FunctionImplementation)
-    , values : EnvValues
-    , callStack : List QualifiedNameRef
-    }
-
-
-type alias EnvValues =
-    Dict String Value
-
-
-type alias EvalError =
-    { currentModule : ModuleName
-    , callStack : List QualifiedNameRef
-    , error : EvalErrorKind
-    }
-
-
-type EvalErrorKind
-    = TypeError String
-    | Unsupported String
-    | NameError String
-    | Todo String
-
-
-typeError : Env -> String -> EvalError
+typeError : Env -> String -> EvalErrorData
 typeError env msg =
     error env (TypeError msg)
 
 
-nameError : Env -> String -> EvalError
+nameError : Env -> String -> EvalErrorData
 nameError env msg =
     error env (NameError msg)
 
 
-unsupported : Env -> String -> EvalError
+unsupported : Env -> String -> EvalErrorData
 unsupported env msg =
     error env (Unsupported msg)
 
 
-todo : Env -> String -> EvalError
+todo : Env -> String -> EvalErrorData
 todo env msg =
     error env (Todo msg)
 
 
-error : Env -> EvalErrorKind -> EvalError
+error : Env -> EvalErrorKind -> EvalErrorData
 error env msg =
-    { currentModule = env.currentModule
-    , callStack = env.callStack
+    { callStack = env.callStack
     , error = msg
     }
-
-
-toExpression : Value -> Node Expression
-toExpression value =
-    fakeNode <|
-        case value of
-            String s ->
-                Expression.Literal s
-
-            Int i ->
-                Expression.Integer i
-
-            Float f ->
-                Expression.Floatable f
-
-            Char c ->
-                Expression.CharLiteral c
-
-            Bool b ->
-                Expression.FunctionOrValue [] (boolToString b)
-
-            Unit ->
-                Expression.UnitExpr
-
-            Tuple l r ->
-                Expression.TupledExpression
-                    [ toExpression l
-                    , toExpression r
-                    ]
-
-            Triple l m r ->
-                Expression.TupledExpression
-                    [ toExpression l
-                    , toExpression m
-                    , toExpression r
-                    ]
-
-            Record fields ->
-                fields
-                    |> Dict.toList
-                    |> List.map
-                        (\( fieldName, fieldValue ) ->
-                            fakeNode ( fakeNode fieldName, toExpression fieldValue )
-                        )
-                    |> Expression.RecordExpr
-
-            List list ->
-                list
-                    |> List.map toExpression
-                    |> Expression.ListExpr
-
-            Custom name args ->
-                case toArray value of
-                    Just array ->
-                        arrayToExpression "Array" array
-
-                    Nothing ->
-                        (fakeNode (Expression.FunctionOrValue name.moduleName name.name)
-                            :: List.map toExpression args
-                        )
-                            |> Expression.Application
-
-            JsArray array ->
-                arrayToExpression "JsArray" (Array.toList array)
-
-            PartiallyApplied _ [] _ (Just qualifiedName) _ ->
-                Expression.FunctionOrValue qualifiedName.moduleName qualifiedName.name
-
-            PartiallyApplied _ args _ (Just qualifiedName) _ ->
-                (fakeNode
-                    (Expression.FunctionOrValue
-                        qualifiedName.moduleName
-                        qualifiedName.name
-                    )
-                    :: List.map toExpression args
-                )
-                    |> Expression.Application
-
-            PartiallyApplied _ [] patterns Nothing implementation ->
-                Expression.LambdaExpression
-                    { args = patterns
-                    , expression = implementation
-                    }
-
-            PartiallyApplied _ args patterns Nothing implementation ->
-                (fakeNode
-                    (Expression.LambdaExpression
-                        { args = patterns
-                        , expression = implementation
-                        }
-                    )
-                    :: List.map toExpression args
-                )
-                    |> Expression.Application
-
-
-arrayToExpression : String -> List Value -> Expression
-arrayToExpression name array =
-    Expression.Application
-        [ Expression.FunctionOrValue
-            [ name ]
-            "fromList"
-            |> fakeNode
-        , array
-            |> List
-            |> toExpression
-        ]
 
 
 toArray : Value -> Maybe (List Value)
@@ -224,6 +77,278 @@ toArray value =
             Nothing
 
 
+toString : Value -> String
+toString value =
+    toPretty value
+        |> Elm.Pretty.prettyExpression
+        |> Pretty.pretty 120
+
+
+toPretty : Value -> Elm.CodeGen.Expression
+toPretty expr =
+    case expr of
+        Int i ->
+            Elm.CodeGen.int i
+
+        String s ->
+            Elm.CodeGen.string s
+
+        Float f ->
+            Elm.CodeGen.float f
+
+        Char c ->
+            Elm.CodeGen.char c
+
+        Bool b ->
+            Elm.CodeGen.val (boolToString b)
+
+        Unit ->
+            Elm.CodeGen.unit
+
+        Tuple children ->
+            Elm.CodeGen.tuple (List.map toPretty children)
+
+        Record fields ->
+            Elm.CodeGen.record (List.map (Tuple.mapSecond toPretty) (Dict.toList fields))
+
+        Custom name args ->
+            Elm.CodeGen.fqConstruct name.moduleName name.name (List.map toPretty args)
+
+        List children ->
+            Elm.CodeGen.list (List.map toPretty children)
+
+        JsArray arr ->
+            Elm.CodeGen.apply
+                [ Elm.CodeGen.fqFun [ "Array" ] "fromList"
+                , Elm.CodeGen.list <|
+                    List.map toPretty <|
+                        Array.toList arr
+                ]
+
+        Lambda _ arg implementation ->
+            Elm.CodeGen.lambda
+                [ patternToPretty (Syntax.fakeNode arg) ]
+                (expressionToPretty implementation)
+
+
+expressionToPretty : Node Expression -> Elm.CodeGen.Expression
+expressionToPretty (Node _ expr) =
+    case expr of
+        Expression.UnitExpr ->
+            Elm.CodeGen.unit
+
+        Expression.Application cs ->
+            Elm.CodeGen.apply (List.map expressionToPretty cs)
+
+        Expression.OperatorApplication name _ l r ->
+            Elm.CodeGen.applyBinOp (expressionToPretty l) (nameToOperator name) (expressionToPretty r)
+
+        Expression.FunctionOrValue moduleName name ->
+            Elm.CodeGen.fqVal moduleName name
+
+        Expression.IfBlock c t f ->
+            Elm.CodeGen.ifExpr
+                (expressionToPretty c)
+                (expressionToPretty t)
+                (expressionToPretty f)
+
+        Expression.PrefixOperator c ->
+            Elm.CodeGen.binOp (nameToOperator c)
+
+        Expression.Operator c ->
+            Elm.CodeGen.binOp (nameToOperator c)
+
+        Expression.Integer c ->
+            Elm.CodeGen.int c
+
+        Expression.Hex c ->
+            Elm.CodeGen.hex c
+
+        Expression.Floatable c ->
+            Elm.CodeGen.float c
+
+        Expression.Negation c ->
+            Elm.CodeGen.negate (expressionToPretty c)
+
+        Expression.Literal c ->
+            Elm.CodeGen.string c
+
+        Expression.CharLiteral c ->
+            Elm.CodeGen.char c
+
+        Expression.TupledExpression cs ->
+            Elm.CodeGen.tuple (List.map expressionToPretty cs)
+
+        Expression.ParenthesizedExpression c ->
+            Elm.CodeGen.parens (expressionToPretty c)
+
+        Expression.LetExpression letBlock ->
+            letBlockToPretty letBlock
+
+        Expression.CaseExpression caseBlock ->
+            caseBlockToPretty caseBlock
+
+        Expression.LambdaExpression lambdaExpression ->
+            lambdaExpressionToPretty lambdaExpression
+
+        Expression.RecordExpr record ->
+            Elm.CodeGen.record (List.map recordSetterToPretty record)
+
+        Expression.ListExpr cs ->
+            Elm.CodeGen.list (List.map expressionToPretty cs)
+
+        Expression.RecordAccess c (Node _ field) ->
+            Elm.CodeGen.access (expressionToPretty c) field
+
+        Expression.RecordAccessFunction _ ->
+            Debug.todo "branch 'RecordAccessFunction _' not implemented"
+
+        Expression.RecordUpdateExpression _ _ ->
+            Debug.todo "branch 'RecordUpdateExpression _ _' not implemented"
+
+        Expression.GLSLExpression code ->
+            Elm.CodeGen.glsl code
+
+
+recordSetterToPretty : Node Expression.RecordSetter -> ( String, Expression )
+recordSetterToPretty (Node _ ( Node _ name, expr )) =
+    ( name, expressionToPretty expr )
+
+
+lambdaExpressionToPretty : Expression.Lambda -> Expression
+lambdaExpressionToPretty _ =
+    Debug.todo "TODO"
+
+
+caseBlockToPretty : Expression.CaseBlock -> Expression
+caseBlockToPretty _ =
+    Debug.todo "TODO"
+
+
+letBlockToPretty : Expression.LetBlock -> Expression
+letBlockToPretty _ =
+    Debug.todo "TODO"
+
+
+nameToOperator : String -> Elm.CodeGen.BinOp
+nameToOperator name =
+    case name of
+        ">>" ->
+            Elm.CodeGen.composer
+
+        "<<" ->
+            Elm.CodeGen.composel
+
+        "^" ->
+            Elm.CodeGen.power
+
+        "*" ->
+            Elm.CodeGen.mult
+
+        "/" ->
+            Elm.CodeGen.div
+
+        "//" ->
+            Elm.CodeGen.intDiv
+
+        "%" ->
+            Elm.CodeGen.modulo
+
+        "+" ->
+            Elm.CodeGen.plus
+
+        "-" ->
+            Elm.CodeGen.minus
+
+        "++" ->
+            Elm.CodeGen.append
+
+        "::" ->
+            Elm.CodeGen.cons
+
+        "==" ->
+            Elm.CodeGen.equals
+
+        "/=" ->
+            Elm.CodeGen.notEqual
+
+        "<" ->
+            Elm.CodeGen.lt
+
+        ">" ->
+            Elm.CodeGen.gt
+
+        "<=" ->
+            Elm.CodeGen.lte
+
+        ">=" ->
+            Elm.CodeGen.gte
+
+        "&&" ->
+            Elm.CodeGen.and
+
+        "||" ->
+            Elm.CodeGen.or
+
+        "|>" ->
+            Elm.CodeGen.piper
+
+        "<|" ->
+            Elm.CodeGen.pipel
+
+        _ ->
+            Debug.todo "handle errors"
+
+
+patternToPretty : Node Pattern -> Elm.CodeGen.Pattern
+patternToPretty (Node _ pattern) =
+    case pattern of
+        AllPattern ->
+            Elm.CodeGen.allPattern
+
+        UnitPattern ->
+            Elm.CodeGen.unitPattern
+
+        CharPattern c ->
+            Elm.CodeGen.charPattern c
+
+        StringPattern c ->
+            Elm.CodeGen.stringPattern c
+
+        IntPattern c ->
+            Elm.CodeGen.intPattern c
+
+        HexPattern c ->
+            Elm.CodeGen.hexPattern c
+
+        FloatPattern c ->
+            Elm.CodeGen.floatPattern c
+
+        TuplePattern c ->
+            Elm.CodeGen.tuplePattern (List.map patternToPretty c)
+
+        RecordPattern c ->
+            Elm.CodeGen.recordPattern (List.map Node.value c)
+
+        UnConsPattern h t ->
+            Elm.CodeGen.unConsPattern (patternToPretty h) (patternToPretty t)
+
+        ListPattern c ->
+            Elm.CodeGen.listPattern (List.map patternToPretty c)
+
+        VarPattern c ->
+            Elm.CodeGen.varPattern c
+
+        NamedPattern name children ->
+            Elm.CodeGen.fqNamedPattern name.moduleName name.name (List.map patternToPretty children)
+
+        AsPattern child (Node _ name) ->
+            Elm.CodeGen.asPattern (patternToPretty child) name
+
+        ParenthesizedPattern c ->
+            Elm.CodeGen.parensPattern (patternToPretty c)
+
+
 boolToString : Bool -> String
 boolToString b =
     if b then
@@ -231,14 +356,6 @@ boolToString b =
 
     else
         "False"
-
-
-toString : Value -> String
-toString value =
-    -- TODO: This is inefficient and subtly different from Debug.toString
-    toExpression value
-        |> Elm.Writer.writeExpression
-        |> Elm.Writer.write
 
 
 fromOrder : Order -> Value

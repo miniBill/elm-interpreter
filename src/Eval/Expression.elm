@@ -17,8 +17,9 @@ import Rope
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import TopologicalSort
+import Types exposing (Env, Expr(..), Value(..))
 import Unicode
-import Value exposing (Env, EnvValues, EvalError, Value(..), nameError, typeError, unsupported)
+import Value exposing (EnvValues, EvalError, nameError, typeError, unsupported)
 
 
 evalExpression : Node Expression -> Eval Value
@@ -98,7 +99,7 @@ evalExpression initExpression initCfg initEnv =
                             evalCase caseExpr cfg env
 
                         Expression.LambdaExpression lambda ->
-                            Types.succeedPartial <| PartiallyApplied env [] lambda.args Nothing lambda.expression
+                            Types.succeedPartial <| toLambda env lambda.args lambda.expression
 
                         Expression.RecordExpr fields ->
                             evalRecord fields cfg env
@@ -133,6 +134,20 @@ evalExpression initExpression initCfg initEnv =
                     )
         )
         ( initExpression, initCfg, initEnv )
+
+
+toLambda : List (Node Pattern) -> Node Expression -> PartialEval Value
+toLambda patterns expression config env =
+    case patterns of
+        [] ->
+            evalExpression expression config env
+
+        [ x ] ->
+            Types.succeedPartial <| Lambda env x expression
+
+        h :: t ->
+            toLambda t expression config env
+                |> Types.mapPartial (\l -> Lambda env h l)
 
 
 evalShortCircuitAnd : Node Expression -> Node Expression -> PartialEval Value
@@ -171,7 +186,7 @@ evalTuple : List (Node Expression) -> PartialEval Value
 evalTuple exprs cfg env =
     case exprs of
         [] ->
-            Types.succeedPartial Value.Unit
+            Types.succeedPartial Unit
 
         [ c ] ->
             Recursion.recurse ( c, cfg, env )
@@ -181,7 +196,7 @@ evalTuple exprs cfg env =
                 (\lValue ->
                     Types.recurseThen ( r, cfg, env )
                         (\rValue ->
-                            Types.succeedPartial (Tuple lValue rValue)
+                            Types.succeedPartial (Tuple [ lValue, rValue ])
                         )
                 )
 
@@ -192,7 +207,7 @@ evalTuple exprs cfg env =
                         (\mValue ->
                             Types.recurseThen ( r, cfg, env )
                                 (\rValue ->
-                                    Types.succeedPartial (Triple lValue mValue rValue)
+                                    Types.succeedPartial (Tuple [ lValue, mValue, rValue ])
                                 )
                         )
                 )
@@ -201,73 +216,35 @@ evalTuple exprs cfg env =
             Types.failPartial <| typeError env "Tuples with more than three elements are not supported"
 
 
-evalApplication : Node Expression -> List (Node Expression) -> PartialEval Value
-evalApplication first rest cfg env =
-    let
-        inner : Env -> List Value -> List (Node Pattern) -> Maybe QualifiedNameRef -> Node Expression -> PartialResult Value
-        inner localEnv oldArgs patterns maybeQualifiedName implementation =
-            let
-                ( used, leftover ) =
-                    List.Extra.splitAt (patternsLength - oldArgsLength) rest
-
-                oldArgsLength : Int
-                oldArgsLength =
-                    List.length oldArgs
-
-                patternsLength : Int
-                patternsLength =
-                    List.length patterns
-            in
-            if not (List.isEmpty leftover) then
-                -- Too many args, we split
-                Recursion.recurse
-                    ( fakeNode <|
-                        Expression.Application
-                            (fakeNode
-                                (Expression.Application (first :: used))
-                                :: leftover
-                            )
-                    , cfg
-                    , env
-                    )
-
-            else
-                Types.recurseMapThen ( rest, cfg, env )
-                    (\values ->
-                        let
-                            restLength : Int
-                            restLength =
-                                List.length rest
-
-                            args : List Value
-                            args =
-                                oldArgs ++ values
-                        in
-                        if oldArgsLength + restLength < patternsLength then
-                            -- Still not enough
-                            Types.succeedPartial <| Value.PartiallyApplied localEnv args patterns maybeQualifiedName implementation
-
-                        else
-                            -- Just right, we special case this for TCO
-                            evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg env
-                    )
-    in
+evalApplication : Node Expression -> Node Expression -> PartialEval Value
+evalApplication first second cfg env =
     Types.recurseThen ( first, cfg, env )
         (\firstValue ->
-            case firstValue of
-                Value.Custom name customArgs ->
-                    Types.recurseMapThen ( rest, cfg, env )
-                        (\values -> Types.succeedPartial <| Value.Custom name (customArgs ++ values))
+            Types.recurseThen ( second, cfg, env )
+                (\secondValue ->
+                    case firstValue of
+                        Custom name customArgs ->
+                            Types.succeedPartial <| Custom name (customArgs ++ [ firstValue ])
 
-                Value.PartiallyApplied localEnv oldArgs patterns maybeQualifiedName implementation ->
-                    inner localEnv oldArgs patterns maybeQualifiedName implementation
+                        Lambda localEnv pattern implementation ->
+                            case match pattern secondValue of
+                                Err e ->
+                                    Types.failPartial e
 
-                other ->
-                    Types.failPartial <|
-                        typeError env <|
-                            "Trying to apply "
-                                ++ Value.toString other
-                                ++ ", which is a non-lambda non-variant"
+                                Ok newEnv ->
+                                    Recursion.recurse
+                                        ( implementation
+                                        , cfg
+                                        , localEnv |> Environment.with newEnv
+                                        )
+
+                        other ->
+                            Types.failPartial <|
+                                typeError env <|
+                                    "Trying to apply "
+                                        ++ Value.toString other
+                                        ++ ", which is a non-lambda non-variant"
+                )
         )
 
 
@@ -384,12 +361,12 @@ evalVariant moduleName env name =
     let
         variant0 : ModuleName -> String -> PartialResult Value
         variant0 modName ctorName =
-            Types.succeedPartial <| Value.Custom { moduleName = modName, name = ctorName } []
+            Types.succeedPartial <| Custom { moduleName = modName, name = ctorName } []
 
         variant1 : ModuleName -> String -> PartialResult Value
         variant1 modName ctorName =
             Types.succeedPartial <|
-                Value.PartiallyApplied
+                PartiallyApplied
                     (Environment.empty modName)
                     []
                     [ fakeNode <| VarPattern "$x" ]
@@ -439,7 +416,7 @@ evalVariant moduleName env name =
                 qualifiedNameRef =
                     { moduleName = fixedModuleName, name = name }
             in
-            Types.succeedPartial <| Value.Custom qualifiedNameRef []
+            Types.succeedPartial <| Custom qualifiedNameRef []
 
 
 evalNonVariant : ModuleName -> String -> PartialEval Value
@@ -530,10 +507,10 @@ evalIfBlock cond true false cfg env =
     Types.recurseThen ( cond, cfg, env )
         (\condValue ->
             case condValue of
-                Value.Bool True ->
+                Bool True ->
                     Recursion.recurse ( true, cfg, env )
 
-                Value.Bool False ->
+                Bool False ->
                     Recursion.recurse ( false, cfg, env )
 
                 _ ->
@@ -583,7 +560,7 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
     in
     if oldArgsLength < patternsLength then
         -- Still not enough
-        Types.succeed <| Value.PartiallyApplied localEnv oldArgs patterns functionName implementation
+        Types.succeed <| PartiallyApplied localEnv oldArgs patterns functionName implementation
 
     else
         -- Just right, we special case this for TCO
@@ -941,15 +918,11 @@ evalRecordAccess recordExpr (Node _ field) cfg env =
 
 evalRecordAccessFunction : String -> Value
 evalRecordAccessFunction field =
-    PartiallyApplied
-        (Environment.empty [])
-        []
-        [ fakeNode (VarPattern "$r") ]
-        Nothing
-        (fakeNode <|
-            Expression.RecordAccess
-                (fakeNode <| Expression.FunctionOrValue [] "$r")
-                (fakeNode <| String.dropLeft 1 field)
+    Lambda Environment.empty
+        (VarPattern "$r")
+        (RecordAccess
+            (FunctionOrValue [] "$r")
+            (String.dropLeft 1 field)
         )
 
 
@@ -1094,7 +1067,7 @@ match env (Node _ pattern) value =
         ( ParenthesizedPattern subPattern, _ ) ->
             match env subPattern value
 
-        ( NamedPattern namePattern argsPatterns, Value.Custom variant args ) ->
+        ( NamedPattern namePattern argsPatterns, Custom variant args ) ->
             -- Two names from different modules can never have the same type
             -- so if we assume the code typechecks we can skip the module name check
             if namePattern.name == variant.name then
@@ -1142,7 +1115,7 @@ match env (Node _ pattern) value =
                                 )
                     )
 
-        ( UnConsPattern patternHead patternTail, Value.List (listHead :: listTail) ) ->
+        ( UnConsPattern patternHead patternTail, List (listHead :: listTail) ) ->
             match env patternHead listHead
                 |> andThen
                     (\headEnv ->
@@ -1213,7 +1186,7 @@ match env (Node _ pattern) value =
         ( FloatPattern _, _ ) ->
             noMatch
 
-        ( TuplePattern [ lpattern, rpattern ], Value.Tuple lvalue rvalue ) ->
+        ( TuplePattern [ lpattern, rpattern ], Tuple [ lvalue, rvalue ] ) ->
             match env lpattern lvalue
                 |> andThen
                     (\lenv ->
@@ -1224,7 +1197,7 @@ match env (Node _ pattern) value =
                                 )
                     )
 
-        ( TuplePattern [ lpattern, mpattern, rpattern ], Value.Triple lvalue mvalue rvalue ) ->
+        ( TuplePattern [ lpattern, mpattern, rpattern ], Tuple [ lvalue, mvalue, rvalue ] ) ->
             match env lpattern lvalue
                 |> andThen
                     (\lenv ->
@@ -1247,7 +1220,7 @@ match env (Node _ pattern) value =
                 |> andThen
                     (\e -> ok <| Dict.insert asName value e)
 
-        ( RecordPattern fields, Value.Record fieldValues ) ->
+        ( RecordPattern fields, Record fieldValues ) ->
             List.foldl
                 (\(Node _ fieldName) ->
                     andThen

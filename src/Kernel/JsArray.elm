@@ -3,7 +3,8 @@ module Kernel.JsArray exposing (appendN, foldl, foldr, indexedMap, initialize, i
 import Array exposing (Array)
 import Eval.Types as Types exposing (Eval)
 import List.Extra
-import Value exposing (Value)
+import Types exposing (Value)
+import Value
 
 
 appendN : Int -> Array Value -> Array Value -> Array Value
