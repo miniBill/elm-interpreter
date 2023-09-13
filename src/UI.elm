@@ -79,8 +79,8 @@ innerView model =
             toRun =
                 if String.startsWith "module " model.input then
                     let
-                        moduleName : Maybe String
-                        moduleName =
+                        name : String
+                        name =
                             model.input
                                 |> String.split "\n"
                                 |> List.head
@@ -88,13 +88,9 @@ innerView model =
                                 |> String.split " "
                                 |> List.drop 1
                                 |> List.head
+                                |> Maybe.withDefault ""
                     in
-                    case moduleName of
-                        Nothing ->
-                            "main"
-
-                        Just name ->
-                            name ++ ".main"
+                    name ++ ".main"
 
                 else
                     ""
