@@ -20,7 +20,6 @@ import Eval.Module
 import Eval.Types as Types
 import Hex
 import Html
-import Html.Attributes
 import Json.Encode
 import List.Extra
 import Rope
@@ -338,9 +337,8 @@ viewOutput output =
         Ok o ->
             paragraph
                 [ Font.family [ Font.monospace ]
-                , htmlAttribute <|
-                    Html.Attributes.style "max-width"
-                        ("calc(100vw - " ++ String.fromInt (2 * Theme.rythm) ++ "px)")
+                , Theme.style "max-width"
+                    ("calc(100vw - " ++ String.fromInt (2 * Theme.rythm) ++ "px)")
                 ]
                 [ text o ]
 

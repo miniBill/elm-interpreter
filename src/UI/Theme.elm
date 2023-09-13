@@ -1,8 +1,9 @@
-module UI.Theme exposing (button, column, padding, row, rythm)
+module UI.Theme exposing (button, column, padding, row, rythm, style)
 
 import Element exposing (Attribute, Element)
 import Element.Border as Border
 import Element.Input as Input
+import Html.Attributes
 
 
 rythm : number
@@ -33,3 +34,8 @@ column attrs children =
 button : List (Attribute msg) -> { onPress : Maybe msg, label : Element msg } -> Element msg
 button attrs config =
     Input.button (padding :: Border.width 1 :: attrs) config
+
+
+style : String -> String -> Attribute msg
+style key value =
+    Element.htmlAttribute <| Html.Attributes.style key value
