@@ -11,7 +11,8 @@ import Elm.Syntax.Node as Node
 import Elm.Syntax.Range exposing (Location, Range)
 import Html exposing (Html, pre, span, text)
 import Html.Attributes exposing (style, title)
-import Html.Events exposing (onClick)
+import Html.Events
+import Json.Decode
 import List.Extra
 import List.MyExtra
 import Maybe.Extra
@@ -380,6 +381,7 @@ aggregate queue =
         |> List.concatMap
             (\( highlight, highlightGroup ) ->
                 let
+                    highlightContent : List (Html msg)
                     highlightContent =
                         highlightGroup
                             |> List.MyExtra.groupBy .button
@@ -421,7 +423,12 @@ aggregate queue =
                                                 ([ Just <| style "outline" "1px solid #fff"
                                                  , Just <| style "background" "rgba(100 0 0 / 0.5)"
                                                  , Just <| style "cursor" "pointer"
-                                                 , Maybe.map onClick onPress
+                                                 , Maybe.map
+                                                    (\msg ->
+                                                        Html.Events.stopPropagationOn "click"
+                                                            (Json.Decode.succeed ( msg, True ))
+                                                    )
+                                                    onPress
                                                  , Maybe.map title tooltip
                                                  ]
                                                     |> List.filterMap identity

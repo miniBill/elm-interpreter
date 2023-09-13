@@ -560,7 +560,11 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
         , Theme.row [ width fill ]
             [ Theme.box "Source"
                 [ width fill ]
-                [ Source.view [ alignTop ] sourceViewConfig ]
+                [ Input.button []
+                    { label = Source.view [ alignTop ] sourceViewConfig
+                    , onPress = Maybe.map (\(CallTreeZipper z) -> Focus z) parent
+                    }
+                ]
             , Theme.column
                 [ height fill
                 , alignRight
