@@ -154,8 +154,10 @@ innerView model =
                     , label = text <| "Trace " ++ toRun
                     }
                 ]
-            , Element.Lazy.lazy viewOutput model.output
-            , viewCallTrees model.callTrees
+            , Theme.column [ alignTop ]
+                [ Element.Lazy.lazy viewOutput model.output
+                , viewCallTrees model.callTrees
+                ]
             ]
         , model.focus
             |> Maybe.map (viewCallTree moduleSource)
