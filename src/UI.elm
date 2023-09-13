@@ -424,7 +424,7 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
 
         nameRow : Element msg
         nameRow =
-            Source.view (Just <| Debug.log "range" <| Node.range expression) source
+            Source.view (Just <| Node.range expression) source
 
         parentButton : Element Msg
         parentButton =
