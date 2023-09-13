@@ -2,7 +2,8 @@ module UI exposing (Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Element, alignTop, column, el, fill, height, padding, paddingEach, paragraph, px, row, text, textColumn, width)
+import Element exposing (Element, alignTop, column, el, fill, height, padding, paddingEach, paragraph, px, rgb, row, text, textColumn, width)
+import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -64,7 +65,8 @@ innerView model =
         [ Theme.padding ]
         [ Theme.row []
             [ Input.multiline
-                [ width fill
+                [ alignTop
+                , width fill
                 , Font.family [ Font.monospace ]
                 ]
                 { spellcheck = False
@@ -146,22 +148,64 @@ viewSource maybeHighlight source =
         viewRow : Int -> String -> Html msg
         viewRow rowIndex row =
             let
-                slice : Int -> Int -> Html msg
+                slice : Int -> Int -> List (Html msg)
                 slice from to =
-                    Html.text <| String.slice from to row
+                    syntax <| String.slice from to row
 
-                toEnd : Int -> Html msg
+                toEnd : Int -> List (Html msg)
                 toEnd from =
-                    Html.text <| String.dropLeft from row
+                    syntax <| String.dropLeft from row
 
-                high : Html msg -> Html msg
+                syntax : String -> List (Html msg)
+                syntax fragment =
+                    fragment
+                        |> String.split " "
+                        |> List.map viewToken
+                        |> List.intersperse [ Html.text " " ]
+                        |> List.concat
+
+                keywords : Set String
+                keywords =
+                    Set.fromList [ "module", "exposing", "=", "|>", "<|" ]
+
+                colored : String -> String -> Html msg
+                colored color content =
+                    Html.span
+                        [ Html.Attributes.style "color" color ]
+                        [ Html.text content ]
+
+                viewOperator : String -> Html msg
+                viewOperator content =
+                    colored "#cc4" content
+
+                viewToken : String -> List (Html msg)
+                viewToken token =
+                    if Set.member token keywords then
+                        [ colored "#88f" token ]
+
+                    else if String.startsWith "(" token then
+                        viewOperator "(" :: viewToken (String.dropLeft 1 token)
+
+                    else if String.endsWith ")" token then
+                        viewToken (String.dropRight 1 token) ++ [ viewOperator ")" ]
+
+                    else if String.startsWith "\"" token && String.endsWith "\"" token then
+                        [ colored "#c44" token ]
+
+                    else if String.toFloat token /= Nothing then
+                        [ colored "#cfc" token ]
+
+                    else
+                        [ Html.text token ]
+
+                high : List (Html msg) -> List (Html msg)
                 high child =
-                    Html.span [ Html.Attributes.style "background" "#44c" ] [ child ]
+                    [ Html.span [ Html.Attributes.style "background" "#4c4" ] child ]
 
-                pieces : List (Html msg)
+                pieces : List (List (Html msg))
                 pieces =
                     if rowIndex < highlight.start.row || rowIndex > highlight.end.row then
-                        [ Html.text row ]
+                        [ toEnd 0 ]
 
                     else if rowIndex == highlight.start.row then
                         if rowIndex == highlight.end.row then
@@ -181,17 +225,24 @@ viewSource maybeHighlight source =
                         ]
 
                     else
-                        [ high <| Html.text row ]
+                        [ high <| toEnd 0 ]
             in
-            Html.span [] pieces
+            Html.span [] <| List.concat pieces
     in
     source
         |> String.split "\n"
         |> List.indexedMap viewRow
         |> List.intersperse (Html.text "\n")
-        |> Html.pre []
+        |> Html.pre [ Html.Attributes.style "line-height" "125%" ]
         |> Element.html
-        |> el [ width fill ]
+        |> el
+            [ width fill
+            , alignTop
+            , Theme.padding
+            , Border.width 1
+            , Background.color <| rgb 0.2 0.2 0.2
+            , Font.color <| rgb 1 1 1
+            ]
 
 
 viewParsed : Maybe (Node Expression.Expression) -> Element Msg
