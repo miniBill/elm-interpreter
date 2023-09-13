@@ -106,7 +106,17 @@ keywords =
         language =
             -- TODO: finish this.
             -- Or, even better, actually do syntax highlighting; possibly starting from the AST.
-            [ "module", "exposing", "let", "in", "if", "then", "else", "=" ]
+            [ "="
+            , "as"
+            , "else"
+            , "exposing"
+            , "if"
+            , "import"
+            , "in"
+            , "let"
+            , "module"
+            , "then"
+            ]
 
         core : List String
         core =
@@ -132,13 +142,15 @@ extractOperatorName exposed =
 
 
 colors :
-    { keyword : String
+    { declaration : String
+    , keyword : String
     , number : String
     , operator : String
     , string : String
     }
 colors =
-    { keyword = "#88f"
+    { declaration = "#ffc"
+    , keyword = "#88f"
     , number = "#cfc"
     , operator = "#cc4"
     , string = "#c44"
@@ -156,27 +168,30 @@ viewSyntax : String -> List (Html msg)
 viewSyntax fragment =
     fragment
         |> String.split " "
-        |> List.map viewToken
+        |> List.indexedMap viewToken
         |> List.intersperse [ text " " ]
         |> List.concat
 
 
-viewToken : String -> List (Html msg)
-viewToken token =
+viewToken : Int -> String -> List (Html msg)
+viewToken tokenIndex token =
     if Set.member token keywords then
         [ colored colors.keyword token ]
 
     else if String.startsWith "(" token then
-        colored colors.operator "(" :: viewToken (String.dropLeft 1 token)
+        colored colors.operator "(" :: viewToken (tokenIndex + 1) (String.dropLeft 1 token)
 
     else if String.endsWith ")" token then
-        viewToken (String.dropRight 1 token) ++ [ colored colors.operator ")" ]
+        viewToken tokenIndex (String.dropRight 1 token) ++ [ colored colors.operator ")" ]
 
     else if String.startsWith "\"" token && String.endsWith "\"" token then
         [ colored colors.string token ]
 
     else if String.toFloat token /= Nothing then
         [ colored colors.number token ]
+
+    else if tokenIndex == 0 then
+        [ colored colors.declaration token ]
 
     else
         [ text token ]
