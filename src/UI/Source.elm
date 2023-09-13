@@ -17,6 +17,7 @@ import List.MyExtra
 import Maybe.Extra
 import Parser
 import UI.Theme as Theme
+import Unicode
 
 
 type alias Button msg =
@@ -87,6 +88,8 @@ type State
     | WaitingDeclaration
     | ReadingDeclaration
     | ReadingExpression
+    | ReadingVariable
+    | ReadingNumber
     | ReadingString State
     | ReadingStringEscape State
     | Comment State
@@ -288,7 +291,7 @@ parseHelp state acc buttons queue =
                         ( ReadingExposeList, _ ) ->
                             normal ReadingExposeList
 
-                        ( WaitingDeclaration, ( '\n', _ ) :: _ ) ->
+                        ( _, ( '\n', _ ) :: _ ) ->
                             normal WaitingDeclaration
 
                         ( WaitingDeclaration, ( ' ', _ ) :: _ ) ->
@@ -303,15 +306,33 @@ parseHelp state acc buttons queue =
                         ( ReadingDeclaration, _ ) ->
                             colored colors.declaration ReadingDeclaration
 
-                        ( ReadingExpression, ( '\n', _ ) :: _ ) ->
-                            normal WaitingDeclaration
-
                         ( ReadingExpression, _ ) ->
                             keywords
                                 |> List.Extra.findMap
                                     (seek colors.keyword ReadingExpression)
                                 |> Maybe.Extra.withDefaultLazy
-                                    (\_ -> normal ReadingExpression)
+                                    (\_ ->
+                                        if Unicode.isAlpha head then
+                                            normal ReadingVariable
+
+                                        else if Unicode.isDigit head then
+                                            colored colors.number ReadingNumber
+
+                                        else
+                                            normal ReadingExpression
+                                    )
+
+                        ( ReadingVariable, ( ' ', _ ) :: _ ) ->
+                            normal ReadingExpression
+
+                        ( ReadingVariable, _ ) ->
+                            normal ReadingVariable
+
+                        ( ReadingNumber, ( ' ', _ ) :: _ ) ->
+                            colored colors.number ReadingExpression
+
+                        ( ReadingNumber, _ ) ->
+                            colored colors.number ReadingNumber
 
                         _ ->
                             error ()
