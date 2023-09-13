@@ -166,6 +166,8 @@ viewSource maybeHighlight source =
 
                 keywords : Set String
                 keywords =
+                    -- TODO: finish this.
+                    -- Or, even better, actually do syntax highlighting; possibly starting from the AST.
                     Set.fromList [ "module", "exposing", "=", "|>", "<|" ]
 
                 colored : String -> String -> Html msg
