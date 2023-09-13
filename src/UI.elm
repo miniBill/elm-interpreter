@@ -409,13 +409,13 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
                             Open current
                 }
     in
-    (if Set.member current open then
-        nameRow
-            :: (List.indexedMap (\i -> viewCallTree (i :: currentList) open) <| Rope.toList children)
+    nameRow
+        :: (if Set.member current open then
+                List.indexedMap (\i -> viewCallTree (i :: currentList) open) <| Rope.toList children
 
-     else
-        [ nameRow ]
-    )
+            else
+                []
+           )
         |> Theme.column
             [ Border.widthEach
                 { top = 0
