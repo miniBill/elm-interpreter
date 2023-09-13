@@ -2,7 +2,7 @@ module UI exposing (CallTreeZipper, Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Attribute, Element, alignTop, column, el, fill, padding, paddingEach, paragraph, row, text, width)
+import Element exposing (Attribute, Element, alignRight, alignTop, column, el, fill, padding, paragraph, row, shrink, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -18,6 +18,7 @@ import Elm.Writer
 import Eval
 import Eval.Module
 import Eval.Types as Types
+import FastDict
 import Hex
 import Html
 import Json.Encode
@@ -96,7 +97,7 @@ innerView model =
             , Element.Lazy.lazy viewParsed model.parsed
             , Theme.box "Source:"
                 [ width fill ]
-                [ Source.view Nothing moduleSource ]
+                [ Source.view [] Nothing moduleSource ]
             , let
                 toRun : String
                 toRun =
@@ -419,21 +420,20 @@ viewOutput output =
 viewCallTree : String -> CallTreeZipper -> Element Msg
 viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
     let
-        (CallNode { expression, children }) =
+        (CallNode { expression, children, env }) =
             current
 
-        nameRow : Element msg
-        nameRow =
-            Source.view (Just <| Node.range expression) source
+        sourceView : Element msg
+        sourceView =
+            if env.currentModule == [ "Main" ] then
+                Source.view [ alignTop ] (Just <| Node.range expression) source
 
-        parentButton : Element Msg
-        parentButton =
+            else
+                Source.view [ alignTop ] Nothing "-- No source available"
+
+        parentButtons : List (Element Msg)
+        parentButtons =
             let
-                stack : List (Element Msg)
-                stack =
-                    go parent
-                        |> List.reverse
-
                 go : Maybe CallTreeZipper -> List (Element Msg)
                 go node =
                     case node of
@@ -443,11 +443,8 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                         Just (CallTreeZipper z) ->
                             focusButton [] z :: go z.parent
             in
-            if List.isEmpty stack then
-                Element.none
-
-            else
-                Theme.column [] stack
+            go parent
+                |> List.reverse
 
         shownChildren : List (Element Msg)
         shownChildren =
@@ -462,28 +459,66 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                     )
     in
     Theme.box "Call tree:"
-        [ width fill
-        , monospace
-        ]
-        [ parentButton
-        , nameRow
-        , shownChildren
-            |> Theme.row
-                [ Border.widthEach
-                    { top = 1
-                    , left = 0
-                    , right = 0
-                    , bottom = 0
-                    }
-                , paddingEach
-                    { top = Theme.rythm
-                    , bottom = 0
-                    , left = 0
-                    , right = 0
-                    }
-                , width fill
+        [ width fill ]
+        [ Theme.box "Parents:"
+            [ width fill ]
+            parentButtons
+        , Theme.row [ width fill ]
+            [ Theme.box "Source"
+                [ width fill ]
+                [ sourceView ]
+            , Theme.box "Environment"
+                [ alignTop
+                , alignRight
                 ]
+                [ viewEnv env ]
+            ]
+        , Theme.box "Children:"
+            [ width fill ]
+          <|
+            [ Theme.wrappedRow
+                [ width fill ]
+                shownChildren
+            ]
         ]
+
+
+viewEnv : Types.Env -> Element msg
+viewEnv { values } =
+    if FastDict.isEmpty values then
+        Element.none
+
+    else
+        let
+            cell : String -> Element msg
+            cell value =
+                el [ monospace ] <| text value
+        in
+        Element.table
+            [ Theme.spacing
+            , alignTop
+            , alignRight
+            , width shrink
+            ]
+            { columns =
+                [ { header = text "Name"
+                  , view = \( name, _ ) -> cell name
+                  , width = shrink
+                  }
+                , { header = text "Value"
+                  , view = \( _, value ) -> cell <| viewValue value
+                  , width = shrink
+                  }
+                ]
+            , data = FastDict.toList values
+            }
+
+
+viewValue : Value -> String
+viewValue val =
+    val
+        |> Value.toExpression
+        |> expressionToString
 
 
 viewNode : CallTree -> Element msg

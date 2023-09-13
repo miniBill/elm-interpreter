@@ -40,10 +40,10 @@ type alias Config =
 
 type CallTree
     = CallNode
-        { moduleName : ModuleName
-        , expression : Node Expression
+        { expression : Node Expression
         , result : Result EvalErrorData Value
         , children : Rope CallTree
+        , env : Env
         }
 
 

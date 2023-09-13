@@ -1,4 +1,4 @@
-module UI.Theme exposing (box, button, column, padding, row, rythm, style, wrappedRow)
+module UI.Theme exposing (box, button, column, padding, row, rythm, spacing, style, wrappedRow)
 
 import Element exposing (Attribute, Element, alignTop, el, text)
 import Element.Border as Border

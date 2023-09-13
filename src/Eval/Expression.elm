@@ -126,7 +126,7 @@ evalExpression initExpression initCfg initEnv =
                     (\( value, trees, logs ) ->
                         ( value
                         , CallNode
-                            { moduleName = env.currentModule
+                            { env = env
                             , expression = Node range expression
                             , children = trees
                             , result = value
@@ -316,15 +316,18 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
 
                                 Just ( _, f ) ->
                                     let
+                                        childEnv =
+                                            Environment.call moduleName name env
+
                                         ( kernelResult, children, logLines ) =
                                             f args
                                                 cfg
-                                                (Environment.call moduleName name env)
+                                                childEnv
                                     in
                                     ( kernelResult
                                     , if cfg.trace then
                                         CallNode
-                                            { moduleName = moduleName
+                                            { env = childEnv
                                             , expression =
                                                 Node range <|
                                                     Application <|
@@ -658,7 +661,7 @@ evalKernelFunction moduleName name cfg env =
                                 callTree : CallTree
                                 callTree =
                                     CallNode
-                                        { moduleName = moduleName
+                                        { env = env
                                         , expression = fakeNode <| FunctionOrValue moduleName name
                                         , result = result
                                         , children = callTrees

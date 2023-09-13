@@ -2,7 +2,7 @@ module UI.Source exposing (view)
 
 import Core
 import Dict
-import Element exposing (Element)
+import Element exposing (Attribute, Element)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
@@ -15,8 +15,8 @@ import Set exposing (Set)
 import UI.Theme as Theme
 
 
-view : Maybe Range -> String -> Element msg
-view maybeHighlight source =
+view : List (Attribute msg) -> Maybe Range -> String -> Element msg
+view attrs maybeHighlight source =
     let
         highlight : Range
         highlight =
@@ -33,13 +33,14 @@ view maybeHighlight source =
             ]
         |> Element.html
         |> Element.el
-            [ Element.width Element.fill
-            , Element.alignTop
-            , Theme.padding
-            , Border.width 1
-            , Background.color <| Element.rgb 0.2 0.2 0.2
-            , Font.color <| Element.rgb 1 1 1
-            ]
+            (Element.width Element.fill
+                :: Element.alignTop
+                :: Theme.padding
+                :: Border.width 1
+                :: (Background.color <| Element.rgb 0.2 0.2 0.2)
+                :: (Font.color <| Element.rgb 1 1 1)
+                :: attrs
+            )
 
 
 fakeRange : Range
@@ -151,14 +152,16 @@ extractOperatorName exposed =
 
 
 colors :
-    { declaration : String
+    { comment : String
+    , declaration : String
     , keyword : String
     , number : String
     , operator : String
     , string : String
     }
 colors =
-    { declaration = "#ffc"
+    { comment = "#ccc"
+    , declaration = "#ffc"
     , keyword = "#88f"
     , number = "#cfc"
     , operator = "#cc4"
@@ -177,21 +180,41 @@ viewSyntax : String -> List (Html msg)
 viewSyntax fragment =
     fragment
         |> String.split " "
-        |> List.indexedMap viewToken
+        |> List.foldl
+            (\token ( acc, isComment, tokenIndex ) ->
+                let
+                    newIsComment : Bool
+                    newIsComment =
+                        isComment || String.startsWith "--" token
+                in
+                ( if newIsComment then
+                    viewToken True tokenIndex token :: acc
+
+                  else
+                    viewToken False tokenIndex token :: acc
+                , newIsComment
+                , tokenIndex + 1
+                )
+            )
+            ( [], False, 0 )
+        |> (\( acc, _, _ ) -> List.reverse acc)
         |> List.intersperse [ text " " ]
         |> List.concat
 
 
-viewToken : Int -> String -> List (Html msg)
-viewToken tokenIndex token =
-    if Set.member token keywords then
+viewToken : Bool -> Int -> String -> List (Html msg)
+viewToken isComment tokenIndex token =
+    if isComment then
+        [ colored colors.comment token ]
+
+    else if Set.member token keywords then
         [ colored colors.keyword token ]
 
     else if String.startsWith "(" token then
-        colored colors.operator "(" :: viewToken (tokenIndex + 1) (String.dropLeft 1 token)
+        colored colors.operator "(" :: viewToken isComment (tokenIndex + 1) (String.dropLeft 1 token)
 
     else if String.endsWith ")" token then
-        viewToken tokenIndex (String.dropRight 1 token) ++ [ colored colors.operator ")" ]
+        viewToken isComment tokenIndex (String.dropRight 1 token) ++ [ colored colors.operator ")" ]
 
     else if String.startsWith "\"" token && String.endsWith "\"" token then
         [ colored colors.string token ]
