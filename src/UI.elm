@@ -2,7 +2,7 @@ module UI exposing (Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Element, alignTop, centerX, centerY, column, el, fill, height, padding, paddingEach, paragraph, px, rgb, row, text, textColumn, width)
+import Element exposing (Attribute, Element, alignTop, centerX, centerY, column, el, fill, height, padding, paddingEach, paragraph, px, rgb, row, text, textColumn, width)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
@@ -69,7 +69,7 @@ innerView model =
             [ Input.multiline
                 [ alignTop
                 , width fill
-                , Font.family [ Font.monospace ]
+                , monospace
                 ]
                 { spellcheck = False
                 , text = model.input
@@ -121,19 +121,31 @@ innerView model =
                 }
             ]
         , Element.Lazy.lazy viewOutput model.output
-        , model.callTrees
-            |> List.indexedMap (viewCallTreeTop model.open)
-            |> Theme.column [ width fill ]
+        , viewCallTrees model.open model.callTrees
         , Element.Lazy.lazy viewLogLines model.logLines
         ]
+
+
+viewCallTrees : Set String -> List CallTree -> Element Msg
+viewCallTrees =
+    Element.Lazy.lazy2 <|
+        \open callTrees ->
+            callTrees
+                |> List.indexedMap (viewCallTreeTop open)
+                |> Theme.column [ width fill ]
 
 
 viewCallTreeTop : Set String -> Int -> CallTree -> Element Msg
 viewCallTreeTop =
     Element.Lazy.lazy3 <|
         \open i tree ->
-            el [ Border.width 1, Theme.padding, width fill ] <|
-                viewCallTree [ i ] open tree
+            el
+                [ Border.width 1
+                , Theme.padding
+                , width fill
+                , monospace
+                ]
+                (viewCallTree [ i ] open tree)
 
 
 viewSource : Maybe Range -> String -> Element Msg
@@ -264,13 +276,15 @@ viewParsed maybeExpr =
             Element.none
 
         Just expr ->
-            el
-                [ Font.family
-                    [ Font.typeface "Fira Code"
-                    , Font.monospace
-                    ]
-                ]
-                (viewExpression expr)
+            el [ monospace ] (viewExpression expr)
+
+
+monospace : Attribute msg
+monospace =
+    Font.family
+        [ Font.typeface "Fira Code"
+        , Font.monospace
+        ]
 
 
 viewExpression : Node Expression.Expression -> Element msg
@@ -481,7 +495,7 @@ viewOutput output =
     case output of
         Ok o ->
             paragraph
-                [ Font.family [ Font.monospace ]
+                [ monospace
                 , Theme.style "max-width"
                     ("calc(100vw - " ++ String.fromInt (2 * Theme.rythm) ++ "px)")
                 , Border.width 1
@@ -495,7 +509,7 @@ viewOutput output =
                 |> List.map (\line -> paragraph [] [ text line ])
                 |> (::) (text "Error:")
                 |> textColumn
-                    [ Font.family [ Font.monospace ]
+                    [ monospace
                     , Border.width 1
                     , Theme.padding
                     ]
