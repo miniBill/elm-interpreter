@@ -14,6 +14,7 @@ import Html.Attributes exposing (style, title)
 import Html.Events exposing (onClick)
 import List.Extra
 import List.MyExtra
+import Maybe.Extra
 import Parser
 import UI.Theme as Theme
 
@@ -100,12 +101,28 @@ type alias Parsed msg =
     }
 
 
-parse : Config msg -> List ( Char, Location ) -> List (Html msg)
+type alias Step msg =
+    Parser.Step
+        ( State, Parsed msg, Queue )
+        (List (Html msg))
+
+
+type alias Queue =
+    List ( Char, Location )
+
+
+parse : Config msg -> Queue -> List (Html msg)
 parse config chars =
-    parseHelp Initial [] config.buttons chars
+    parseHelp Initial
+        []
+        (List.sortBy
+            (\{ range } -> ( range.start.row, range.start.column ))
+            config.buttons
+        )
+        chars
 
 
-parseHelp : State -> List (Parsed msg) -> List (Button msg) -> List ( Char, Location ) -> List (Html msg)
+parseHelp : State -> List (Parsed msg) -> List (Button msg) -> Queue -> List (Html msg)
 parseHelp state acc buttons queue =
     case queue of
         [] ->
@@ -145,12 +162,7 @@ parseHelp state acc buttons queue =
                     , token = String.fromChar head
                     }
 
-                normal :
-                    State
-                    ->
-                        Parser.Step
-                            ( State, Parsed msg, List ( Char, Location ) )
-                            (List (Html msg))
+                normal : State -> Step msg
                 normal newState =
                     ( newState
                     , default
@@ -158,22 +170,11 @@ parseHelp state acc buttons queue =
                     )
                         |> Parser.Loop
 
-                operator :
-                    State
-                    ->
-                        Parser.Step
-                            ( State, Parsed msg, List ( Char, Location ) )
-                            (List (Html msg))
+                operator : State -> Step msg
                 operator newState =
                     colored colors.operator newState
 
-                colored :
-                    String
-                    -> State
-                    ->
-                        Parser.Step
-                            ( State, Parsed msg, List ( Char, Location ) )
-                            (List (Html msg))
+                colored : String -> State -> Step msg
                 colored color newState =
                     ( newState
                     , { default | color = Just color }
@@ -181,17 +182,12 @@ parseHelp state acc buttons queue =
                     )
                         |> Parser.Loop
 
-                error :
-                    ()
-                    ->
-                        Parser.Step
-                            ( State, Parsed msg, List ( Char, Location ) )
-                            (List (Html msg))
+                error : () -> Step msg
                 error () =
                     colored "red" Error
 
-                seek : String -> Maybe ( String, List ( Char, Location ) )
-                seek keyword =
+                seek : String -> State -> String -> Maybe (Step msg)
+                seek color newState keyword =
                     let
                         len : Int
                         len =
@@ -204,14 +200,31 @@ parseHelp state acc buttons queue =
                         )
                             == String.toList keyword
                     then
-                        Just ( keyword, List.drop len queue )
+                        ( newState
+                        , { default
+                            | color = Just color
+                            , token = keyword
+                          }
+                        , List.drop len queue
+                        )
+                            |> Parser.Loop
+                            |> Just
 
                     else
                         Nothing
 
+                seekOrError : String -> State -> String -> Step msg
+                seekOrError color newState keyword =
+                    case seek color newState keyword of
+                        Just r ->
+                            r
+
+                        Nothing ->
+                            error ()
+
                 step :
                     Parser.Step
-                        ( State, Parsed msg, List ( Char, Location ) )
+                        ( State, Parsed msg, Queue )
                         (List (Html msg))
                 step =
                     case ( state, queue ) of
@@ -235,13 +248,13 @@ parseHelp state acc buttons queue =
                         ( ReadingString _, _ ) ->
                             colored colors.string state
 
-                        ( _, ( '-', _ ) :: ( '-', _ ) :: _ ) ->
+                        ( _, ( '-', _ ) :: ( '-', _ ) :: commentTail ) ->
                             ( Comment state
                             , { default
                                 | color = Just colors.comment
                                 , token = "--"
                               }
-                            , tail
+                            , commentTail
                             )
                                 |> Parser.Loop
 
@@ -252,19 +265,7 @@ parseHelp state acc buttons queue =
                             colored colors.comment state
 
                         ( Initial, _ ) ->
-                            case seek "module " of
-                                Just ( _, moduleTail ) ->
-                                    ( GettingModuleName
-                                    , { default
-                                        | color = Just colors.keyword
-                                        , token = "module "
-                                      }
-                                    , moduleTail
-                                    )
-                                        |> Parser.Loop
-
-                                Nothing ->
-                                    error ()
+                            seekOrError colors.keyword GettingModuleName "module "
 
                         ( GettingModuleName, ( ' ', _ ) :: _ ) ->
                             normal WaitingModuleExposing
@@ -273,20 +274,7 @@ parseHelp state acc buttons queue =
                             normal GettingModuleName
 
                         ( WaitingModuleExposing, _ ) ->
-                            case seek "exposing" of
-                                Just ( _, exposingTail ) ->
-                                    ( WaitingExposeList
-                                    , { color = Just colors.keyword
-                                      , background = Nothing
-                                      , button = button
-                                      , token = "exposing"
-                                      }
-                                    , exposingTail
-                                    )
-                                        |> Parser.Loop
-
-                                Nothing ->
-                                    error ()
+                            seekOrError colors.keyword WaitingExposeList "exposing"
 
                         ( WaitingExposeList, ( ' ', _ ) :: _ ) ->
                             normal WaitingExposeList
@@ -319,20 +307,11 @@ parseHelp state acc buttons queue =
                             normal WaitingDeclaration
 
                         ( ReadingExpression, _ ) ->
-                            case List.Extra.findMap seek keywords of
-                                Just ( foundKeyword, foundTail ) ->
-                                    ( ReadingExpression
-                                    , { color = Just colors.keyword
-                                      , background = Nothing
-                                      , button = button
-                                      , token = foundKeyword
-                                      }
-                                    , foundTail
-                                    )
-                                        |> Parser.Loop
-
-                                Nothing ->
-                                    normal ReadingExpression
+                            keywords
+                                |> List.Extra.findMap
+                                    (seek colors.keyword ReadingExpression)
+                                |> Maybe.Extra.withDefaultLazy
+                                    (\_ -> normal ReadingExpression)
 
                         _ ->
                             error ()
