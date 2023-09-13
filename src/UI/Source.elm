@@ -69,7 +69,7 @@ viewRow highlight rowIndex row =
 
         high : List (Html msg) -> List (Html msg)
         high child =
-            [ span [ style "background" "#4c4" ] child ]
+            [ span [ style "background" "#333", style "border" "1px dotted white" ] child ]
 
         pieces : List (List (Html msg))
         pieces =

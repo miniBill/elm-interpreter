@@ -4,7 +4,7 @@ import Core
 import Elm.Parser
 import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
-import Elm.Syntax.Expression exposing (Expression)
+import Elm.Syntax.Expression exposing (Expression(..))
 import Elm.Syntax.File exposing (File)
 import Elm.Syntax.Module exposing (Module(..))
 import Elm.Syntax.ModuleName exposing (ModuleName)
@@ -12,6 +12,7 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Environment
 import Eval.Expression
 import FastDict as Dict
+import List.Extra
 import Result.MyExtra
 import Rope exposing (Rope)
 import Syntax exposing (fakeNode)
@@ -59,9 +60,34 @@ traceOrEvalModule cfg source expression =
 
         Ok env ->
             let
+                maybeNode : a -> Node a
+                maybeNode =
+                    case expression of
+                        FunctionOrValue [] name ->
+                            let
+                                needle : String
+                                needle =
+                                    name ++ " ="
+                            in
+                            source
+                                |> String.split "\n"
+                                |> List.Extra.findIndex
+                                    (String.startsWith needle)
+                                |> Maybe.map
+                                    (\row ->
+                                        Node
+                                            { start = { row = row, column = 0 }
+                                            , end = { row = row, column = String.length name }
+                                            }
+                                    )
+                                |> Maybe.withDefault fakeNode
+
+                        _ ->
+                            fakeNode
+
                 ( result, callTrees, logLines ) =
                     Eval.Expression.evalExpression
-                        (fakeNode expression)
+                        (maybeNode expression)
                         { trace = cfg.trace }
                         env
             in

@@ -66,6 +66,15 @@ main =
 
 innerView : Model -> Element Msg
 innerView model =
+    let
+        moduleSource : String
+        moduleSource =
+            if String.startsWith "module " model.input then
+                model.input
+
+            else
+                Eval.toModule model.input
+    in
     Theme.column
         [ Theme.padding
         , width fill
@@ -85,16 +94,7 @@ innerView model =
                     }
                 ]
             , Element.Lazy.lazy viewParsed model.parsed
-            , let
-                moduleSource : String
-                moduleSource =
-                    if String.startsWith "module " model.input then
-                        model.input
-
-                    else
-                        Eval.toModule model.input
-              in
-              Theme.box "Source:"
+            , Theme.box "Source:"
                 [ width fill ]
                 [ Source.view Nothing moduleSource ]
             , let
@@ -132,7 +132,7 @@ innerView model =
             , viewCallTrees model.callTrees
             ]
         , model.focus
-            |> Maybe.map (Element.Lazy.lazy viewCallTree)
+            |> Maybe.map (viewCallTree moduleSource)
             |> Maybe.withDefault Element.none
         , Element.Lazy.lazy viewLogLines model.logLines
         ]
@@ -416,15 +416,15 @@ viewOutput output =
                 |> Theme.box "Error:" []
 
 
-viewCallTree : CallTreeZipper -> Element Msg
-viewCallTree ((CallTreeZipper { current, parent }) as zipper) =
+viewCallTree : String -> CallTreeZipper -> Element Msg
+viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
     let
-        (CallNode { children }) =
+        (CallNode { expression, children }) =
             current
 
         nameRow : Element msg
         nameRow =
-            viewNode current
+            Source.view (Just <| Debug.log "range" <| Node.range expression) source
 
         parentButton : Element Msg
         parentButton =
@@ -575,11 +575,26 @@ update msg model =
                         { trace = tracing }
                         moduleSource
                         (Expression.FunctionOrValue [] "main")
+
+                callTrees : List CallTree
+                callTrees =
+                    Rope.toList callTree
             in
             { model
                 | output = resultToString result
-                , callTrees = Rope.toList callTree
+                , callTrees = callTrees
                 , logLines = Rope.toList logLines
+                , focus =
+                    case callTrees of
+                        [ tree ] ->
+                            CallTreeZipper
+                                { parent = Nothing
+                                , current = tree
+                                }
+                                |> Just
+
+                        _ ->
+                            Nothing
             }
 
         Focus focus ->
