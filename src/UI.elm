@@ -11,7 +11,7 @@ import Elm.Processing
 import Elm.Syntax.Declaration as Declaration
 import Elm.Syntax.Expression as Expression
 import Elm.Syntax.File as File
-import Elm.Syntax.Node as Node
+import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
 import Elm.Writer
 import Eval
@@ -38,7 +38,7 @@ type Msg
 
 type alias Model =
     { input : String
-    , parsed : Maybe (Node.Node Expression.Expression)
+    , parsed : Maybe (Node Expression.Expression)
     , output : Result String String
     , callTrees : List CallTree
     , logLines : List String
@@ -121,7 +121,7 @@ innerView model =
         ]
 
 
-viewParsed : Maybe (Node.Node Expression.Expression) -> Element Msg
+viewParsed : Maybe (Node Expression.Expression) -> Element Msg
 viewParsed maybeExpr =
     case maybeExpr of
         Nothing ->
@@ -137,8 +137,8 @@ viewParsed maybeExpr =
                 (viewExpression expr)
 
 
-viewExpression : Node.Node Expression.Expression -> Element msg
-viewExpression (Node.Node _ expr) =
+viewExpression : Node Expression.Expression -> Element msg
+viewExpression (Node _ expr) =
     case expr of
         Expression.OperatorApplication name _ l r ->
             boxxxy name [ viewExpressions [ l, r ] ]
@@ -207,10 +207,10 @@ viewExpression (Node.Node _ expr) =
         Expression.ListExpr children ->
             boxxxy "[]" [ viewExpressions children ]
 
-        Expression.RecordAccess chil (Node.Node _ name) ->
+        Expression.RecordAccess chil (Node _ name) ->
             boxxxy "." [ row [] [ viewExpression chil, text <| " " ++ name ] ]
 
-        Expression.RecordUpdateExpression (Node.Node _ name) setters ->
+        Expression.RecordUpdateExpression (Node _ name) setters ->
             boxxxy ("{ " ++ name ++ " | }") [ viewSetters setters ]
 
         Expression.RecordExpr setters ->
@@ -229,13 +229,13 @@ viewExpression (Node.Node _ expr) =
             boxxxy0 "branch 'LambdaExpression _' not implemented"
 
 
-viewSetters : List (Node.Node Expression.RecordSetter) -> Element msg
+viewSetters : List (Node Expression.RecordSetter) -> Element msg
 viewSetters setters =
     row [] (List.map viewSetter setters)
 
 
-viewSetter : Node.Node Expression.RecordSetter -> Element msg
-viewSetter (Node.Node _ ( Node.Node _ name, value )) =
+viewSetter : Node Expression.RecordSetter -> Element msg
+viewSetter (Node _ ( Node _ name, value )) =
     boxxxy (name ++ " =") [ viewExpression value ]
 
 
@@ -260,8 +260,8 @@ boxxxy_ name children =
         (row [] name :: children)
 
 
-viewLetDeclaration : Node.Node Expression.LetDeclaration -> Element msg
-viewLetDeclaration (Node.Node _ letDeclaration) =
+viewLetDeclaration : Node Expression.LetDeclaration -> Element msg
+viewLetDeclaration (Node _ letDeclaration) =
     case letDeclaration of
         Expression.LetFunction function ->
             viewFunction function
@@ -287,8 +287,8 @@ viewFunction function =
         [ viewExpression declaration.expression ]
 
 
-viewPattern : Node.Node Pattern.Pattern -> Element msg
-viewPattern (Node.Node _ pattern) =
+viewPattern : Node Pattern.Pattern -> Element msg
+viewPattern (Node _ pattern) =
     case pattern of
         Pattern.AllPattern ->
             boxxxy0 "_"
@@ -336,7 +336,7 @@ viewPattern (Node.Node _ pattern) =
             boxxxy0 "branch 'ParenthesizedPattern _' not implemented"
 
 
-viewExpressions : List (Node.Node Expression.Expression) -> Element msg
+viewExpressions : List (Node Expression.Expression) -> Element msg
 viewExpressions expressions =
     row [] <| List.map viewExpression expressions
 
@@ -500,7 +500,7 @@ update msg model =
             { model | open = Set.remove path model.open }
 
 
-tryParse : String -> Maybe (Node.Node Expression.Expression)
+tryParse : String -> Maybe (Node Expression.Expression)
 tryParse input =
     let
         fixedInput : String
@@ -526,7 +526,7 @@ tryParse input =
             )
 
 
-findMain : Declaration.Declaration -> Maybe (Node.Node Expression.Expression)
+findMain : Declaration.Declaration -> Maybe (Node Expression.Expression)
 findMain declaration =
     case declaration of
         Declaration.FunctionDeclaration function ->
