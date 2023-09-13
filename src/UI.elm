@@ -100,13 +100,11 @@ innerView model =
                     ""
           in
           Theme.row []
-            [ Theme.button
-                []
+            [ Theme.button []
                 { onPress = Just (Eval False)
                 , label = text <| "Eval " ++ toRun
                 }
-            , Theme.button
-                []
+            , Theme.button []
                 { onPress = Just (Eval True)
                 , label = text <| "Trace " ++ toRun
                 }
