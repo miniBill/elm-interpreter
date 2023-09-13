@@ -2,7 +2,7 @@ module UI exposing (Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Element, alignTop, column, el, fill, height, padding, paddingEach, paragraph, px, rgb, row, text, textColumn, width)
+import Element exposing (Element, alignTop, centerX, centerY, column, el, fill, height, padding, paddingEach, paragraph, px, rgb, row, text, textColumn, width)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
@@ -62,8 +62,10 @@ main =
 innerView : Model -> Element Msg
 innerView model =
     Theme.column
-        [ Theme.padding ]
-        [ Theme.row []
+        [ Theme.padding
+        , width fill
+        ]
+        [ Theme.row [ width fill ]
             [ Input.multiline
                 [ alignTop
                 , width fill
@@ -120,10 +122,15 @@ innerView model =
             ]
         , Element.Lazy.lazy viewOutput model.output
         , model.callTrees
-            |> List.indexedMap (\i tree -> Element.Lazy.lazy3 viewCallTree [ i ] model.open tree)
-            |> Theme.column []
+            |> List.indexedMap (viewCallTreeTop model.open)
+            |> Theme.column [ width fill ]
         , Element.Lazy.lazy viewLogLines model.logLines
         ]
+
+
+viewCallTreeTop : Set String -> Int -> CallTree -> Element Msg
+viewCallTreeTop =
+    Element.Lazy.lazy3 <| \open i tree -> viewCallTree [ i ] open tree
 
 
 viewSource : Maybe Range -> String -> Element Msg
@@ -522,44 +529,75 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
 
         toggleButton : Element Msg
         toggleButton =
-            Theme.button
-                [ height <| px <| 4 * Theme.rythm
-                , width <| px <| 4 * Theme.rythm
-                ]
-                { label = text " "
-                , onPress =
-                    Just <|
-                        if Set.member current open then
-                            Close current
+            if Rope.length children < 2 then
+                Element.none
 
-                        else
-                            Open current
-                }
-    in
-    nameRow
-        :: (if Set.member current open then
-                List.indexedMap (\i -> viewCallTree (i :: currentList) open) <| Rope.toList children
+            else
+                Theme.button
+                    [ height <| px <| 4 * Theme.rythm
+                    , width <| px <| 4 * Theme.rythm
+                    , centerX
+                    ]
+                    { label =
+                        el [ centerX, centerY ] <|
+                            text <|
+                                if Set.member current open then
+                                    "∧"
+
+                                else
+                                    "∨"
+                    , onPress =
+                        Just <|
+                            if Set.member current open then
+                                Close current
+
+                            else
+                                Open current
+                    }
+
+        shownChildren : List (Element Msg)
+        shownChildren =
+            if Set.member current open || Rope.length children == 1 then
+                Rope.toList children
+                    |> List.sortBy (\node -> -(nodeSize node))
+                    |> List.indexedMap
+                        (\i -> viewCallTree (i :: currentList) open)
 
             else
                 []
-           )
-        |> Theme.column
-            [ Border.widthEach
-                { top = 0
-                , left = 1
-                , right = 0
-                , bottom = 0
-                }
-            , paddingEach
-                { top = 0
-                , bottom = 0
-                , left = Theme.rythm
-                , right = 0
-                }
-            ]
-        |> List.singleton
-        |> (::) toggleButton
-        |> Theme.row []
+    in
+    Theme.column [ alignTop, width fill ]
+        [ nameRow
+        , toggleButton
+        , shownChildren
+            |> List.intersperse
+                (el
+                    [ height fill
+                    , Border.widthEach { left = 1, top = 0, bottom = 0, right = 0 }
+                    , width <| px 1
+                    ]
+                    Element.none
+                )
+            |> Theme.row
+                [ Border.widthEach
+                    { top = 1
+                    , left = 0
+                    , right = 0
+                    , bottom = 0
+                    }
+                , paddingEach
+                    { top = Theme.rythm
+                    , bottom = 0
+                    , left = 0
+                    , right = 0
+                    }
+                ]
+        ]
+
+
+nodeSize : CallTree -> number
+nodeSize (CallNode { children }) =
+    List.foldl (\child acc -> acc + nodeSize child) 1 (Rope.toList children)
 
 
 viewLogLines : List String -> Element msg
