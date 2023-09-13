@@ -2,7 +2,7 @@ module UI exposing (CallTreeZipper, Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Attribute, Element, alignRight, alignTop, column, el, fill, padding, paragraph, row, shrink, text, width)
+import Element exposing (Attribute, Element, alignRight, alignTop, column, el, fill, height, padding, paragraph, px, row, shrink, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -537,16 +537,22 @@ viewNode (CallNode { expression, result }) =
                 Err e ->
                     Types.evalErrorToString e
     in
-    text
-        (String.trim expressionString
-            ++ (if String.contains "\n" expressionString then
-                    "\n--> "
-
-                else
-                    " --> "
-               )
-            ++ resultString
-        )
+    Theme.row []
+        [ text <| String.trim expressionString
+        , el
+            [ width <| px Theme.rythm
+            , height fill
+            , Border.width 1
+            , Border.roundEach
+                { topLeft = 0
+                , bottomLeft = 0
+                , topRight = 999
+                , bottomRight = 999
+                }
+            ]
+            Element.none
+        , text resultString
+        ]
 
 
 expressionToString : Node Expression.Expression -> String
