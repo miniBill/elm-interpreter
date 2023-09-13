@@ -449,8 +449,13 @@ viewLogLines logLines =
 
 init : Model
 init =
-    { input = """List.sum (List.range 0 3)"""
-    , parsed = Nothing
+    let
+        input : String
+        input =
+            """List.sum (List.range 0 3)"""
+    in
+    { input = input
+    , parsed = tryParse input
     , output = Ok ""
     , callTrees = []
     , logLines = []
