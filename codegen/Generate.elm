@@ -5,8 +5,11 @@ module Generate exposing (main)
 import Dict
 import Elm
 import Elm.Annotation as Type
+import Elm.Dependency exposing (Dependency)
+import Elm.Interface exposing (Exposed, Interface)
 import Elm.Parser
 import Elm.Processing
+import Elm.RawFile exposing (RawFile)
 import Elm.Syntax.Declaration as Declaration
 import Elm.Syntax.Expression as Expression
 import Elm.Syntax.File as File
@@ -17,6 +20,9 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
 import Elm.Syntax.Range as Range
 import Gen.CodeGen.Generate as Generate exposing (Directory(..))
+import Gen.Dict
+import Gen.Elm.Dependency
+import Gen.Elm.Interface
 import Gen.Elm.Syntax.Expression
 import Gen.Elm.Syntax.Infix
 import Gen.Elm.Syntax.ModuleName
@@ -50,24 +56,58 @@ toFiles modulesSource =
                     { moduleName : ModuleName
                     , file : Elm.File
                     , hasOperators : Bool
+                    , interface : Interface
                     }
                 )
         maybeFiles =
             allFiles
-                |> Result.Extra.combineMap toFile
+                |> List.filterMap
+                    (\file ->
+                        case Elm.Parser.parse file of
+                            Err _ ->
+                                case String.split "\n" file of
+                                    [] ->
+                                        Just (Err "Empty")
+
+                                    head :: _ ->
+                                        Just (Err head)
+
+                            Ok rawFile ->
+                                let
+                                    selfDependencies : List Dependency
+                                    selfDependencies =
+                                        []
+                                in
+                                toFile selfDependencies rawFile
+                                    |> Maybe.map Ok
+                    )
+                |> Result.Extra.combine
                 |> Result.map
-                    (List.filterMap identity
-                        >> List.Extra.gatherEqualsBy .moduleName
-                        >> List.map
-                            (\( { moduleName } as first, rest ) ->
-                                { moduleName = moduleName
-                                , file =
-                                    (first :: rest)
-                                        |> List.concatMap .declarations
-                                        |> Elm.file moduleName
-                                , hasOperators = List.any .hasOperators (first :: rest)
-                                }
-                            )
+                    (\files ->
+                        files
+                            |> List.Extra.gatherEqualsBy .moduleName
+                            |> List.map
+                                (\( { moduleName } as first, rest ) ->
+                                    let
+                                        all :
+                                            List
+                                                { moduleName : ModuleName
+                                                , declarations : List Elm.Declaration
+                                                , hasOperators : Bool
+                                                , interface : Interface
+                                                }
+                                        all =
+                                            first :: rest
+                                    in
+                                    { moduleName = moduleName
+                                    , file =
+                                        all
+                                            |> List.concatMap .declarations
+                                            |> Elm.file moduleName
+                                    , hasOperators = List.any .hasOperators all
+                                    , interface = List.concatMap .interface all
+                                    }
+                                )
                     )
     in
     case maybeFiles of
@@ -127,17 +167,83 @@ toFiles modulesSource =
                         |> Elm.declaration "operators"
                         |> Elm.expose
 
+                dependency : Elm.Declaration
+                dependency =
+                    Gen.Elm.Dependency.make_.dependency
+                        { name = Elm.string "elm/core"
+                        , version = Elm.string "1.0.0"
+                        , interfaces =
+                            files
+                                |> List.map
+                                    (\{ moduleName, interface } ->
+                                        Elm.tuple
+                                            (Elm.list <| List.map Elm.string moduleName)
+                                            (interfaceToGen interface)
+                                    )
+                                |> Gen.Dict.fromList
+                        }
+                        |> Elm.declaration "dependency"
+                        |> Elm.expose
+
                 core : Elm.File
                 core =
-                    [ functions, operators ]
+                    [ functions
+                    , operators
+                    , dependency
+                    ]
                         |> Elm.file [ "Core" ]
             in
             core :: List.map .file files
 
 
+interfaceToGen : Interface -> Elm.Expression
+interfaceToGen interface =
+    Elm.list (List.map exposedToGen interface)
+
+
+exposedToGen : Exposed -> Elm.Expression
+exposedToGen exposed =
+    case exposed of
+        Elm.Interface.Function name ->
+            Gen.Elm.Interface.make_.function (Elm.string name)
+
+        Elm.Interface.CustomType ( name, ctors ) ->
+            Gen.Elm.Interface.make_.customType
+                (Elm.tuple (Elm.string name)
+                    (Elm.list <| List.map Elm.string ctors)
+                )
+
+        Elm.Interface.Alias name ->
+            Gen.Elm.Interface.make_.alias (Elm.string name)
+
+        Elm.Interface.Operator fixity ->
+            Gen.Elm.Interface.make_.operator
+                (Gen.Elm.Syntax.Infix.make_.infix
+                    { direction = renode directionToGen fixity.direction
+                    , function = renode Elm.string fixity.function
+                    , operator = renode Elm.string fixity.operator
+                    , precedence = renode Elm.int fixity.precedence
+                    }
+                )
+
+
+directionToGen : Infix.InfixDirection -> Elm.Expression
+directionToGen direction =
+    case direction of
+        Infix.Left ->
+            Gen.Elm.Syntax.Infix.make_.left
+
+        Infix.Right ->
+            Gen.Elm.Syntax.Infix.make_.right
+
+        Infix.Non ->
+            Gen.Elm.Syntax.Infix.make_.non
+
+
 traverseDirectoryForFiles : Directory -> List String
 traverseDirectoryForFiles d =
     let
+        go : Directory -> List String -> List String
         go (Directory directory) acc =
             Dict.foldl (\_ subdir -> go subdir)
                 (Dict.foldl
@@ -156,38 +262,49 @@ traverseDirectoryForFiles d =
     go d []
 
 
-toFile : String -> Result String (Maybe { moduleName : ModuleName, declarations : List Elm.Declaration, hasOperators : Bool })
-toFile moduleSource =
-    case Elm.Parser.parse moduleSource of
-        Err _ ->
-            moduleSource
-                |> String.split "\n"
-                |> List.head
-                |> Maybe.withDefault ""
-                |> Err
+type alias FileResult a =
+    { a
+        | moduleName : ModuleName
+        , declarations : List Elm.Declaration
+        , hasOperators : Bool
+    }
 
-        Ok rawFile ->
+
+toFile : List Dependency -> RawFile -> Maybe (FileResult { interface : Interface })
+toFile selfDependencies rawFile =
+    let
+        context : Elm.Processing.ProcessContext
+        context =
+            List.foldl Elm.Processing.addDependency Elm.Processing.init selfDependencies
+
+        file : File.File
+        file =
+            Elm.Processing.process context rawFile
+    in
+    case Node.value file.moduleDefinition of
+        Module.EffectModule _ ->
+            -- Effect modules are not supported
+            Nothing
+
+        Module.PortModule _ ->
+            -- Port modules are not supported
+            Nothing
+
+        Module.NormalModule { moduleName } ->
             let
-                file : File.File
-                file =
-                    Elm.Processing.process
-                        Elm.Processing.init
-                        rawFile
+                normal : FileResult {}
+                normal =
+                    normalModuleToFile moduleName file
             in
-            case Node.value file.moduleDefinition of
-                Module.EffectModule _ ->
-                    -- Effect modules are not supported
-                    Ok Nothing
-
-                Module.PortModule _ ->
-                    -- Port modules are not supported
-                    Ok Nothing
-
-                Module.NormalModule { moduleName } ->
-                    Ok <| Just <| normalModuleToFile moduleName file
+            { moduleName = normal.moduleName
+            , declarations = normal.declarations
+            , hasOperators = normal.hasOperators
+            , interface = Elm.Interface.build rawFile
+            }
+                |> Just
 
 
-normalModuleToFile : Node ModuleName -> File.File -> { moduleName : ModuleName, declarations : List Elm.Declaration, hasOperators : Bool }
+normalModuleToFile : Node ModuleName -> File.File -> FileResult {}
 normalModuleToFile (Node _ moduleName) file =
     let
         generatedModuleName : ModuleName
