@@ -403,7 +403,6 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
         expressionString : String
         expressionString =
             expression
-                |> fakeNode
                 |> Elm.Writer.writeExpression
                 |> Elm.Writer.write
 

@@ -26,7 +26,7 @@ import Value exposing (nameError, typeError, unsupported)
 evalExpression : Node Expression -> Eval Value
 evalExpression initExpression initCfg initEnv =
     Recursion.runRecursion
-        (\( Node _ expression, cfg, env ) ->
+        (\( Node range expression, cfg, env ) ->
             let
                 result : PartialResult Value
                 result =
@@ -126,7 +126,8 @@ evalExpression initExpression initCfg initEnv =
                     (\( value, trees, logs ) ->
                         ( value
                         , CallNode
-                            { expression = expression
+                            { moduleName = env.currentModule
+                            , expression = Node range expression
                             , children = trees
                             , result = value
                             }
@@ -292,7 +293,7 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
 
         Ok (Just newEnvValues) ->
             case implementation of
-                Node _ (Expression.FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
+                Node range (FunctionOrValue (("Elm" :: "Kernel" :: _) as moduleName) name) ->
                     let
                         qualifiedName : QualifiedNameRef
                         qualifiedName =
@@ -323,10 +324,12 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
                                     ( kernelResult
                                     , if cfg.trace then
                                         CallNode
-                                            { expression =
-                                                Application <|
-                                                    fakeNode (FunctionOrValue moduleName name)
-                                                        :: List.map Value.toExpression args
+                                            { moduleName = moduleName
+                                            , expression =
+                                                Node range <|
+                                                    Application <|
+                                                        Node range (FunctionOrValue moduleName name)
+                                                            :: List.map Value.toExpression args
                                             , result = kernelResult
                                             , children = children
                                             }
@@ -655,7 +658,8 @@ evalKernelFunction moduleName name cfg env =
                                 callTree : CallTree
                                 callTree =
                                     CallNode
-                                        { expression = FunctionOrValue moduleName name
+                                        { moduleName = moduleName
+                                        , expression = fakeNode <| FunctionOrValue moduleName name
                                         , result = result
                                         , children = callTrees
                                         }
