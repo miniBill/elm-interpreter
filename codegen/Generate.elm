@@ -177,7 +177,7 @@ toFiles modulesSource =
                                 |> List.map
                                     (\{ moduleName, interface } ->
                                         Elm.tuple
-                                            (Elm.list <| List.map Elm.string moduleName)
+                                            (Elm.list <| List.map Elm.string <| List.drop 1 moduleName)
                                             (interfaceToGen interface)
                                     )
                                 |> Gen.Dict.fromList
