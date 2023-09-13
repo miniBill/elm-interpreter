@@ -2,7 +2,7 @@ module UI exposing (Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Element, alignTop, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, row, spacing, text, textColumn, width)
+import Element exposing (Element, alignTop, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, row, text, textColumn, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -27,6 +27,7 @@ import Rope
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import Types exposing (CallTree(..), Error, Value)
+import UI.Theme as Theme
 import Value
 
 
@@ -58,20 +59,20 @@ main =
 
 innerView : Model -> Element Msg
 innerView model =
-    column
-        [ spacing 10
-        , padding 10
-        ]
-        [ Input.multiline
-            [ width fill
-            , Font.family [ Font.monospace ]
+    Theme.column
+        [ Theme.padding ]
+        [ Theme.row []
+            [ Input.multiline
+                [ width fill
+                , Font.family [ Font.monospace ]
+                ]
+                { spellcheck = False
+                , text = model.input
+                , onChange = Input
+                , label = Input.labelAbove [] <| text "Input"
+                , placeholder = Nothing
+                }
             ]
-            { spellcheck = False
-            , text = model.input
-            , onChange = Input
-            , label = Input.labelAbove [] <| text "Input"
-            , placeholder = Nothing
-            }
         , Element.Lazy.lazy viewParsed model.parsed
         , let
             toRun : String
@@ -98,18 +99,14 @@ innerView model =
                 else
                     ""
           in
-          row [ spacing 10 ]
-            [ Input.button
-                [ padding 10
-                , Border.width 1
-                ]
+          Theme.row []
+            [ Theme.button
+                []
                 { onPress = Just (Eval False)
                 , label = text <| "Eval " ++ toRun
                 }
-            , Input.button
-                [ padding 10
-                , Border.width 1
-                ]
+            , Theme.button
+                []
                 { onPress = Just (Eval True)
                 , label = text <| "Trace " ++ toRun
                 }
@@ -117,7 +114,7 @@ innerView model =
         , Element.Lazy.lazy viewOutput model.output
         , model.callTrees
             |> List.indexedMap (\i tree -> Element.Lazy.lazy3 viewCallTree [ i ] model.open tree)
-            |> column [ spacing 10 ]
+            |> Theme.column []
         , Element.Lazy.lazy viewLogLines model.logLines
         ]
 
@@ -252,11 +249,10 @@ boxxxy name children =
 
 boxxxy_ : List (Element msg) -> List (Element msg) -> Element msg
 boxxxy_ name children =
-    column
+    Theme.column
         [ alignTop
         , Border.width 1
-        , padding 10
-        , spacing 10
+        , padding Theme.rythm
         ]
         (row [] name :: children)
 
@@ -348,7 +344,9 @@ viewOutput output =
         Ok o ->
             paragraph
                 [ Font.family [ Font.monospace ]
-                , htmlAttribute <| Html.Attributes.style "max-width" "calc(100vw - 20px)"
+                , htmlAttribute <|
+                    Html.Attributes.style "max-width"
+                        ("calc(100vw - " ++ String.fromInt (2 * Theme.rythm) ++ "px)")
                 ]
                 [ text o ]
 
@@ -397,10 +395,9 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
 
         toggleButton : Element Msg
         toggleButton =
-            Input.button
-                [ Border.width 1
-                , height <| px 40
-                , width <| px 40
+            Theme.button
+                [ height <| px <| 4 * Theme.rythm
+                , width <| px <| 4 * Theme.rythm
                 ]
                 { label = text " "
                 , onPress =
@@ -419,7 +416,7 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
      else
         [ nameRow ]
     )
-        |> column
+        |> Theme.column
             [ Border.widthEach
                 { top = 0
                 , left = 1
@@ -429,14 +426,13 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
             , paddingEach
                 { top = 0
                 , bottom = 0
-                , left = 10
+                , left = Theme.rythm
                 , right = 0
                 }
-            , spacing 10
             ]
         |> List.singleton
         |> (::) toggleButton
-        |> row [ spacing 10 ]
+        |> Theme.row []
 
 
 viewLogLines : List String -> Element msg
