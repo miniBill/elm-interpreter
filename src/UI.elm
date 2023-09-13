@@ -15,20 +15,19 @@ import Elm.Syntax.Expression as Expression
 import Elm.Syntax.File as File
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
-import Elm.Syntax.Range exposing (Location, Range)
 import Elm.Writer
 import Eval
 import Eval.Module
 import Eval.Types as Types
 import Hex
-import Html exposing (Html)
-import Html.Attributes
+import Html
 import Json.Encode
 import List.Extra
 import Rope
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
 import Types exposing (CallTree(..), Error, Value)
+import UI.Source as Source
 import UI.Theme as Theme
 import Value
 
@@ -86,7 +85,7 @@ innerView model =
                     else
                         Eval.toModule model.input
               in
-              viewSource Nothing moduleSource
+              Source.view Nothing moduleSource
             ]
         , Element.Lazy.lazy viewParsed model.parsed
         , let
@@ -146,127 +145,6 @@ viewCallTreeTop =
                 , monospace
                 ]
                 (viewCallTree [ i ] open tree)
-
-
-viewSource : Maybe Range -> String -> Element Msg
-viewSource maybeHighlight source =
-    let
-        highlight : Range
-        highlight =
-            Maybe.withDefault fakeRange maybeHighlight
-
-        fakeRange : Range
-        fakeRange =
-            { start = fakeLocation
-            , end = fakeLocation
-            }
-
-        fakeLocation : Location
-        fakeLocation =
-            { row = -1
-            , column = -1
-            }
-
-        viewRow : Int -> String -> Html msg
-        viewRow rowIndex row =
-            let
-                slice : Int -> Int -> List (Html msg)
-                slice from to =
-                    syntax <| String.slice from to row
-
-                toEnd : Int -> List (Html msg)
-                toEnd from =
-                    syntax <| String.dropLeft from row
-
-                syntax : String -> List (Html msg)
-                syntax fragment =
-                    fragment
-                        |> String.split " "
-                        |> List.map viewToken
-                        |> List.intersperse [ Html.text " " ]
-                        |> List.concat
-
-                keywords : Set String
-                keywords =
-                    -- TODO: finish this.
-                    -- Or, even better, actually do syntax highlighting; possibly starting from the AST.
-                    Set.fromList [ "module", "exposing", "=", "|>", "<|" ]
-
-                colored : String -> String -> Html msg
-                colored color content =
-                    Html.span
-                        [ Html.Attributes.style "color" color ]
-                        [ Html.text content ]
-
-                viewOperator : String -> Html msg
-                viewOperator content =
-                    colored "#cc4" content
-
-                viewToken : String -> List (Html msg)
-                viewToken token =
-                    if Set.member token keywords then
-                        [ colored "#88f" token ]
-
-                    else if String.startsWith "(" token then
-                        viewOperator "(" :: viewToken (String.dropLeft 1 token)
-
-                    else if String.endsWith ")" token then
-                        viewToken (String.dropRight 1 token) ++ [ viewOperator ")" ]
-
-                    else if String.startsWith "\"" token && String.endsWith "\"" token then
-                        [ colored "#c44" token ]
-
-                    else if String.toFloat token /= Nothing then
-                        [ colored "#cfc" token ]
-
-                    else
-                        [ Html.text token ]
-
-                high : List (Html msg) -> List (Html msg)
-                high child =
-                    [ Html.span [ Html.Attributes.style "background" "#4c4" ] child ]
-
-                pieces : List (List (Html msg))
-                pieces =
-                    if rowIndex < highlight.start.row || rowIndex > highlight.end.row then
-                        [ toEnd 0 ]
-
-                    else if rowIndex == highlight.start.row then
-                        if rowIndex == highlight.end.row then
-                            [ slice 0 highlight.start.column
-                            , high <| slice highlight.start.column highlight.end.column
-                            , toEnd highlight.end.column
-                            ]
-
-                        else
-                            [ slice 0 highlight.start.column
-                            , high <| toEnd highlight.start.column
-                            ]
-
-                    else if rowIndex == highlight.end.row then
-                        [ high <| slice 0 highlight.end.column
-                        , toEnd highlight.end.column
-                        ]
-
-                    else
-                        [ high <| toEnd 0 ]
-            in
-            Html.span [] <| List.concat pieces
-    in
-    source
-        |> String.split "\n"
-        |> List.indexedMap viewRow
-        |> List.intersperse (Html.text "\n")
-        |> Html.pre [ Html.Attributes.style "line-height" "125%" ]
-        |> Element.html
-        |> el
-            [ width fill
-            , alignTop
-            , Theme.padding
-            , Border.width 1
-            , Background.color <| rgb 0.2 0.2 0.2
-            , Font.color <| rgb 1 1 1
-            ]
 
 
 viewParsed : Maybe (Node Expression.Expression) -> Element Msg
