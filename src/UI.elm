@@ -130,7 +130,10 @@ innerView model =
 
 viewCallTreeTop : Set String -> Int -> CallTree -> Element Msg
 viewCallTreeTop =
-    Element.Lazy.lazy3 <| \open i tree -> viewCallTree [ i ] open tree
+    Element.Lazy.lazy3 <|
+        \open i tree ->
+            el [ Border.width 1, Theme.padding, width fill ] <|
+                viewCallTree [ i ] open tree
 
 
 viewSource : Maybe Range -> String -> Element Msg
@@ -481,14 +484,21 @@ viewOutput output =
                 [ Font.family [ Font.monospace ]
                 , Theme.style "max-width"
                     ("calc(100vw - " ++ String.fromInt (2 * Theme.rythm) ++ "px)")
+                , Border.width 1
+                , Theme.padding
                 ]
-                [ text o ]
+                [ text <| "Result: " ++ o ]
 
         Err e ->
             e
                 |> String.split "\n"
                 |> List.map (\line -> paragraph [] [ text line ])
-                |> textColumn [ Font.family [ Font.monospace ] ]
+                |> (::) (text "Error:")
+                |> textColumn
+                    [ Font.family [ Font.monospace ]
+                    , Border.width 1
+                    , Theme.padding
+                    ]
 
 
 viewCallTree : List Int -> Set String -> CallTree -> Element Msg
@@ -578,6 +588,17 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
                     ]
                     Element.none
                 )
+            |> (\l ->
+                    l
+                        ++ [ el
+                                [ Background.color <| rgb 1 1 1
+                                , width fill
+                                , height <| px 1
+                                ]
+                             <|
+                                text " "
+                           ]
+               )
             |> Theme.row
                 [ Border.widthEach
                     { top = 1
@@ -591,6 +612,7 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
                     , left = 0
                     , right = 0
                     }
+                , width fill
                 ]
         ]
 
