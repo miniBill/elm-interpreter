@@ -401,9 +401,11 @@ keywords =
             -- Or, even better, actually do syntax highlighting; possibly starting from the AST.
             [ "="
             , "as"
+            , "case"
             , "else"
             , "exposing"
             , "if"
+            , "of"
             , "import"
             , "in"
             , "let"
@@ -421,7 +423,8 @@ keywords =
                             |> List.filterMap extractOperatorName
                     )
     in
-    language ++ core
+    (language ++ core)
+        |> List.sortBy (\keyword -> -(String.length keyword))
 
 
 extractOperatorName : Exposed -> Maybe String
