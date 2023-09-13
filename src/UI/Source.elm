@@ -61,40 +61,49 @@ viewRow highlight rowIndex row =
     let
         slice : Int -> Int -> List (Html msg)
         slice from to =
-            viewSyntax <| String.slice from to row
+            viewSyntax <| String.slice (from - 1) (to - 1) row
 
         toEnd : Int -> List (Html msg)
         toEnd from =
-            viewSyntax <| String.dropLeft from row
+            viewSyntax <| String.dropLeft (from - 1) row
 
         high : List (Html msg) -> List (Html msg)
         high child =
-            [ span [ style "background" "#333", style "border" "1px dotted white" ] child ]
+            [ span [ style "background" "#660" ] child ]
 
         pieces : List (List (Html msg))
         pieces =
-            if rowIndex < highlight.start.row || rowIndex > highlight.end.row then
-                [ toEnd 0 ]
+            if String.isEmpty row then
+                []
 
-            else if rowIndex == highlight.start.row then
-                if rowIndex == highlight.end.row then
-                    [ slice 0 highlight.start.column
-                    , high <| slice highlight.start.column highlight.end.column
+            else
+                let
+                    rowNumber : Int
+                    rowNumber =
+                        rowIndex + 1
+                in
+                if rowNumber < highlight.start.row || rowNumber > highlight.end.row then
+                    [ toEnd 1 ]
+
+                else if rowNumber == highlight.start.row then
+                    if rowNumber == highlight.end.row then
+                        [ slice 1 highlight.start.column
+                        , high <| slice highlight.start.column highlight.end.column
+                        , toEnd highlight.end.column
+                        ]
+
+                    else
+                        [ slice 1 highlight.start.column
+                        , high <| toEnd highlight.start.column
+                        ]
+
+                else if rowNumber == highlight.end.row then
+                    [ high <| slice 1 highlight.end.column
                     , toEnd highlight.end.column
                     ]
 
                 else
-                    [ slice 0 highlight.start.column
-                    , high <| toEnd highlight.start.column
-                    ]
-
-            else if rowIndex == highlight.end.row then
-                [ high <| slice 0 highlight.end.column
-                , toEnd highlight.end.column
-                ]
-
-            else
-                [ high <| toEnd 0 ]
+                    [ high <| toEnd 1 ]
     in
     span [] <| List.concat pieces
 

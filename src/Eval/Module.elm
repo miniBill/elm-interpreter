@@ -74,10 +74,10 @@ traceOrEvalModule cfg source expression =
                                 |> List.Extra.findIndex
                                     (String.startsWith needle)
                                 |> Maybe.map
-                                    (\row ->
+                                    (\index ->
                                         Node
-                                            { start = { row = row, column = 0 }
-                                            , end = { row = row, column = String.length name }
+                                            { start = { row = index + 1, column = 1 }
+                                            , end = { row = index + 1, column = 1 + String.length name }
                                             }
                                     )
                                 |> Maybe.withDefault fakeNode
