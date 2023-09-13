@@ -1,9 +1,8 @@
-module UI exposing (Model, Msg, main)
+module UI exposing (CallTreeZipper, Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Attribute, Element, alignTop, centerX, centerY, column, el, fill, height, padding, paddingEach, paragraph, px, rgb, row, text, textColumn, width)
-import Element.Background as Background
+import Element exposing (Attribute, Element, alignTop, column, el, fill, padding, paddingEach, paragraph, row, text, textColumn, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -24,7 +23,6 @@ import Html
 import Json.Encode
 import List.Extra
 import Rope
-import Set exposing (Set)
 import Types exposing (CallTree(..), Error, Value)
 import UI.Source as Source
 import UI.Theme as Theme
@@ -34,8 +32,10 @@ import Value
 type Msg
     = Input String
     | Eval Bool
-    | Open String
-    | Close String
+    | Focus
+        { parent : Maybe CallTreeZipper
+        , current : CallTree
+        }
 
 
 type alias Model =
@@ -44,8 +44,15 @@ type alias Model =
     , output : Result String String
     , callTrees : List CallTree
     , logLines : List String
-    , open : Set String
+    , focus : Maybe CallTreeZipper
     }
+
+
+type CallTreeZipper
+    = CallTreeZipper
+        { parent : Maybe CallTreeZipper
+        , current : CallTree
+        }
 
 
 main : Program () Model Msg
@@ -64,17 +71,21 @@ innerView model =
         , width fill
         ]
         [ Theme.row [ width fill ]
-            [ Input.multiline
-                [ alignTop
-                , width fill
-                , monospace
+            [ Theme.box "Input:"
+                [ width fill
+                , alignTop
                 ]
-                { spellcheck = False
-                , text = model.input
-                , onChange = Input
-                , label = Input.labelAbove [] <| text "Input"
-                , placeholder = Nothing
-                }
+                [ Input.multiline
+                    [ width fill
+                    , monospace
+                    ]
+                    { spellcheck = False
+                    , text = model.input
+                    , onChange = Input
+                    , label = Input.labelHidden "Input"
+                    , placeholder = Nothing
+                    }
+                ]
             , let
                 moduleSource : String
                 moduleSource =
@@ -84,7 +95,11 @@ innerView model =
                     else
                         Eval.toModule model.input
               in
-              Source.view Nothing moduleSource
+              Theme.box "Source:"
+                [ width fill
+                , alignTop
+                ]
+                [ Source.view Nothing moduleSource ]
             ]
         , Element.Lazy.lazy viewParsed model.parsed
         , let
@@ -119,31 +134,46 @@ innerView model =
                 }
             ]
         , Element.Lazy.lazy viewOutput model.output
-        , viewCallTrees model.open model.callTrees
+        , viewCallTrees model.callTrees
+        , model.focus
+            |> Maybe.map (Element.Lazy.lazy viewCallTree)
+            |> Maybe.withDefault Element.none
         , Element.Lazy.lazy viewLogLines model.logLines
         ]
 
 
-viewCallTrees : Set String -> List CallTree -> Element Msg
+viewCallTrees : List CallTree -> Element Msg
 viewCallTrees =
-    Element.Lazy.lazy2 <|
-        \open callTrees ->
-            callTrees
-                |> List.indexedMap (viewCallTreeTop open)
-                |> Theme.column [ width fill ]
-
-
-viewCallTreeTop : Set String -> Int -> CallTree -> Element Msg
-viewCallTreeTop =
-    Element.Lazy.lazy3 <|
-        \open i tree ->
-            el
-                [ Border.width 1
-                , Theme.padding
-                , width fill
-                , monospace
+    Element.Lazy.lazy <|
+        \callTrees ->
+            Theme.box "Call trees:"
+                []
+                [ callTrees
+                    |> List.map
+                        (\callTree ->
+                            focusButton
+                                { parent = Nothing
+                                , current = callTree
+                                }
+                        )
+                    |> Theme.row [ width fill ]
                 ]
-                (viewCallTree [ i ] open tree)
+
+
+focusButton :
+    { parent : Maybe CallTreeZipper
+    , current : CallTree
+    }
+    -> Element Msg
+focusButton zipper =
+    let
+        (CallNode { expression }) =
+            zipper.current
+    in
+    Theme.button []
+        { label = text <| expressionToString expression
+        , onPress = Just <| Focus zipper
+        }
 
 
 viewParsed : Maybe (Node Expression.Expression) -> Element Msg
@@ -153,7 +183,11 @@ viewParsed maybeExpr =
             Element.none
 
         Just expr ->
-            el [ monospace ] (viewExpression expr)
+            Theme.box "Parsed as:"
+                []
+                [ el [ monospace ] <|
+                    viewExpression expr
+                ]
 
 
 monospace : Attribute msg
@@ -372,13 +406,14 @@ viewOutput output =
     case output of
         Ok o ->
             paragraph
-                [ monospace
-                , Theme.style "max-width"
+                [ Theme.style "max-width"
                     ("calc(100vw - " ++ String.fromInt (2 * Theme.rythm) ++ "px)")
                 , Border.width 1
                 , Theme.padding
                 ]
-                [ text <| "Result: " ++ o ]
+                [ el [ Font.bold ] <| text "Result: "
+                , el [ monospace ] <| text o
+                ]
 
         Err e ->
             e
@@ -392,18 +427,15 @@ viewOutput output =
                     ]
 
 
-viewCallTree : List Int -> Set String -> CallTree -> Element Msg
-viewCallTree currentList open (CallNode { expression, children, result }) =
+viewCallTree : CallTreeZipper -> Element Msg
+viewCallTree ((CallTreeZipper { current, parent }) as zipper) =
     let
-        current : String
-        current =
-            String.join "." (List.map String.fromInt currentList)
+        (CallNode { expression, children, result }) =
+            current
 
         expressionString : String
         expressionString =
-            expression
-                |> Elm.Writer.writeExpression
-                |> Elm.Writer.write
+            expressionToString expression
 
         nameRow : Element msg
         nameRow =
@@ -427,68 +459,31 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
                 Err e ->
                     Types.evalErrorToString e
 
-        toggleButton : Element Msg
-        toggleButton =
-            if Rope.length children < 2 then
-                Element.none
-
-            else
-                Theme.button
-                    [ height <| px <| 4 * Theme.rythm
-                    , width <| px <| 4 * Theme.rythm
-                    , centerX
-                    ]
-                    { label =
-                        el [ centerX, centerY ] <|
-                            text <|
-                                if Set.member current open then
-                                    "∧"
-
-                                else
-                                    "∨"
-                    , onPress =
-                        Just <|
-                            if Set.member current open then
-                                Close current
-
-                            else
-                                Open current
-                    }
+        parentButton : Element Msg
+        parentButton =
+            parent
+                |> Maybe.map (\(CallTreeZipper z) -> focusButton z)
+                |> Maybe.withDefault Element.none
 
         shownChildren : List (Element Msg)
         shownChildren =
-            if Set.member current open || Rope.length children == 1 then
-                Rope.toList children
-                    |> List.sortBy (\node -> -(nodeSize node))
-                    |> List.indexedMap
-                        (\i -> viewCallTree (i :: currentList) open)
-
-            else
-                []
+            Rope.toList children
+                |> List.sortBy (\node -> -(nodeSize node))
+                |> List.map
+                    (\child ->
+                        focusButton
+                            { current = child
+                            , parent = Just zipper
+                            }
+                    )
     in
-    Theme.column [ alignTop, width fill ]
-        [ nameRow
-        , toggleButton
+    Theme.box "Call tree:"
+        [ alignTop
+        , width fill
+        ]
+        [ parentButton
+        , nameRow
         , shownChildren
-            |> List.intersperse
-                (el
-                    [ height fill
-                    , Border.widthEach { left = 1, top = 0, bottom = 0, right = 0 }
-                    , width <| px 1
-                    ]
-                    Element.none
-                )
-            |> (\l ->
-                    l
-                        ++ [ el
-                                [ Background.color <| rgb 1 1 1
-                                , width fill
-                                , height <| px 1
-                                ]
-                             <|
-                                text " "
-                           ]
-               )
             |> Theme.row
                 [ Border.widthEach
                     { top = 1
@@ -505,6 +500,13 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
                 , width fill
                 ]
         ]
+
+
+expressionToString : Node Expression.Expression -> String
+expressionToString expression =
+    expression
+        |> Elm.Writer.writeExpression
+        |> Elm.Writer.write
 
 
 nodeSize : CallTree -> number
@@ -533,7 +535,7 @@ init =
     , output = Ok ""
     , callTrees = []
     , logLines = []
-    , open = Set.empty
+    , focus = Nothing
     }
 
 
@@ -568,11 +570,8 @@ update msg model =
                 , logLines = Rope.toList logLines
             }
 
-        Open path ->
-            { model | open = Set.insert path model.open }
-
-        Close path ->
-            { model | open = Set.remove path model.open }
+        Focus focus ->
+            { model | focus = Just (CallTreeZipper focus) }
 
 
 tryParse : String -> Maybe (Node Expression.Expression)
