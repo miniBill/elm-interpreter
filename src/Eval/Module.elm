@@ -1,4 +1,4 @@
-module Eval.Module exposing (eval, trace)
+module Eval.Module exposing (eval, trace, traceOrEvalModule)
 
 import Core
 import Elm.Parser

@@ -1,4 +1,4 @@
-module Eval exposing (eval, toModule, trace)
+module Eval exposing (eval, toModule, trace, traceOrEval)
 
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Eval.Module
@@ -9,19 +9,19 @@ import Types exposing (CallTree, Error, Value)
 eval : String -> Result Error Value
 eval expressionSource =
     let
-        source : String
-        source =
-            toModule expressionSource
-
-        expression : Expression
-        expression =
-            Expression.FunctionOrValue [] "main"
+        ( result, _, _ ) =
+            traceOrEval { trace = True } expressionSource
     in
-    Eval.Module.eval source expression
+    result
 
 
 trace : String -> ( Result Error Value, Rope CallTree, Rope String )
 trace expressionSource =
+    traceOrEval { trace = True } expressionSource
+
+
+traceOrEval : { trace : Bool } -> String -> ( Result Error Value, Rope CallTree, Rope String )
+traceOrEval cfg expressionSource =
     let
         source : String
         source =
@@ -31,7 +31,7 @@ trace expressionSource =
         expression =
             Expression.FunctionOrValue [] "main"
     in
-    Eval.Module.trace source expression
+    Eval.Module.traceOrEvalModule cfg source expression
 
 
 toModule : String -> String

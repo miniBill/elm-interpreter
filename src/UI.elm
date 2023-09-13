@@ -470,22 +470,11 @@ update msg model =
         Eval tracing ->
             let
                 ( result, callTree, logLines ) =
-                    if tracing then
-                        if String.startsWith "module " model.input then
-                            Eval.Module.trace model.input (Expression.FunctionOrValue [] "main")
-
-                        else
-                            Eval.trace model.input
+                    if String.startsWith "module " model.input then
+                        Eval.Module.traceOrEvalModule { trace = tracing } model.input (Expression.FunctionOrValue [] "main")
 
                     else
-                        ( if String.startsWith "module " model.input then
-                            Eval.Module.eval model.input (Expression.FunctionOrValue [] "main")
-
-                          else
-                            Eval.eval model.input
-                        , Rope.empty
-                        , Rope.empty
-                        )
+                        Eval.traceOrEval { trace = tracing } model.input
             in
             { model
                 | output = resultToString result
