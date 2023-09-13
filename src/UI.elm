@@ -96,29 +96,33 @@ innerView model =
         [ Theme.padding
         , width fill
         ]
-        [ Theme.wrappedRow [ width fill ]
-            [ Theme.box "Input:"
-                [ width fill ]
-                [ Input.multiline
-                    [ width fill
-                    , monospace
+        [ Theme.box "Input:"
+            [ width fill ]
+            [ Input.multiline
+                [ width fill
+                , monospace
+                ]
+                { spellcheck = False
+                , text = model.input
+                , onChange = Input
+                , label = Input.labelHidden "Input"
+                , placeholder = Nothing
+                }
+            ]
+        , Theme.wrappedRow [ width fill ]
+            [ Element.Lazy.lazy viewParsed model.parsed
+            , if moduleSource == model.input then
+                Element.none
+
+              else
+                Theme.box "Source:"
+                    [ width fill ]
+                    [ Source.view []
+                        { highlight = Nothing
+                        , buttons = []
+                        , source = moduleSource
+                        }
                     ]
-                    { spellcheck = False
-                    , text = model.input
-                    , onChange = Input
-                    , label = Input.labelHidden "Input"
-                    , placeholder = Nothing
-                    }
-                ]
-            , Element.Lazy.lazy viewParsed model.parsed
-            , Theme.box "Source:"
-                [ width fill ]
-                [ Source.view []
-                    { highlight = Nothing
-                    , buttons = []
-                    , source = moduleSource
-                    }
-                ]
             , let
                 toRun : String
                 toRun =
