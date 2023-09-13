@@ -234,12 +234,14 @@ normalModuleToFile (Node _ moduleName) file =
                     case declaration of
                         Declaration.InfixDeclaration { operator, function } ->
                             let
+                                functionName : String
                                 functionName =
                                     Node.value function
                             in
                             case List.reverse <| List.map Elm.string <| String.split "." functionName of
                                 name :: reverseModule ->
                                     let
+                                        fixedModule : List Elm.Expression
                                         fixedModule =
                                             if List.isEmpty reverseModule then
                                                 List.map Elm.string moduleName

@@ -4,6 +4,7 @@ module Elm.Kernel.List exposing (map2, map3, map4, map5, sortBy)
 map2 : (a -> b -> c) -> List a -> List b -> List c
 map2 f xas xbs =
     let
+        go : List a -> List b -> List c -> List c
         go ao bo acc =
             case ao of
                 [] ->
@@ -23,6 +24,7 @@ map2 f xas xbs =
 map3 : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
 map3 f xas xbs xcs =
     let
+        go : List a -> List b -> List c -> List d -> List d
         go ao bo co acc =
             case ao of
                 [] ->
@@ -47,6 +49,7 @@ map3 f xas xbs xcs =
 map4 : (a -> b -> c -> d -> e) -> List a -> List b -> List c -> List d -> List e
 map4 f xas xbs xcs xds =
     let
+        go : List a -> List b -> List c -> List d -> List e -> List e
         go ao bo co do acc =
             case ao of
                 [] ->
@@ -76,6 +79,7 @@ map4 f xas xbs xcs xds =
 map5 : (a -> b -> c -> d -> e -> f) -> List a -> List b -> List c -> List d -> List e -> List f
 map5 f xas xbs xcs xds xes =
     let
+        go : List a -> List b -> List c -> List d -> List e -> List f -> List f
         go ao bo co do eo acc =
             case ao of
                 [] ->
