@@ -101,6 +101,7 @@ type alias Parsed msg =
     , background : Maybe String
     , button : Maybe (Button msg)
     , token : String
+    , highlight : Bool
     }
 
 
@@ -116,7 +117,8 @@ type alias Queue =
 
 parse : Config msg -> Queue -> List (Html msg)
 parse config chars =
-    parseHelp Initial
+    parseHelp config
+        Initial
         []
         (List.sortBy
             (\{ range } -> ( range.start.row, range.start.column ))
@@ -125,8 +127,8 @@ parse config chars =
         chars
 
 
-parseHelp : State -> List (Parsed msg) -> List (Button msg) -> Queue -> List (Html msg)
-parseHelp state acc buttons queue =
+parseHelp : Config msg -> State -> List (Parsed msg) -> List (Button msg) -> Queue -> List (Html msg)
+parseHelp config state acc buttons queue =
     case queue of
         [] ->
             List.reverse acc |> aggregate
@@ -163,6 +165,8 @@ parseHelp state acc buttons queue =
                     , button = button
                     , color = Nothing
                     , token = String.fromChar head
+                    , highlight =
+                        Maybe.map (compareLocationRange location) config.highlight == Just EQ
                     }
 
                 normal : State -> Step msg
@@ -348,7 +352,8 @@ parseHelp state acc buttons queue =
                     r
 
                 Parser.Loop ( newState, enqueue, effectiveTail ) ->
-                    parseHelp newState
+                    parseHelp config
+                        newState
                         (enqueue :: acc)
                         newButtons
                         effectiveTail
@@ -371,51 +376,70 @@ compareLocationRange { row, column } { start, end } =
 aggregate : List (Parsed msg) -> List (Html msg)
 aggregate queue =
     queue
-        |> List.MyExtra.groupBy .button
+        |> List.MyExtra.groupBy .highlight
         |> List.concatMap
-            (\( button, group ) ->
+            (\( highlight, highlightGroup ) ->
                 let
-                    content : List (Html msg)
-                    content =
-                        group
-                            |> List.MyExtra.groupBy
-                                (\{ color, background } -> ( color, background ))
-                            |> List.map
-                                (\( ( color, background ), subgroup ) ->
+                    highlightContent =
+                        highlightGroup
+                            |> List.MyExtra.groupBy .button
+                            |> List.concatMap
+                                (\( button, group ) ->
                                     let
-                                        subcontent : Html msg
-                                        subcontent =
-                                            text <| String.concat <| List.map .token subgroup
-                                    in
-                                    if color == Nothing && background == Nothing then
-                                        subcontent
+                                        content : List (Html msg)
+                                        content =
+                                            group
+                                                |> List.MyExtra.groupBy
+                                                    (\{ color, background } -> ( color, background ))
+                                                |> List.map
+                                                    (\( ( color, background ), subgroup ) ->
+                                                        let
+                                                            subcontent : Html msg
+                                                            subcontent =
+                                                                text <| String.concat <| List.map .token subgroup
+                                                        in
+                                                        if color == Nothing && background == Nothing then
+                                                            subcontent
 
-                                    else
-                                        span
-                                            (List.filterMap identity
-                                                [ Maybe.map (\c -> style "color" c) color
-                                                , Maybe.map (\c -> style "background" c) background
-                                                ]
-                                            )
-                                            [ subcontent ]
+                                                        else
+                                                            span
+                                                                (List.filterMap identity
+                                                                    [ Maybe.map (\c -> style "color" c) color
+                                                                    , Maybe.map (\c -> style "background" c) background
+                                                                    , Maybe.map (\c -> style "outline" <| "1px solid " ++ c) background
+                                                                    ]
+                                                                )
+                                                                [ subcontent ]
+                                                    )
+                                    in
+                                    case button of
+                                        Nothing ->
+                                            content
+
+                                        Just { onPress, tooltip } ->
+                                            [ span
+                                                ([ Just <| style "outline" "1px solid #fff"
+                                                 , Just <| style "background" "rgba(100 0 0 / 0.5)"
+                                                 , Just <| style "cursor" "pointer"
+                                                 , Maybe.map onClick onPress
+                                                 , Maybe.map title tooltip
+                                                 ]
+                                                    |> List.filterMap identity
+                                                )
+                                                content
+                                            ]
                                 )
                 in
-                case button of
-                    Nothing ->
-                        content
-
-                    Just { onPress, tooltip } ->
-                        [ span
-                            ([ Just <| style "border" "1px dotted #fff"
-                             , Just <| style "background" "#300"
-                             , Just <| style "cursor" "pointer"
-                             , Maybe.map onClick onPress
-                             , Maybe.map title tooltip
-                             ]
-                                |> List.filterMap identity
-                            )
-                            content
+                if highlight then
+                    [ span
+                        [ style "background" colors.highlightBackground
+                        , style "outline" <| "1px solid " ++ colors.highlightBackground
                         ]
+                        highlightContent
+                    ]
+
+                else
+                    highlightContent
             )
 
 

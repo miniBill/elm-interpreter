@@ -509,7 +509,14 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                 }
 
             else
-                { highlight = Nothing
+                { highlight =
+                    Just
+                        { start = { row = 6, column = 3 }
+                        , end =
+                            { row = round (1 / 0)
+                            , column = 0
+                            }
+                        }
                 , buttons = []
                 , source =
                     "-- No full source available\n\nmodule "
