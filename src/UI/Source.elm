@@ -26,7 +26,11 @@ view maybeHighlight source =
         |> String.split "\n"
         |> List.indexedMap (viewRow highlight)
         |> List.intersperse (text "\n")
-        |> pre [ style "line-height" "125%" ]
+        |> pre
+            [ style "line-height" "125%"
+            , style "margin" "0"
+            , style "padding" "0"
+            ]
         |> Element.html
         |> Element.el
             [ Element.width Element.fill
