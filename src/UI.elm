@@ -2,7 +2,7 @@ module UI exposing (CallTreeZipper, Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Attribute, Element, alignRight, alignTop, column, el, fill, height, paragraph, px, row, shrink, text, width)
+import Element exposing (Attribute, Element, alignBottom, alignRight, alignTop, column, el, fill, height, paragraph, px, row, shrink, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -24,7 +24,7 @@ import Html
 import Json.Encode
 import List.Extra
 import Rope
-import Types exposing (CallTree(..), Error, Value)
+import Types exposing (CallTree(..), Error(..), Value)
 import UI.Source as Source
 import UI.Theme as Theme
 import Value
@@ -477,7 +477,7 @@ viewOutput output =
 viewCallTree : String -> CallTreeZipper -> Element Msg
 viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
     let
-        (CallNode { expression, children, env }) =
+        (CallNode { expression, children, env, result }) =
             current
 
         sourceViewConfig : Source.Config Msg
@@ -561,11 +561,34 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
             [ Theme.box "Source"
                 [ width fill ]
                 [ Source.view [ alignTop ] sourceViewConfig ]
-            , Theme.box "Environment"
-                [ alignTop
+            , Theme.column
+                [ height fill
                 , alignRight
                 ]
-                [ viewEnv env ]
+                [ Theme.box "Environment"
+                    [ alignTop
+                    , width fill
+                    , height fill
+                    ]
+                    [ viewEnv env ]
+                , Theme.box "Result"
+                    [ alignBottom
+                    , width fill
+                    ]
+                    [ paragraph []
+                        [ case
+                            result
+                                |> Result.mapError EvalError
+                                |> resultToString
+                          of
+                            Ok r ->
+                                text <| r
+
+                            Err e ->
+                                text <| "Error: " ++ e
+                        ]
+                    ]
+                ]
             ]
         , Theme.box "Children"
             [ width fill ]
@@ -591,7 +614,6 @@ viewEnv { values } =
         Element.table
             [ Theme.spacing
             , alignTop
-            , alignRight
             , width shrink
             ]
             { columns =
