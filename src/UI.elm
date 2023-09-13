@@ -65,6 +65,22 @@ main =
         }
 
 
+init : Model
+init =
+    let
+        input : String
+        input =
+            """List.sum (List.range 0 3)"""
+    in
+    { input = input
+    , parsed = tryParse input
+    , output = Ok ""
+    , callTrees = []
+    , logLines = []
+    , focus = Nothing
+    }
+
+
 innerView : Model -> Element Msg
 innerView model =
     let
@@ -441,7 +457,7 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                             []
 
                         Just (CallTreeZipper z) ->
-                            focusButton [] z :: go z.parent
+                            focusButton [ alignTop ] z :: go z.parent
             in
             go parent
                 |> List.reverse
@@ -462,7 +478,7 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
         [ width fill ]
         [ Theme.box "Parents:"
             [ width fill ]
-            parentButtons
+            [ Theme.wrappedRow [] parentButtons ]
         , Theme.row [ width fill ]
             [ Theme.box "Source"
                 [ width fill ]
@@ -574,22 +590,6 @@ viewLogLines logLines =
 
     else
         Element.html <| Html.pre [] [ Html.text <| String.join "\n" logLines ]
-
-
-init : Model
-init =
-    let
-        input : String
-        input =
-            """List.sum (List.range 0 3)"""
-    in
-    { input = input
-    , parsed = tryParse input
-    , output = Ok ""
-    , callTrees = []
-    , logLines = []
-    , focus = Nothing
-    }
 
 
 update : Msg -> Model -> Model
