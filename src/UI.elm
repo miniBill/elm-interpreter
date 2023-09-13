@@ -25,7 +25,6 @@ import Json.Encode
 import List.Extra
 import Rope
 import Set exposing (Set)
-import Syntax exposing (fakeNode)
 import Types exposing (CallTree(..), Error, Value)
 import UI.Source as Source
 import UI.Theme as Theme
@@ -411,10 +410,10 @@ viewCallTree currentList open (CallNode { expression, children, result }) =
             text
                 (String.trim expressionString
                     ++ (if String.contains "\n" expressionString then
-                            "\n= "
+                            "\n--> "
 
                         else
-                            " = "
+                            " --> "
                        )
                     ++ resultString
                 )
