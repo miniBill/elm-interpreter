@@ -113,7 +113,12 @@ innerView model =
             , Element.Lazy.lazy viewParsed model.parsed
             , Theme.box "Source:"
                 [ width fill ]
-                [ Source.view [] Nothing moduleSource ]
+                [ Source.view []
+                    { highlight = Nothing
+                    , buttons = []
+                    , source = moduleSource
+                    }
+                ]
             , let
                 toRun : String
                 toRun =
@@ -463,13 +468,38 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
         (CallNode { expression, children, env }) =
             current
 
-        sourceView : Element msg
-        sourceView =
+        sourceViewConfig : Source.Config Msg
+        sourceViewConfig =
             if env.currentModule == [ "Main" ] then
-                Source.view [ alignTop ] (Just <| Node.range expression) source
+                { highlight = Just <| Node.range expression
+                , buttons =
+                    Rope.toList children
+                        |> List.map
+                            (\((CallNode childData) as child) ->
+                                { range = Node.range childData.expression
+                                , onPress =
+                                    Focus
+                                        { current = child
+                                        , parent = Just zipper
+                                        }
+                                        |> Just
+                                , tooltip =
+                                    case childData.result of
+                                        Err _ ->
+                                            Nothing
+
+                                        Ok value ->
+                                            Just (Value.toString value)
+                                }
+                            )
+                , source = source
+                }
 
             else
-                Source.view [ alignTop ] Nothing "-- No source available"
+                { highlight = Nothing
+                , buttons = []
+                , source = "-- No source available"
+                }
 
         parentButtons : List (Element Msg)
         parentButtons =
@@ -486,8 +516,8 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
             go parent
                 |> List.reverse
 
-        shownChildren : List (Element Msg)
-        shownChildren =
+        childrenButtons : List (Element Msg)
+        childrenButtons =
             Rope.toList children
                 |> List.sortBy (\node -> -(nodeSize node))
                 |> List.map
@@ -502,11 +532,11 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
         [ width fill ]
         [ Theme.box "Parents:"
             [ width fill ]
-            [ Theme.wrappedRow [] parentButtons ]
+            [ Theme.wrappedRow [ width fill ] parentButtons ]
         , Theme.row [ width fill ]
             [ Theme.box "Source"
                 [ width fill ]
-                [ sourceView ]
+                [ Source.view [ alignTop ] sourceViewConfig ]
             , Theme.box "Environment"
                 [ alignTop
                 , alignRight
@@ -518,7 +548,7 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
           <|
             [ Theme.wrappedRow
                 [ width fill ]
-                shownChildren
+                childrenButtons
             ]
         ]
 
@@ -546,19 +576,12 @@ viewEnv { values } =
                   , width = shrink
                   }
                 , { header = text "Value"
-                  , view = \( _, value ) -> cell <| viewValue value
+                  , view = \( _, value ) -> cell <| Value.toString value
                   , width = shrink
                   }
                 ]
             , data = FastDict.toList values
             }
-
-
-viewValue : Value -> String
-viewValue val =
-    val
-        |> Value.toExpression
-        |> expressionToString
 
 
 viewNode : CallTree -> Element msg

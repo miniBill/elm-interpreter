@@ -1,4 +1,4 @@
-module UI.Source exposing (view)
+module UI.Source exposing (Button, Config, view)
 
 import Core
 import Dict
@@ -10,22 +10,56 @@ import Elm.Interface exposing (Exposed(..))
 import Elm.Syntax.Node as Node
 import Elm.Syntax.Range exposing (Location, Range)
 import Html exposing (Html, pre, span, text)
-import Html.Attributes exposing (style)
-import Set exposing (Set)
+import Html.Attributes exposing (style, title)
+import Html.Events exposing (onClick)
+import List.Extra
+import List.MyExtra
+import Parser
 import UI.Theme as Theme
 
 
-view : List (Attribute msg) -> Maybe Range -> String -> Element msg
-view attrs maybeHighlight source =
-    let
-        highlight : Range
-        highlight =
-            Maybe.withDefault fakeRange maybeHighlight
-    in
-    source
+type alias Button msg =
+    { onPress : Maybe msg
+    , range : Range
+    , tooltip : Maybe String
+    }
+
+
+type alias Config msg =
+    { highlight : Maybe Range
+    , source : String
+    , buttons : List (Button msg)
+    }
+
+
+view :
+    List (Attribute msg)
+    -> Config msg
+    -> Element msg
+view attrs config =
+    config.source
         |> String.split "\n"
-        |> List.indexedMap (viewRow highlight)
-        |> List.intersperse (text "\n")
+        |> List.indexedMap
+            (\rowIndex row ->
+                (String.toList row
+                    |> List.indexedMap
+                        (\colIndex char ->
+                            ( char
+                            , { row = rowIndex + 1
+                              , column = colIndex + 1
+                              }
+                            )
+                        )
+                )
+                    ++ [ ( '\n'
+                         , { row = rowIndex + 1
+                           , column = String.length row + 1
+                           }
+                         )
+                       ]
+            )
+        |> List.concat
+        |> parse config
         |> pre
             [ style "line-height" "125%"
             , style "margin" "0"
@@ -43,73 +77,343 @@ view attrs maybeHighlight source =
             )
 
 
-fakeRange : Range
-fakeRange =
-    { start = fakeLocation
-    , end = fakeLocation
+type State
+    = Initial
+    | GettingModuleName
+    | WaitingModuleExposing
+    | WaitingExposeList
+    | ReadingExposeList
+    | WaitingDeclaration
+    | ReadingDeclaration
+    | ReadingExpression
+    | ReadingString State
+    | ReadingStringEscape State
+    | Comment State
+    | Error
+
+
+type alias Parsed msg =
+    { color : Maybe String
+    , background : Maybe String
+    , button : Maybe (Button msg)
+    , token : String
     }
 
 
-fakeLocation : Location
-fakeLocation =
-    { row = -1
-    , column = -1
-    }
+parse : Config msg -> List ( Char, Location ) -> List (Html msg)
+parse config chars =
+    parseHelp Initial [] config.buttons chars
 
 
-viewRow : Range -> Int -> String -> Html msg
-viewRow highlight rowIndex row =
-    let
-        slice : Int -> Int -> List (Html msg)
-        slice from to =
-            viewSyntax <| String.slice (from - 1) (to - 1) row
+parseHelp : State -> List (Parsed msg) -> List (Button msg) -> List ( Char, Location ) -> List (Html msg)
+parseHelp state acc buttons queue =
+    case queue of
+        [] ->
+            List.reverse acc |> aggregate
 
-        toEnd : Int -> List (Html msg)
-        toEnd from =
-            viewSyntax <| String.dropLeft (from - 1) row
+        ( head, location ) :: tail ->
+            let
+                ( button, newButtons ) =
+                    findButton buttons
 
-        high : List (Html msg) -> List (Html msg)
-        high child =
-            [ span [ style "background" "#660" ] child ]
+                findButton : List (Button msg) -> ( Maybe (Button msg), List (Button msg) )
+                findButton bqueue =
+                    case bqueue of
+                        [] ->
+                            ( Nothing, bqueue )
 
-        pieces : List (List (Html msg))
-        pieces =
-            if String.isEmpty row then
-                []
+                        bhead :: btail ->
+                            case
+                                compareLocationRange
+                                    location
+                                    bhead.range
+                            of
+                                LT ->
+                                    ( Nothing, bqueue )
 
-            else
-                let
-                    rowNumber : Int
-                    rowNumber =
-                        rowIndex + 1
-                in
-                if rowNumber < highlight.start.row || rowNumber > highlight.end.row then
-                    [ toEnd 1 ]
+                                EQ ->
+                                    ( Just bhead, buttons )
 
-                else if rowNumber == highlight.start.row then
-                    if rowNumber == highlight.end.row then
-                        [ slice 1 highlight.start.column
-                        , high <| slice highlight.start.column highlight.end.column
-                        , toEnd highlight.end.column
-                        ]
+                                GT ->
+                                    findButton btail
+
+                default : Parsed msg
+                default =
+                    { background = Nothing
+                    , button = button
+                    , color = Nothing
+                    , token = String.fromChar head
+                    }
+
+                normal :
+                    State
+                    ->
+                        Parser.Step
+                            ( State, Parsed msg, List ( Char, Location ) )
+                            (List (Html msg))
+                normal newState =
+                    ( newState
+                    , default
+                    , tail
+                    )
+                        |> Parser.Loop
+
+                operator :
+                    State
+                    ->
+                        Parser.Step
+                            ( State, Parsed msg, List ( Char, Location ) )
+                            (List (Html msg))
+                operator newState =
+                    colored colors.operator newState
+
+                colored :
+                    String
+                    -> State
+                    ->
+                        Parser.Step
+                            ( State, Parsed msg, List ( Char, Location ) )
+                            (List (Html msg))
+                colored color newState =
+                    ( newState
+                    , { default | color = Just color }
+                    , tail
+                    )
+                        |> Parser.Loop
+
+                error :
+                    ()
+                    ->
+                        Parser.Step
+                            ( State, Parsed msg, List ( Char, Location ) )
+                            (List (Html msg))
+                error () =
+                    colored "red" Error
+
+                seek : String -> Maybe ( String, List ( Char, Location ) )
+                seek keyword =
+                    let
+                        len : Int
+                        len =
+                            String.length keyword
+                    in
+                    if
+                        (queue
+                            |> List.take len
+                            |> List.map Tuple.first
+                        )
+                            == String.toList keyword
+                    then
+                        Just ( keyword, List.drop len queue )
 
                     else
-                        [ slice 1 highlight.start.column
-                        , high <| toEnd highlight.start.column
+                        Nothing
+
+                step :
+                    Parser.Step
+                        ( State, Parsed msg, List ( Char, Location ) )
+                        (List (Html msg))
+                step =
+                    case ( state, queue ) of
+                        ( _, [] ) ->
+                            List.reverse acc
+                                |> aggregate
+                                |> Parser.Done
+
+                        ( Error, _ ) ->
+                            error ()
+
+                        ( ReadingString previous, ( '\\', _ ) :: _ ) ->
+                            colored colors.string (ReadingStringEscape previous)
+
+                        ( ReadingStringEscape previous, _ ) ->
+                            colored colors.string (ReadingString previous)
+
+                        ( ReadingString previous, ( '"', _ ) :: _ ) ->
+                            colored colors.string previous
+
+                        ( ReadingString _, _ ) ->
+                            colored colors.string state
+
+                        ( _, ( '-', _ ) :: ( '-', _ ) :: _ ) ->
+                            ( Comment state
+                            , { default
+                                | color = Just colors.comment
+                                , token = "--"
+                              }
+                            , tail
+                            )
+                                |> Parser.Loop
+
+                        ( Comment previous, ( '\n', _ ) :: _ ) ->
+                            colored colors.comment previous
+
+                        ( Comment _, _ ) ->
+                            colored colors.comment state
+
+                        ( Initial, _ ) ->
+                            case seek "module " of
+                                Just ( _, moduleTail ) ->
+                                    ( GettingModuleName
+                                    , { default
+                                        | color = Just colors.keyword
+                                        , token = "module "
+                                      }
+                                    , moduleTail
+                                    )
+                                        |> Parser.Loop
+
+                                Nothing ->
+                                    error ()
+
+                        ( GettingModuleName, ( ' ', _ ) :: _ ) ->
+                            normal WaitingModuleExposing
+
+                        ( GettingModuleName, _ ) ->
+                            normal GettingModuleName
+
+                        ( WaitingModuleExposing, _ ) ->
+                            case seek "exposing" of
+                                Just ( _, exposingTail ) ->
+                                    ( WaitingExposeList
+                                    , { color = Just colors.keyword
+                                      , background = Nothing
+                                      , button = button
+                                      , token = "exposing"
+                                      }
+                                    , exposingTail
+                                    )
+                                        |> Parser.Loop
+
+                                Nothing ->
+                                    error ()
+
+                        ( WaitingExposeList, ( ' ', _ ) :: _ ) ->
+                            normal WaitingExposeList
+
+                        ( WaitingExposeList, ( '(', _ ) :: _ ) ->
+                            operator ReadingExposeList
+
+                        ( ReadingExposeList, ( ')', _ ) :: _ ) ->
+                            operator WaitingDeclaration
+
+                        ( ReadingExposeList, _ ) ->
+                            normal ReadingExposeList
+
+                        ( WaitingDeclaration, ( '\n', _ ) :: _ ) ->
+                            normal WaitingDeclaration
+
+                        ( WaitingDeclaration, ( ' ', _ ) :: _ ) ->
+                            normal ReadingExpression
+
+                        ( WaitingDeclaration, _ ) ->
+                            colored colors.declaration ReadingDeclaration
+
+                        ( ReadingDeclaration, ( ' ', _ ) :: _ ) ->
+                            normal ReadingExpression
+
+                        ( ReadingDeclaration, _ ) ->
+                            colored colors.declaration ReadingDeclaration
+
+                        ( ReadingExpression, ( '\n', _ ) :: _ ) ->
+                            normal WaitingDeclaration
+
+                        ( ReadingExpression, _ ) ->
+                            case List.Extra.findMap seek keywords of
+                                Just ( foundKeyword, foundTail ) ->
+                                    ( ReadingExpression
+                                    , { color = Just colors.keyword
+                                      , background = Nothing
+                                      , button = button
+                                      , token = foundKeyword
+                                      }
+                                    , foundTail
+                                    )
+                                        |> Parser.Loop
+
+                                Nothing ->
+                                    normal ReadingExpression
+
+                        _ ->
+                            error ()
+            in
+            case step of
+                Parser.Done r ->
+                    r
+
+                Parser.Loop ( newState, enqueue, effectiveTail ) ->
+                    parseHelp newState
+                        (enqueue :: acc)
+                        newButtons
+                        effectiveTail
+
+
+{-| Returns `LT` if the location is before the range, `EQ` if it's inside the range, `GT` if it's after the range.
+-}
+compareLocationRange : Location -> Range -> Order
+compareLocationRange { row, column } { start, end } =
+    if row < start.row || (row == start.row && column < start.column) then
+        LT
+
+    else if row > end.row || (row == end.row && column >= end.column) then
+        GT
+
+    else
+        EQ
+
+
+aggregate : List (Parsed msg) -> List (Html msg)
+aggregate queue =
+    queue
+        |> List.MyExtra.groupBy .button
+        |> List.concatMap
+            (\( button, group ) ->
+                let
+                    content : List (Html msg)
+                    content =
+                        group
+                            |> List.MyExtra.groupBy
+                                (\{ color, background } -> ( color, background ))
+                            |> List.map
+                                (\( ( color, background ), subgroup ) ->
+                                    let
+                                        subcontent : Html msg
+                                        subcontent =
+                                            text <| String.concat <| List.map .token subgroup
+                                    in
+                                    if color == Nothing && background == Nothing then
+                                        subcontent
+
+                                    else
+                                        span
+                                            (List.filterMap identity
+                                                [ Maybe.map (\c -> style "color" c) color
+                                                , Maybe.map (\c -> style "background" c) background
+                                                ]
+                                            )
+                                            [ subcontent ]
+                                )
+                in
+                case button of
+                    Nothing ->
+                        content
+
+                    Just { onPress, tooltip } ->
+                        [ span
+                            ([ Just <| style "border" "1px dotted #fff"
+                             , Just <| style "background" "#300"
+                             , Just <| style "cursor" "pointer"
+                             , Maybe.map onClick onPress
+                             , Maybe.map title tooltip
+                             ]
+                                |> List.filterMap identity
+                            )
+                            content
                         ]
-
-                else if rowNumber == highlight.end.row then
-                    [ high <| slice 1 highlight.end.column
-                    , toEnd highlight.end.column
-                    ]
-
-                else
-                    [ high <| toEnd 1 ]
-    in
-    span [] <| List.concat pieces
+            )
 
 
-keywords : Set String
+keywords : List String
 keywords =
     let
         language : List String
@@ -138,7 +442,7 @@ keywords =
                             |> List.filterMap extractOperatorName
                     )
     in
-    Set.fromList (language ++ core)
+    language ++ core
 
 
 extractOperatorName : Exposed -> Maybe String
@@ -153,6 +457,7 @@ extractOperatorName exposed =
 
 colors :
     { comment : String
+    , highlightBackground : String
     , declaration : String
     , keyword : String
     , number : String
@@ -161,69 +466,10 @@ colors :
     }
 colors =
     { comment = "#ccc"
+    , highlightBackground = "#660"
     , declaration = "#ffc"
     , keyword = "#88f"
     , number = "#cfc"
     , operator = "#cc4"
     , string = "#c44"
     }
-
-
-colored : String -> String -> Html msg
-colored color content =
-    span
-        [ style "color" color ]
-        [ text content ]
-
-
-viewSyntax : String -> List (Html msg)
-viewSyntax fragment =
-    fragment
-        |> String.split " "
-        |> List.foldl
-            (\token ( acc, isComment, tokenIndex ) ->
-                let
-                    newIsComment : Bool
-                    newIsComment =
-                        isComment || String.startsWith "--" token
-                in
-                ( if newIsComment then
-                    viewToken True tokenIndex token :: acc
-
-                  else
-                    viewToken False tokenIndex token :: acc
-                , newIsComment
-                , tokenIndex + 1
-                )
-            )
-            ( [], False, 0 )
-        |> (\( acc, _, _ ) -> List.reverse acc)
-        |> List.intersperse [ text " " ]
-        |> List.concat
-
-
-viewToken : Bool -> Int -> String -> List (Html msg)
-viewToken isComment tokenIndex token =
-    if isComment then
-        [ colored colors.comment token ]
-
-    else if Set.member token keywords then
-        [ colored colors.keyword token ]
-
-    else if String.startsWith "(" token then
-        colored colors.operator "(" :: viewToken isComment (tokenIndex + 1) (String.dropLeft 1 token)
-
-    else if String.endsWith ")" token then
-        viewToken isComment tokenIndex (String.dropRight 1 token) ++ [ colored colors.operator ")" ]
-
-    else if String.startsWith "\"" token && String.endsWith "\"" token then
-        [ colored colors.string token ]
-
-    else if String.toFloat token /= Nothing then
-        [ colored colors.number token ]
-
-    else if tokenIndex == 0 then
-        [ colored colors.declaration token ]
-
-    else
-        [ text token ]
