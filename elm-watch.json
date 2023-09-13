@@ -6,5 +6,6 @@
             ],
             "output": "dist/ui.js"
         }
-    }
+    },
+    "serve": "."
 }

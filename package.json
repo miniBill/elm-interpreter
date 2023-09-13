@@ -6,6 +6,6 @@
     "elm-pages": "^3.0.0",
     "elm-review": "^2.10.2",
     "elm-test": "^0.19.1-revision12",
-    "elm-watch": "^1.1.2"
+    "elm-watch": "^1.2.0-beta.3"
   }
 }

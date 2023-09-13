@@ -1029,10 +1029,10 @@ elm-tooling@^1.6.0:
   resolved "https://registry.yarnpkg.com/elm-tooling/-/elm-tooling-1.14.0.tgz#cffe2e3f582e17e50f4bac961588ae92846484c3"
   integrity sha512-cIbK3gfYWK086HsqOIGM4reIYcV/FF2R/8jIJ6ZUy1/RSkYFUv2BgPTGYYZo1Io9oymmbwoCWWleNtw7LgGL2w==
 
-elm-watch@^1.1.2:
-  version "1.1.2"
-  resolved "https://registry.yarnpkg.com/elm-watch/-/elm-watch-1.1.2.tgz#449bccab3bb8ed9619c6e597d735ce55b517446b"
-  integrity sha512-4Suh4fh6iep1T4Hb/LRetVcvFBvNOmyeLy1lFbuog7baNE2yUTxWwdPVTe4d9fkZ5hQCHdy2Ddy2BYWPB0dXYg==
+elm-watch@^1.2.0-beta.3:
+  version "1.2.0-beta.3"
+  resolved "https://registry.yarnpkg.com/elm-watch/-/elm-watch-1.2.0-beta.3.tgz#60d3689cd368035397bf6a6d24dd80148ef1743f"
+  integrity sha512-08DLRXCeu1s2nvbrNlo9Npn6dvwJwq61DiNC5rprYbTVkB0b0OKNVVUVidzouesiQHpRDRBnED9ejo4gp9ft3g==
   dependencies:
     chokidar "^3.5.3"
     cross-spawn "^7.0.3"
