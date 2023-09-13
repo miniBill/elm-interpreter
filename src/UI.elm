@@ -2,8 +2,7 @@ module UI exposing (Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Element, alignTop, column, el, fill, height, padding, paddingEach, paragraph, px, rgb, row, text, textColumn, width)
-import Element.Background as Background
+import Element exposing (Element, alignTop, column, el, fill, height, padding, paddingEach, paragraph, px, row, text, textColumn, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -21,7 +20,8 @@ import Eval
 import Eval.Module
 import Eval.Types as Types
 import Hex
-import Html
+import Html exposing (Html)
+import Html.Attributes
 import Json.Encode
 import List.Extra
 import Rope
@@ -143,25 +143,25 @@ viewSource maybeHighlight source =
             , column = -1
             }
 
-        viewRow : Int -> String -> Element msg
+        viewRow : Int -> String -> Html msg
         viewRow rowIndex row =
             let
-                slice : Int -> Int -> Element msg
+                slice : Int -> Int -> Html msg
                 slice from to =
-                    text <| String.slice from to row
+                    Html.text <| String.slice from to row
 
-                toEnd : Int -> Element msg
+                toEnd : Int -> Html msg
                 toEnd from =
-                    text <| String.dropLeft from row
+                    Html.text <| String.dropLeft from row
 
-                high : Element msg -> Element msg
+                high : Html msg -> Html msg
                 high child =
-                    el [ Background.color <| rgb 0.3 0.3 0.8 ] child
+                    Html.span [ Html.Attributes.style "background" "#44c" ] [ child ]
 
-                pieces : List (Element msg)
+                pieces : List (Html msg)
                 pieces =
                     if rowIndex < highlight.start.row || rowIndex > highlight.end.row then
-                        [ text row ]
+                        [ Html.text row ]
 
                     else if rowIndex == highlight.start.row then
                         if rowIndex == highlight.end.row then
@@ -181,14 +181,17 @@ viewSource maybeHighlight source =
                         ]
 
                     else
-                        [ high <| text row ]
+                        [ high <| Html.text row ]
             in
-            paragraph [ Theme.style "white-space" "pre-wrap" ] pieces
+            Html.span [] pieces
     in
     source
         |> String.split "\n"
         |> List.indexedMap viewRow
-        |> textColumn []
+        |> List.intersperse (Html.text "\n")
+        |> Html.pre []
+        |> Element.html
+        |> el [ width fill ]
 
 
 viewParsed : Maybe (Node Expression.Expression) -> Element Msg
