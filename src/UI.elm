@@ -2,7 +2,8 @@ module UI exposing (Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Element, alignTop, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, row, text, textColumn, width)
+import Element exposing (Element, alignTop, column, el, fill, height, padding, paddingEach, paragraph, px, rgb, row, text, textColumn, width)
+import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -14,6 +15,7 @@ import Elm.Syntax.Expression as Expression
 import Elm.Syntax.File as File
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
+import Elm.Syntax.Range exposing (Location, Range)
 import Elm.Writer
 import Eval
 import Eval.Module
@@ -71,6 +73,16 @@ innerView model =
                 , label = Input.labelAbove [] <| text "Input"
                 , placeholder = Nothing
                 }
+            , let
+                moduleSource : String
+                moduleSource =
+                    if String.startsWith "module " model.input then
+                        model.input
+
+                    else
+                        Eval.toModule model.input
+              in
+              viewSource Nothing moduleSource
             ]
         , Element.Lazy.lazy viewParsed model.parsed
         , let
@@ -110,6 +122,73 @@ innerView model =
             |> Theme.column []
         , Element.Lazy.lazy viewLogLines model.logLines
         ]
+
+
+viewSource : Maybe Range -> String -> Element Msg
+viewSource maybeHighlight source =
+    let
+        highlight : Range
+        highlight =
+            Maybe.withDefault fakeRange maybeHighlight
+
+        fakeRange : Range
+        fakeRange =
+            { start = fakeLocation
+            , end = fakeLocation
+            }
+
+        fakeLocation : Location
+        fakeLocation =
+            { row = -1
+            , column = -1
+            }
+
+        viewRow : Int -> String -> Element msg
+        viewRow rowIndex row =
+            let
+                slice : Int -> Int -> Element msg
+                slice from to =
+                    text <| String.slice from to row
+
+                toEnd : Int -> Element msg
+                toEnd from =
+                    text <| String.dropLeft from row
+
+                high : Element msg -> Element msg
+                high child =
+                    el [ Background.color <| rgb 0.3 0.3 0.8 ] child
+
+                pieces : List (Element msg)
+                pieces =
+                    if rowIndex < highlight.start.row || rowIndex > highlight.end.row then
+                        [ text row ]
+
+                    else if rowIndex == highlight.start.row then
+                        if rowIndex == highlight.end.row then
+                            [ slice 0 highlight.start.column
+                            , high <| slice highlight.start.column highlight.end.column
+                            , toEnd highlight.end.column
+                            ]
+
+                        else
+                            [ slice 0 highlight.start.column
+                            , high <| toEnd highlight.start.column
+                            ]
+
+                    else if rowIndex == highlight.end.row then
+                        [ high <| slice 0 highlight.end.column
+                        , toEnd highlight.end.column
+                        ]
+
+                    else
+                        [ high <| text row ]
+            in
+            paragraph [ Theme.style "white-space" "pre-wrap" ] pieces
+    in
+    source
+        |> String.split "\n"
+        |> List.indexedMap viewRow
+        |> textColumn []
 
 
 viewParsed : Maybe (Node Expression.Expression) -> Element Msg
