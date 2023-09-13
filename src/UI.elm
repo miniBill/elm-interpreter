@@ -2,7 +2,7 @@ module UI exposing (CallTreeZipper, Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Attribute, Element, alignRight, alignTop, column, el, fill, height, padding, paragraph, px, row, shrink, text, width)
+import Element exposing (Attribute, Element, alignRight, alignTop, column, el, fill, height, paragraph, px, row, shrink, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -212,13 +212,13 @@ viewExpression : Node Expression.Expression -> Element msg
 viewExpression (Node _ expr) =
     case expr of
         Expression.OperatorApplication name _ l r ->
-            boxxxy name [ viewExpressions [ l, r ] ]
+            boxxxy_ name [ viewExpressions [ l, r ] ]
 
         Expression.FunctionOrValue moduleName name ->
             boxxxy0 <| String.join "." (moduleName ++ [ name ])
 
         Expression.Application children ->
-            boxxxy "Application" [ viewExpressions children ]
+            boxxxy_ "Application" [ viewExpressions children ]
 
         Expression.Literal s ->
             boxxxy0 <| Json.Encode.encode 0 <| Json.Encode.string s
@@ -236,7 +236,7 @@ viewExpression (Node _ expr) =
             boxxxy0 <| "0x" ++ Hex.toString i
 
         Expression.LetExpression { declarations, expression } ->
-            boxxxy "let/in"
+            boxxxy_ "let/in"
                 [ row [] <| List.map viewLetDeclaration declarations
                 , viewExpression expression
                 ]
@@ -245,7 +245,7 @@ viewExpression (Node _ expr) =
             boxxxy0 "()"
 
         Expression.Negation expression ->
-            boxxxy "-" [ viewExpression expression ]
+            boxxxy_ "-" [ viewExpression expression ]
 
         Expression.PrefixOperator name ->
             boxxxy0 <| "(" ++ name ++ ")"
@@ -254,10 +254,10 @@ viewExpression (Node _ expr) =
             boxxxy0 <| "(" ++ name ++ ")"
 
         Expression.ParenthesizedExpression expression ->
-            boxxxy "()" [ viewExpression expression ]
+            boxxxy_ "()" [ viewExpression expression ]
 
         Expression.IfBlock c t f ->
-            boxxxy_ [ text "if ", viewExpression c, text " then" ]
+            boxxxy [ text "if ", viewExpression c, text " then" ]
                 [ row []
                     [ viewExpression t
                     , el [ alignTop ] <| text " else "
@@ -266,7 +266,7 @@ viewExpression (Node _ expr) =
                 ]
 
         Expression.TupledExpression children ->
-            boxxxy
+            boxxxy_
                 (if List.length children == 2 then
                     "(,)"
 
@@ -276,22 +276,22 @@ viewExpression (Node _ expr) =
                 [ viewExpressions children ]
 
         Expression.ListExpr children ->
-            boxxxy "[]" [ viewExpressions children ]
+            boxxxy_ "[]" [ viewExpressions children ]
 
         Expression.RecordAccess chil (Node _ name) ->
-            boxxxy "." [ row [] [ viewExpression chil, text <| " " ++ name ] ]
+            boxxxy_ "." [ row [] [ viewExpression chil, text <| " " ++ name ] ]
 
         Expression.RecordUpdateExpression (Node _ name) setters ->
-            boxxxy ("{ " ++ name ++ " | }") [ viewSetters setters ]
+            boxxxy_ ("{ " ++ name ++ " | }") [ viewSetters setters ]
 
         Expression.RecordExpr setters ->
-            boxxxy "{}" [ viewSetters setters ]
+            boxxxy_ "{}" [ viewSetters setters ]
 
         Expression.RecordAccessFunction name ->
             boxxxy0 name
 
         Expression.GLSLExpression code ->
-            boxxxy "glsl" [ boxxxy0 code ]
+            boxxxy_ "glsl" [ boxxxy0 code ]
 
         Expression.CaseExpression _ ->
             boxxxy0 "branch 'CaseExpression _' not implemented"
@@ -307,25 +307,30 @@ viewSetters setters =
 
 viewSetter : Node Expression.RecordSetter -> Element msg
 viewSetter (Node _ ( Node _ name, value )) =
-    boxxxy (name ++ " =") [ viewExpression value ]
+    boxxxy_ (name ++ " =") [ viewExpression value ]
 
 
 boxxxy0 : String -> Element msg
 boxxxy0 name =
-    boxxxy name []
+    el
+        [ alignTop
+        , Border.width 1
+        , Theme.padding
+        ]
+        (text name)
 
 
-boxxxy : String -> List (Element msg) -> Element msg
-boxxxy name children =
-    boxxxy_ [ text name ] children
-
-
-boxxxy_ : List (Element msg) -> List (Element msg) -> Element msg
+boxxxy_ : String -> List (Element msg) -> Element msg
 boxxxy_ name children =
+    boxxxy [ text name ] children
+
+
+boxxxy : List (Element msg) -> List (Element msg) -> Element msg
+boxxxy name children =
     Theme.column
         [ alignTop
         , Border.width 1
-        , padding Theme.rythm
+        , Theme.padding
         ]
         (row [] name :: children)
 
@@ -350,7 +355,7 @@ viewFunction function =
         declaration =
             Node.value function.declaration
     in
-    boxxxy_
+    boxxxy
         (text (Node.value declaration.name)
             :: List.map viewPattern declaration.arguments
         )
@@ -359,51 +364,70 @@ viewFunction function =
 
 viewPattern : Node Pattern.Pattern -> Element msg
 viewPattern (Node _ pattern) =
+    let
+        commaJoined : String -> (a -> Element msg) -> List a -> String -> Element msg
+        commaJoined before viewChild children after =
+            if List.isEmpty children then
+                boxxxy0 <| before ++ after
+
+            else
+                boxxxy
+                    (text (before ++ " ")
+                        :: List.intersperse
+                            (text ", ")
+                            (List.map viewChild children)
+                        ++ [ text <| " " ++ after ]
+                    )
+                    []
+    in
     case pattern of
         Pattern.AllPattern ->
             boxxxy0 "_"
 
         Pattern.UnitPattern ->
-            boxxxy0 "branch 'UnitPattern' not implemented"
+            boxxxy0 "()"
 
-        Pattern.CharPattern _ ->
-            boxxxy0 "branch 'CharPattern _' not implemented"
+        Pattern.CharPattern '\'' ->
+            boxxxy0 "'\\''"
+
+        Pattern.CharPattern c ->
+            boxxxy0 <| "'" ++ String.fromChar c ++ "'"
 
         Pattern.StringPattern _ ->
             boxxxy0 "branch 'StringPattern _' not implemented"
 
-        Pattern.IntPattern _ ->
-            boxxxy0 "branch 'IntPattern _' not implemented"
+        Pattern.IntPattern i ->
+            boxxxy0 <| String.fromInt i
 
-        Pattern.HexPattern _ ->
-            boxxxy0 "branch 'HexPattern _' not implemented"
+        Pattern.HexPattern h ->
+            boxxxy0 <| "0x" ++ Hex.toString h
 
-        Pattern.FloatPattern _ ->
-            boxxxy0 "branch 'FloatPattern _' not implemented"
+        Pattern.FloatPattern f ->
+            boxxxy0 <| String.fromFloat f
 
-        Pattern.TuplePattern _ ->
-            boxxxy0 "branch 'TuplePattern _' not implemented"
+        Pattern.ParenthesizedPattern child ->
+            commaJoined "(" viewPattern [ child ] ")"
 
-        Pattern.RecordPattern _ ->
-            boxxxy0 "branch 'RecordPattern _' not implemented"
+        Pattern.TuplePattern children ->
+            commaJoined "(" viewPattern children ")"
+
+        Pattern.ListPattern children ->
+            commaJoined "[" viewPattern children "]"
+
+        Pattern.RecordPattern children ->
+            commaJoined "{" (Node.value >> text) children "}"
 
         Pattern.UnConsPattern _ _ ->
             boxxxy0 "branch 'UnConsPattern _ _' not implemented"
 
-        Pattern.ListPattern _ ->
-            boxxxy0 "branch 'ListPattern _' not implemented"
-
-        Pattern.VarPattern _ ->
-            boxxxy0 "branch 'VarPattern _' not implemented"
+        Pattern.VarPattern v ->
+            boxxxy0 v
 
         Pattern.NamedPattern _ _ ->
             boxxxy0 "branch 'NamedPattern _ _' not implemented"
 
         Pattern.AsPattern _ _ ->
             boxxxy0 "branch 'AsPattern _ _' not implemented"
-
-        Pattern.ParenthesizedPattern _ ->
-            boxxxy0 "branch 'ParenthesizedPattern _' not implemented"
 
 
 viewExpressions : List (Node Expression.Expression) -> Element msg
