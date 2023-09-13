@@ -147,26 +147,28 @@ viewCallTrees =
                 [ callTrees
                     |> List.map
                         (\callTree ->
-                            focusButton
+                            focusButton []
                                 { parent = Nothing
                                 , current = callTree
                                 }
                         )
-                    |> Theme.row [ width fill ]
+                    |> Theme.wrappedRow [ width fill ]
                 ]
 
 
 focusButton :
-    { parent : Maybe CallTreeZipper
-    , current : CallTree
-    }
+    List (Attribute Msg)
+    ->
+        { parent : Maybe CallTreeZipper
+        , current : CallTree
+        }
     -> Element Msg
-focusButton zipper =
+focusButton attrs zipper =
     let
         (CallNode { expression }) =
             zipper.current
     in
-    Theme.button []
+    Theme.button attrs
         { label = text <| expressionToString expression
         , onPress = Just <| Focus zipper
         }
@@ -453,7 +455,7 @@ viewCallTree ((CallTreeZipper { current, parent }) as zipper) =
         parentButton : Element Msg
         parentButton =
             parent
-                |> Maybe.map (\(CallTreeZipper z) -> focusButton z)
+                |> Maybe.map (\(CallTreeZipper z) -> focusButton [] z)
                 |> Maybe.withDefault Element.none
 
         shownChildren : List (Element Msg)
@@ -462,7 +464,7 @@ viewCallTree ((CallTreeZipper { current, parent }) as zipper) =
                 |> List.sortBy (\node -> -(nodeSize node))
                 |> List.map
                     (\child ->
-                        focusButton
+                        focusButton [ alignTop ]
                             { current = child
                             , parent = Just zipper
                             }
