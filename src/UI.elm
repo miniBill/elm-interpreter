@@ -67,11 +67,11 @@ main =
 
 init : Model
 init =
-    let
-        input : String
-        input =
-            """List.sum (List.range 0 3)"""
-    in
+    reinit """List.sum (List.range 0 3)"""
+
+
+reinit : String -> Model
+reinit input =
     { input = input
     , parsed = tryParse input
     , output = Ok ""
@@ -115,7 +115,7 @@ innerView model =
                 Element.none
 
               else
-                Theme.box "Source:"
+                Theme.box "Full source:"
                     [ width fill ]
                     [ Source.view []
                         { highlight = Nothing
@@ -170,18 +170,22 @@ viewCallTrees : List CallTree -> Element Msg
 viewCallTrees =
     Element.Lazy.lazy <|
         \callTrees ->
-            Theme.box "Call trees:"
-                []
-                [ callTrees
-                    |> List.map
-                        (\callTree ->
-                            focusButton []
-                                { parent = Nothing
-                                , current = callTree
-                                }
-                        )
-                    |> Theme.wrappedRow [ width fill ]
-                ]
+            if List.isEmpty callTrees then
+                Element.none
+
+            else
+                Theme.box "Call trees:"
+                    []
+                    [ callTrees
+                        |> List.map
+                            (\callTree ->
+                                focusButton []
+                                    { parent = Nothing
+                                    , current = callTree
+                                    }
+                            )
+                        |> Theme.wrappedRow [ width fill ]
+                    ]
 
 
 focusButton :
@@ -449,6 +453,9 @@ viewExpressions expressions =
 viewOutput : Result String String -> Element Msg
 viewOutput output =
     case output of
+        Ok "" ->
+            Element.none
+
         Ok o ->
             paragraph
                 [ Theme.style "max-width"
@@ -504,7 +511,12 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
             else
                 { highlight = Nothing
                 , buttons = []
-                , source = "-- No source available"
+                , source =
+                    "-- No full source available\n\nmodule "
+                        ++ String.join "." env.currentModule
+                        ++ " exposing (..)\n\n"
+                        ++ "currentExpr =\n"
+                        ++ Eval.indent 2 (String.trim <| expressionToString expression)
                 }
 
         parentButtons : List (Element Msg)
@@ -649,10 +661,7 @@ update : Msg -> Model -> Model
 update msg model =
     case msg of
         Input input ->
-            { model
-                | input = input
-                , parsed = tryParse input
-            }
+            reinit input
 
         Eval tracing ->
             let

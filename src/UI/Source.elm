@@ -267,6 +267,12 @@ parseHelp state acc buttons queue =
                         ( Comment _, _ ) ->
                             colored colors.comment state
 
+                        ( Initial, ( '\n', _ ) :: _ ) ->
+                            normal Initial
+
+                        ( Initial, ( ' ', _ ) :: _ ) ->
+                            normal Initial
+
                         ( Initial, _ ) ->
                             seekOrError colors.keyword GettingModuleName "module "
 
