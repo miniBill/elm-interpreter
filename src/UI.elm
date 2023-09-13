@@ -164,12 +164,8 @@ focusButton :
         }
     -> Element Msg
 focusButton attrs zipper =
-    let
-        (CallNode { expression }) =
-            zipper.current
-    in
-    Theme.button attrs
-        { label = text <| expressionToString expression
+    Theme.button (monospace :: attrs)
+        { label = viewNode zipper.current
         , onPress = Just <| Focus zipper
         }
 
@@ -423,40 +419,35 @@ viewOutput output =
 viewCallTree : CallTreeZipper -> Element Msg
 viewCallTree ((CallTreeZipper { current, parent }) as zipper) =
     let
-        (CallNode { expression, children, result }) =
+        (CallNode { children }) =
             current
-
-        expressionString : String
-        expressionString =
-            expressionToString expression
 
         nameRow : Element msg
         nameRow =
-            text
-                (String.trim expressionString
-                    ++ (if String.contains "\n" expressionString then
-                            "\n--> "
-
-                        else
-                            " --> "
-                       )
-                    ++ resultString
-                )
-
-        resultString : String
-        resultString =
-            case result of
-                Ok v ->
-                    Value.toString v
-
-                Err e ->
-                    Types.evalErrorToString e
+            viewNode current
 
         parentButton : Element Msg
         parentButton =
-            parent
-                |> Maybe.map (\(CallTreeZipper z) -> focusButton [] z)
-                |> Maybe.withDefault Element.none
+            let
+                stack : List (Element Msg)
+                stack =
+                    go parent
+                        |> List.reverse
+
+                go : Maybe CallTreeZipper -> List (Element Msg)
+                go node =
+                    case node of
+                        Nothing ->
+                            []
+
+                        Just (CallTreeZipper z) ->
+                            focusButton [] z :: go z.parent
+            in
+            if List.isEmpty stack then
+                Element.none
+
+            else
+                Theme.column [] stack
 
         shownChildren : List (Element Msg)
         shownChildren =
@@ -471,7 +462,9 @@ viewCallTree ((CallTreeZipper { current, parent }) as zipper) =
                     )
     in
     Theme.box "Call tree:"
-        [ width fill ]
+        [ width fill
+        , monospace
+        ]
         [ parentButton
         , nameRow
         , shownChildren
@@ -491,6 +484,34 @@ viewCallTree ((CallTreeZipper { current, parent }) as zipper) =
                 , width fill
                 ]
         ]
+
+
+viewNode : CallTree -> Element msg
+viewNode (CallNode { expression, result }) =
+    let
+        expressionString : String
+        expressionString =
+            expressionToString expression
+
+        resultString : String
+        resultString =
+            case result of
+                Ok v ->
+                    Value.toString v
+
+                Err e ->
+                    Types.evalErrorToString e
+    in
+    text
+        (String.trim expressionString
+            ++ (if String.contains "\n" expressionString then
+                    "\n--> "
+
+                else
+                    " --> "
+               )
+            ++ resultString
+        )
 
 
 expressionToString : Node Expression.Expression -> String
