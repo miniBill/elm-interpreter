@@ -47,6 +47,7 @@ traceOrEvalModule cfg source expression =
                             context : Elm.Processing.ProcessContext
                             context =
                                 Elm.Processing.init
+                                    |> Elm.Processing.addDependency Core.dependency
                         in
                         Elm.Processing.process context rawFile
                     )

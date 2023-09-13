@@ -1,6 +1,7 @@
 module UI exposing (Model, Msg, main)
 
 import Browser
+import Core
 import Element exposing (Element, alignTop, column, el, fill, height, htmlAttribute, padding, paddingEach, paragraph, px, row, spacing, text, textColumn, width)
 import Element.Border as Border
 import Element.Font as Font
@@ -522,9 +523,14 @@ tryParse input =
         |> Maybe.andThen
             (\rawFile ->
                 let
+                    context : Elm.Processing.ProcessContext
+                    context =
+                        Elm.Processing.init
+                            |> Elm.Processing.addDependency Core.dependency
+
                     file : File.File
                     file =
-                        Elm.Processing.process Elm.Processing.init rawFile
+                        Elm.Processing.process context rawFile
                 in
                 file.declarations
                     |> List.Extra.findMap (Node.value >> findMain)
