@@ -2,7 +2,7 @@ module UI exposing (CallTreeZipper, Model, Msg, main)
 
 import Browser
 import Core
-import Element exposing (Attribute, Element, alignTop, column, el, fill, padding, paddingEach, paragraph, row, text, textColumn, width)
+import Element exposing (Attribute, Element, alignTop, column, el, fill, padding, paddingEach, paragraph, row, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -70,11 +70,9 @@ innerView model =
         [ Theme.padding
         , width fill
         ]
-        [ Theme.row [ width fill ]
+        [ Theme.wrappedRow [ width fill ]
             [ Theme.box "Input:"
-                [ width fill
-                , alignTop
-                ]
+                [ width fill ]
                 [ Input.multiline
                     [ width fill
                     , monospace
@@ -86,6 +84,7 @@ innerView model =
                     , placeholder = Nothing
                     }
                 ]
+            , Element.Lazy.lazy viewParsed model.parsed
             , let
                 moduleSource : String
                 moduleSource =
@@ -96,45 +95,42 @@ innerView model =
                         Eval.toModule model.input
               in
               Theme.box "Source:"
-                [ width fill
-                , alignTop
-                ]
+                [ width fill ]
                 [ Source.view Nothing moduleSource ]
-            ]
-        , Element.Lazy.lazy viewParsed model.parsed
-        , let
-            toRun : String
-            toRun =
-                if String.startsWith "module " model.input then
-                    let
-                        name : String
-                        name =
-                            model.input
-                                |> String.split "\n"
-                                |> List.head
-                                |> Maybe.withDefault ""
-                                |> String.split " "
-                                |> List.drop 1
-                                |> List.head
-                                |> Maybe.withDefault ""
-                    in
-                    name ++ ".main"
+            , let
+                toRun : String
+                toRun =
+                    if String.startsWith "module " model.input then
+                        let
+                            name : String
+                            name =
+                                model.input
+                                    |> String.split "\n"
+                                    |> List.head
+                                    |> Maybe.withDefault ""
+                                    |> String.split " "
+                                    |> List.drop 1
+                                    |> List.head
+                                    |> Maybe.withDefault ""
+                        in
+                        name ++ ".main"
 
-                else
-                    ""
-          in
-          Theme.row []
-            [ Theme.button []
-                { onPress = Just (Eval False)
-                , label = text <| "Eval " ++ toRun
-                }
-            , Theme.button []
-                { onPress = Just (Eval True)
-                , label = text <| "Trace " ++ toRun
-                }
+                    else
+                        ""
+              in
+              Theme.box "Commands:" [] <|
+                [ Theme.button []
+                    { onPress = Just (Eval False)
+                    , label = text <| "Eval " ++ toRun
+                    }
+                , Theme.button []
+                    { onPress = Just (Eval True)
+                    , label = text <| "Trace " ++ toRun
+                    }
+                ]
+            , Element.Lazy.lazy viewOutput model.output
+            , viewCallTrees model.callTrees
             ]
-        , Element.Lazy.lazy viewOutput model.output
-        , viewCallTrees model.callTrees
         , model.focus
             |> Maybe.map (Element.Lazy.lazy viewCallTree)
             |> Maybe.withDefault Element.none
@@ -183,8 +179,7 @@ viewParsed maybeExpr =
             Element.none
 
         Just expr ->
-            Theme.box "Parsed as:"
-                []
+            Theme.box "Parsed as:" [] <|
                 [ el [ monospace ] <|
                     viewExpression expr
                 ]
@@ -410,6 +405,7 @@ viewOutput output =
                     ("calc(100vw - " ++ String.fromInt (2 * Theme.rythm) ++ "px)")
                 , Border.width 1
                 , Theme.padding
+                , alignTop
                 ]
                 [ el [ Font.bold ] <| text "Result: "
                 , el [ monospace ] <| text o
@@ -419,12 +415,7 @@ viewOutput output =
             e
                 |> String.split "\n"
                 |> List.map (\line -> paragraph [] [ text line ])
-                |> (::) (text "Error:")
-                |> textColumn
-                    [ monospace
-                    , Border.width 1
-                    , Theme.padding
-                    ]
+                |> Theme.box "Error:" []
 
 
 viewCallTree : CallTreeZipper -> Element Msg
@@ -478,9 +469,7 @@ viewCallTree ((CallTreeZipper { current, parent }) as zipper) =
                     )
     in
     Theme.box "Call tree:"
-        [ alignTop
-        , width fill
-        ]
+        [ width fill ]
         [ parentButton
         , nameRow
         , shownChildren

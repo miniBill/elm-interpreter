@@ -1,6 +1,6 @@
-module UI.Theme exposing (box, button, column, padding, row, rythm, style)
+module UI.Theme exposing (box, button, column, padding, row, rythm, style, wrappedRow)
 
-import Element exposing (Attribute, Element, el, text)
+import Element exposing (Attribute, Element, alignTop, el, text)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -32,6 +32,11 @@ column attrs children =
     Element.column (spacing :: attrs) children
 
 
+wrappedRow : List (Attribute msg) -> List (Element msg) -> Element msg
+wrappedRow attrs children =
+    Element.wrappedRow (spacing :: attrs) children
+
+
 button : List (Attribute msg) -> { onPress : Maybe msg, label : Element msg } -> Element msg
 button attrs config =
     Input.button (padding :: Border.width 1 :: attrs) config
@@ -47,6 +52,7 @@ box label attrs content =
     column
         (padding
             :: Border.width 1
+            :: alignTop
             :: attrs
         )
         ((el [ Font.bold ] <|
