@@ -96,7 +96,7 @@ innerView model =
         [ Theme.padding
         , width fill
         ]
-        [ Theme.box "Input:"
+        [ Theme.box "Input"
             [ width fill ]
             [ Input.multiline
                 [ width fill
@@ -115,7 +115,7 @@ innerView model =
                 Element.none
 
               else
-                Theme.box "Full source:"
+                Theme.box "Full source"
                     [ width fill ]
                     [ Source.view []
                         { highlight = Nothing
@@ -144,7 +144,7 @@ innerView model =
                     else
                         ""
               in
-              Theme.box "Commands:" [] <|
+              Theme.box "Commands" [] <|
                 [ Theme.button []
                     { onPress = Just (Eval False)
                     , label = text <| "Eval " ++ toRun
@@ -174,8 +174,7 @@ viewCallTrees =
                 Element.none
 
             else
-                Theme.box "Call trees:"
-                    []
+                Theme.box "Call tree" [] <|
                     [ callTrees
                         |> List.map
                             (\callTree ->
@@ -209,7 +208,7 @@ viewParsed maybeExpr =
             Element.none
 
         Just expr ->
-            Theme.box "Parsed as:" [] <|
+            Theme.box "Parsed as" [] <|
                 [ el [ monospace ] <|
                     viewExpression expr
                 ]
@@ -472,7 +471,7 @@ viewOutput output =
             e
                 |> String.split "\n"
                 |> List.map (\line -> paragraph [] [ text line ])
-                |> Theme.box "Error:" []
+                |> Theme.box "Error" []
 
 
 viewCallTree : String -> CallTreeZipper -> Element Msg
@@ -553,9 +552,9 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                             }
                     )
     in
-    Theme.box "Call tree:"
+    Theme.box "Call tree"
         [ width fill ]
-        [ Theme.box "Parents:"
+        [ Theme.box "Parents"
             [ width fill ]
             [ Theme.wrappedRow [ width fill ] parentButtons ]
         , Theme.row [ width fill ]
@@ -568,7 +567,7 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                 ]
                 [ viewEnv env ]
             ]
-        , Theme.box "Children:"
+        , Theme.box "Children"
             [ width fill ]
           <|
             [ Theme.wrappedRow
