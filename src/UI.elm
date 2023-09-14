@@ -181,6 +181,7 @@ viewCallTrees =
                                 focusButton []
                                     { parent = Nothing
                                     , current = callTree
+                                    , child = Nothing
                                     }
                             )
                         |> Theme.wrappedRow [ width fill ]
@@ -192,12 +193,18 @@ focusButton :
     ->
         { parent : Maybe CallTreeZipper
         , current : CallTree
+        , child : Maybe CallTree
         }
     -> Element Msg
 focusButton attrs zipper =
     Theme.button (monospace :: attrs)
-        { label = viewNode zipper.current
-        , onPress = Just <| Focus zipper
+        { label = viewNode zipper.current zipper.child
+        , onPress =
+            Just <|
+                Focus
+                    { parent = zipper.parent
+                    , current = zipper.current
+                    }
         }
 
 
@@ -528,16 +535,21 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
         parentButtons : List (Element Msg)
         parentButtons =
             let
-                go : Maybe CallTreeZipper -> List (Element Msg)
-                go node =
+                go : Maybe CallTreeZipper -> CallTree -> List (Element Msg)
+                go node child =
                     case node of
                         Nothing ->
                             []
 
                         Just (CallTreeZipper z) ->
-                            focusButton [ alignTop ] z :: go z.parent
+                            focusButton [ alignTop ]
+                                { parent = z.parent
+                                , child = Just child
+                                , current = z.current
+                                }
+                                :: go z.parent z.current
             in
-            go parent
+            go parent current
                 |> List.reverse
 
         childrenButtons : List (Element Msg)
@@ -549,6 +561,7 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                         focusButton [ alignTop ]
                             { current = child
                             , parent = Just zipper
+                            , child = Nothing
                             }
                     )
     in
@@ -634,8 +647,8 @@ viewEnv { values } =
             }
 
 
-viewNode : CallTree -> Element msg
-viewNode (CallNode { expression, result }) =
+viewNode : CallTree -> Maybe CallTree -> Element msg
+viewNode (CallNode { expression, result }) child =
     let
         expressionString : String
         expressionString =
@@ -651,7 +664,14 @@ viewNode (CallNode { expression, result }) =
                     Types.evalErrorToString e
     in
     Theme.row []
-        [ text <| String.trim expressionString
+        [ Source.viewExpression []
+            { source = String.trim expressionString
+            , buttons = []
+            , highlight =
+                Maybe.map
+                    (\(CallNode childNode) -> Node.range childNode.expression)
+                    child
+            }
         , el
             [ width <| px Theme.rythm
             , height fill

@@ -1,4 +1,4 @@
-module UI.Source exposing (Button, Config, view)
+module UI.Source exposing (Button, Config, view, viewExpression)
 
 import Core
 import Dict
@@ -35,11 +35,39 @@ type alias Config msg =
     }
 
 
+type alias InnerConfig msg =
+    { highlight : Maybe Range
+    , source : String
+    , buttons : List (Button msg)
+    , forExpression : Bool
+    }
+
+
+viewExpression : List (Attribute msg) -> Config msg -> Element msg
+viewExpression attrs config =
+    innerView attrs
+        { source = config.source
+        , highlight = config.highlight
+        , buttons = config.buttons
+        , forExpression = True
+        }
+
+
 view :
     List (Attribute msg)
     -> Config msg
     -> Element msg
 view attrs config =
+    innerView attrs
+        { source = config.source
+        , highlight = config.highlight
+        , buttons = config.buttons
+        , forExpression = False
+        }
+
+
+innerView : List (Attribute msg) -> InnerConfig msg -> Element msg
+innerView attrs config =
     config.source
         |> String.split "\n"
         |> List.indexedMap
@@ -116,10 +144,15 @@ type alias Queue =
     List ( Char, Location )
 
 
-parse : Config msg -> Queue -> List (Html msg)
+parse : InnerConfig msg -> Queue -> List (Html msg)
 parse config chars =
     parseHelp config
-        Initial
+        (if config.forExpression then
+            ReadingExpression
+
+         else
+            Initial
+        )
         []
         (List.sortBy
             (\{ range } -> ( range.start.row, range.start.column ))
@@ -128,7 +161,7 @@ parse config chars =
         chars
 
 
-parseHelp : Config msg -> State -> List (Parsed msg) -> List (Button msg) -> Queue -> List (Html msg)
+parseHelp : InnerConfig msg -> State -> List (Parsed msg) -> List (Button msg) -> Queue -> List (Html msg)
 parseHelp config state acc buttons queue =
     case queue of
         [] ->
@@ -303,7 +336,13 @@ parseHelp config state acc buttons queue =
                             normal ReadingExposeList
 
                         ( _, ( '\n', _ ) :: _ ) ->
-                            normal WaitingDeclaration
+                            normal
+                                (if config.forExpression then
+                                    ReadingExpression
+
+                                 else
+                                    WaitingDeclaration
+                                )
 
                         ( WaitingDeclaration, ( ' ', _ ) :: _ ) ->
                             normal ReadingExpression
