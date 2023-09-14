@@ -14,10 +14,11 @@ import Elm.Syntax.Expression as Expression
 import Elm.Syntax.File as File
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
-import Elm.Writer
+import Elm.Syntax.Range exposing (Location)
 import Eval
 import Eval.Module
 import Eval.Types as Types
+import Expression.Extra
 import FastDict
 import Hex
 import Html
@@ -529,7 +530,7 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                         ++ String.join "." env.currentModule
                         ++ " exposing (..)\n\n"
                         ++ "currentExpr =\n"
-                        ++ Eval.indent 2 (String.trim <| expressionToString expression)
+                        ++ Eval.indent 4 (Expression.Extra.toString expression)
                 }
 
         parentButtons : List (Element Msg)
@@ -652,7 +653,7 @@ viewNode (CallNode { expression, result }) child =
     let
         expressionString : String
         expressionString =
-            expressionToString expression
+            Expression.Extra.toString expression
 
         resultString : String
         resultString =
@@ -665,12 +666,31 @@ viewNode (CallNode { expression, result }) child =
     in
     Theme.row []
         [ Source.viewExpression []
-            { source = String.trim expressionString
+            { source = expressionString
             , buttons = []
             , highlight =
                 Maybe.map
-                    (\(CallNode childNode) -> Node.range childNode.expression)
+                    (\(CallNode childNode) ->
+                        let
+                            expressionStart : Location
+                            expressionStart =
+                                (Node.range expression).start
+
+                            { start, end } =
+                                Node.range childNode.expression
+
+                            move : Location -> Location
+                            move location =
+                                { row = location.row - expressionStart.row + 1
+                                , column = location.column - expressionStart.column + 1
+                                }
+                        in
+                        { start = move start
+                        , end = move end
+                        }
+                    )
                     child
+                    |> Debug.log ("highlight for " ++ expressionString)
             }
         , el
             [ width <| px Theme.rythm
@@ -686,13 +706,6 @@ viewNode (CallNode { expression, result }) child =
             Element.none
         , text resultString
         ]
-
-
-expressionToString : Node Expression.Expression -> String
-expressionToString expression =
-    expression
-        |> Elm.Writer.writeExpression
-        |> Elm.Writer.write
 
 
 nodeSize : CallTree -> number
@@ -809,8 +822,8 @@ findMain declaration =
 resultToString : Result Error Value -> Result String String
 resultToString result =
     case result of
-        Err e ->
-            Err <| Types.errorToString e
-
         Ok value ->
             Ok <| Value.toString value
+
+        Err e ->
+            Err <| Types.errorToString e

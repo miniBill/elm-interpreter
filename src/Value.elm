@@ -3,7 +3,7 @@ module Value exposing (fromOrder, nameError, toArray, toExpression, toOrder, toS
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
-import Elm.Writer
+import Expression.Extra
 import FastDict as Dict
 import String exposing (String)
 import Syntax exposing (fakeNode)
@@ -195,8 +195,7 @@ toString : Value -> String
 toString value =
     -- TODO: This is inefficient and subtly different from Debug.toString
     toExpression value
-        |> Elm.Writer.writeExpression
-        |> Elm.Writer.write
+        |> Expression.Extra.toString
 
 
 fromOrder : Order -> Value
