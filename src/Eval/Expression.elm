@@ -6,6 +6,7 @@ import Elm.Syntax.Expression as Expression exposing (Expression(..), LetDeclarat
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
+import Elm.Syntax.Range as Range
 import Environment
 import Eval.Types as Types
 import EvalResult
@@ -57,7 +58,7 @@ evalExpression initExpression initCfg initEnv =
 
                         Expression.OperatorApplication opName _ l r ->
                             Recursion.recurse
-                                ( fakeNode <|
+                                ( Node range <|
                                     Expression.Application
                                         [ fakeNode <| Expression.Operator opName
                                         , l
@@ -316,6 +317,7 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
 
                                 Just ( _, f ) ->
                                     let
+                                        childEnv : Env
                                         childEnv =
                                             Environment.call moduleName name env
 
@@ -600,7 +602,7 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
             maybeNewEnvValues : Result EvalErrorData (Maybe EnvValues)
             maybeNewEnvValues =
                 match localEnv
-                    (fakeNode <| ListPattern patterns)
+                    (Node (Range.combine (List.map Node.range patterns)) <| ListPattern patterns)
                     (List oldArgs)
         in
         case maybeNewEnvValues of
@@ -964,8 +966,8 @@ evalRecordAccessFunction field =
 
 
 evalRecordUpdate : Node String -> List (Node Expression.RecordSetter) -> PartialEval Value
-evalRecordUpdate (Node _ name) setters cfg env =
-    Types.recurseThen ( fakeNode <| Expression.FunctionOrValue [] name, cfg, env )
+evalRecordUpdate (Node range name) setters cfg env =
+    Types.recurseThen ( Node range <| Expression.FunctionOrValue [] name, cfg, env )
         (\value ->
             case value of
                 Record _ ->
