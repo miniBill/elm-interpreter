@@ -612,9 +612,13 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                 [ width fill ]
                 childrenButtons
             ]
-        , Theme.box "Parents"
-            [ width fill ]
-            [ Theme.wrappedRow [ width fill ] parentButtons ]
+        , if List.isEmpty parentButtons then
+            Element.none
+
+          else
+            Theme.box "Parents"
+                [ width fill ]
+                [ Theme.wrappedRow [ width fill ] parentButtons ]
         ]
 
 
