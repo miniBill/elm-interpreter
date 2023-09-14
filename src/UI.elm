@@ -568,10 +568,7 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
     in
     Theme.box "Call tree"
         [ width fill ]
-        [ Theme.box "Parents"
-            [ width fill ]
-            [ Theme.wrappedRow [ width fill ] parentButtons ]
-        , Theme.row [ width fill ]
+        [ Theme.row [ width fill ]
             [ Theme.box "Source"
                 [ width fill ]
                 [ Input.button []
@@ -615,6 +612,9 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
                 [ width fill ]
                 childrenButtons
             ]
+        , Theme.box "Parents"
+            [ width fill ]
+            [ Theme.wrappedRow [ width fill ] parentButtons ]
         ]
 
 
