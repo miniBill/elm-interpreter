@@ -1,12 +1,13 @@
 module Expression.Extra exposing (toString)
 
+import Elm.Pretty
 import Elm.Syntax.Expression exposing (Expression)
-import Elm.Syntax.Node exposing (Node)
-import Elm.Writer
+import Elm.Syntax.Node exposing (Node(..))
+import Pretty
 
 
 toString : Node Expression -> String
-toString expression =
+toString (Node _ expression) =
     expression
-        |> Elm.Writer.writeExpression
-        |> Elm.Writer.write
+        |> Elm.Pretty.prettyExpression
+        |> Pretty.pretty 120
