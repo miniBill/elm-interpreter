@@ -57,16 +57,16 @@ evalExpression initExpression initCfg initEnv =
                             evalShortCircuitAnd l r cfg env
 
                         Expression.OperatorApplication opName _ l r ->
-                            Recursion.recurse
-                                ( Node range <|
-                                    Expression.Application
-                                        [ fakeNode <| Expression.Operator opName
-                                        , l
-                                        , r
-                                        ]
-                                , cfg
-                                , env
-                                )
+                            let
+                                first : Node Expression
+                                first =
+                                    fakeNode <| Expression.Operator opName
+
+                                rest : List (Node Expression)
+                                rest =
+                                    [ l, r ]
+                            in
+                            evalApplication first rest cfg env
 
                         Expression.Application [] ->
                             Types.failPartial <| typeError env "Empty application"
