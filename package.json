@@ -1,7 +1,7 @@
 {
   "license": "BSD-3-Clause",
   "devDependencies": {
-    "elm-codegen": "^0.5.0",
+    "elm-codegen": "^0.5.2",
     "elm-pages": "^3.0.8",
     "elm-review": "^2.10.2",
     "elm-test": "^0.19.1-revision12",
