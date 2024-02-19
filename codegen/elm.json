@@ -11,6 +11,7 @@
             "elm-community/list-extra": "8.7.0",
             "elm-community/result-extra": "2.4.0",
             "mdgriffith/elm-codegen": "4.1.1",
+            "miniBill/elm-fast-dict": "1.1.0",
             "stil4m/elm-syntax": "7.3.2"
         },
         "indirect": {
