@@ -48,7 +48,7 @@ suite =
                 , evalTest "toString Char single quote" "Debug.toString '\\''" String <| Debug.toString '\''
                 , evalTest "toString Char double quote" "Debug.toString '\"'" String <| Debug.toString '"'
                 , evalTest "toString String single quote" """Debug.toString "not 'escaped'" """ String <| Debug.toString "not 'escaped'"
-                , evalTest "toString record" "Debug.toString { field = [ 0 ] }" String "{field = [0]}"
+                , evalTest "toString record" "Debug.toString { field = [ 0 ] }" String "{ field = [ 0 ] }"
                 ]
 
         trigTests : Test

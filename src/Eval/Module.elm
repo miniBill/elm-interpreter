@@ -2,7 +2,6 @@ module Eval.Module exposing (eval, trace, traceOrEvalModule)
 
 import Core
 import Elm.Parser
-import Elm.Processing
 import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Expression exposing (Expression(..))
 import Elm.Syntax.File exposing (File)

@@ -1,17 +1,14 @@
 module UI exposing (CallTreeZipper, Model, Msg, main)
 
 import Browser
-import Core
 import Element exposing (Attribute, Element, alignBottom, alignRight, alignTop, column, el, fill, height, paragraph, px, row, shrink, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Element.Lazy
 import Elm.Parser
-import Elm.Processing
 import Elm.Syntax.Declaration as Declaration
 import Elm.Syntax.Expression as Expression
-import Elm.Syntax.File as File
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
 import Elm.Syntax.Range exposing (Location)

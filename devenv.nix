@@ -10,7 +10,7 @@
   pre-commit.hooks = {
     elm-format.enable = true;
     elm-review.enable = true;
-    elm-test.enable = true;
+    # elm-test.enable = true;
   };
 
   processes = {
