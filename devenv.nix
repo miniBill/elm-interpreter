@@ -3,6 +3,7 @@
 {
   packages = [ pkgs.git ];
 
+  languages.elm.enable = true;
   languages.javascript.enable = true;
   languages.javascript.corepack.enable = true;
 
