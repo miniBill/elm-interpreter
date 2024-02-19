@@ -40,18 +40,8 @@ traceOrEvalModule cfg source expression =
         maybeEnv : Result Error Env
         maybeEnv =
             source
-                |> Elm.Parser.parse
+                |> Elm.Parser.parseToFile
                 |> Result.mapError ParsingError
-                |> Result.map
-                    (\rawFile ->
-                        let
-                            context : Elm.Processing.ProcessContext
-                            context =
-                                Elm.Processing.init
-                                    |> Elm.Processing.addDependency Core.dependency
-                        in
-                        Elm.Processing.process context rawFile
-                    )
                 |> Result.andThen buildInitialEnv
     in
     case maybeEnv of

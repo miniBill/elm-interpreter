@@ -785,20 +785,10 @@ tryParse input =
                 Eval.toModule input
     in
     fixedInput
-        |> Elm.Parser.parse
+        |> Elm.Parser.parseToFile
         |> Result.toMaybe
         |> Maybe.andThen
-            (\rawFile ->
-                let
-                    context : Elm.Processing.ProcessContext
-                    context =
-                        Elm.Processing.init
-                            |> Elm.Processing.addDependency Core.dependency
-
-                    file : File.File
-                    file =
-                        Elm.Processing.process context rawFile
-                in
+            (\file ->
                 file.declarations
                     |> List.Extra.findMap (Node.value >> findMain)
             )
