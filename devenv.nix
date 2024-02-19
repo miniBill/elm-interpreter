@@ -1,6 +1,8 @@
 { pkgs, ... }:
 
 {
+  packages = [ pkgs.git ];
+
   languages.javascript.enable = true;
   languages.javascript.corepack.enable = true;
 
