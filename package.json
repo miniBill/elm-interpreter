@@ -1,11 +1,12 @@
 {
   "license": "BSD-3-Clause",
   "devDependencies": {
-    "elm-codegen": "^0.5.2",
+    "elm-codegen": "../elm-codegen",
     "elm-pages": "^3.0.12",
     "elm-review": "^2.10.3",
     "elm-test": "^0.19.1-revision12",
     "elm-test-rs": "^3.0.0-5",
     "elm-watch": "^2.0.0-beta.2"
-  }
+  },
+  "packageManager": "yarn@4.1.0"
 }
