@@ -3,7 +3,7 @@ LIBRARIES = elm/core/1.0.5 elm-community/list-extra/8.7.0
 .PHONY: all
 all: generated/Core/Basics.elm
 
-generated/Core/Basics.elm: codegen/Gen/Basics.elm codegen/Generate.elm node_modules/elm-codegen/bin/elm-codegen $(patsubst %,build/src/%/elm.json,${LIBRARIES}) build/src/codegen/Elm/Kernel/List.elm
+generated/Core/Basics.elm: codegen/Gen/Basics.elm codegen/Generate.elm node_modules/elm-codegen/bin/elm-codegen $(patsubst %,build/src/%/elm.json,$(LIBRARIES)) build/src/codegen/Elm/Kernel/List.elm
 	yarn elm-codegen run --flags-from build/src
 
 codegen/Gen/Basics.elm: codegen/elm.codegen.json node_modules/elm-codegen/bin/elm-codegen
@@ -29,3 +29,12 @@ build/src/%/elm.json: build/%.tar.gz
 build/src/codegen/Elm/Kernel/List.elm: $(wildcard codegen/Elm/Kernel/*.elm)
 	mkdir -p build/src/codegen
 	cp -r codegen/Elm build/src/codegen
+
+ALL_GENERATED = $(shell find generated -type f -name '*.elm')
+ALL_SRC = $(shell find src -type f -name '*.elm')
+dist/ui.js: src/UI.elm $(ALL_SRC) generated/Core/Basics.elm $(ALL_GENERATED)
+	elm make $< --output $@
+
+.PHONY: measure
+measure: dist/ui.js
+	npx elmjs-inspect $^ | head -10

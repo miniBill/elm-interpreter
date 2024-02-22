@@ -245,7 +245,14 @@ traverseDirectoryForFiles d =
     let
         go : Directory -> List String -> List String
         go (Directory directory) acc =
-            Dict.foldl (\_ subdir -> go subdir)
+            Dict.foldl
+                (\subdirName subdir iacc ->
+                    if subdirName == "tests" then
+                        iacc
+
+                    else
+                        go subdir iacc
+                )
                 (Dict.foldl
                     (\name content iacc ->
                         if String.endsWith ".elm" name then
