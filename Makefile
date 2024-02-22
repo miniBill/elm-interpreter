@@ -38,4 +38,7 @@ dist/ui.js: src/UI.elm $(ALL_SRC) generated/Core/Basics.elm $(ALL_GENERATED)
 .PHONY: measure
 measure: dist/ui.js
 	du -sh $^
+	gzip -9 $^
+	du -sh $^.gz
+	gunzip $^
 	npx elmjs-inspect $^ | head -10
