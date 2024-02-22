@@ -1,14 +1,12 @@
 module UI.Source exposing (Button, Config, view, viewExpression)
 
 import Core
-import Dict
 import Element exposing (Attribute, Element)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
-import Elm.Interface exposing (Exposed(..))
-import Elm.Syntax.Node as Node
 import Elm.Syntax.Range exposing (Location, Range)
+import FastDict
 import Html exposing (Html, pre, span, text)
 import Html.Attributes exposing (style, title)
 import Html.Events
@@ -512,26 +510,10 @@ keywords =
 
         core : List String
         core =
-            Core.dependency.interfaces
-                |> Dict.values
-                |> List.concatMap
-                    (\interface ->
-                        interface
-                            |> List.filterMap extractOperatorName
-                    )
+            FastDict.keys Core.operators
     in
     (language ++ core)
         |> List.sortBy (\keyword -> -(String.length keyword))
-
-
-extractOperatorName : Exposed -> Maybe String
-extractOperatorName exposed =
-    case exposed of
-        Operator { operator } ->
-            Just <| Node.value operator
-
-        _ ->
-            Nothing
 
 
 colors :
