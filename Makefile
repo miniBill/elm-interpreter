@@ -13,6 +13,7 @@ node_modules/elm-codegen/bin/elm-codegen: package.json yarn.lock
 	yarn install
 	touch -c $@
 
+.PRECIOUS: build/%.tar.gz
 build/%.tar.gz:
 	set -e &&\
 	NAME=$$(echo $* | cut -d/ -f1,2) &&\
