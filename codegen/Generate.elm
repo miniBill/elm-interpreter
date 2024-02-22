@@ -30,6 +30,7 @@ import Gen.Elm.Syntax.Node
 import Gen.Elm.Syntax.Pattern
 import Gen.Elm.Syntax.Range
 import Gen.FastDict
+import Gen.H
 import Gen.List
 import Gen.Maybe
 import Json.Decode exposing (Value)
@@ -511,23 +512,11 @@ qualifiedNameRefToGen { name, moduleName } =
 
 renode : (a -> Elm.Expression) -> Node a -> Elm.Expression
 renode toGen (Node range value) =
-    Gen.Elm.Syntax.Node.make_.node (rangeToGen range) (toGen value)
+    if range.start.row == range.end.row then
+        Gen.H.node1 range.start.row range.start.column range.end.column (toGen value)
 
-
-rangeToGen : Range.Range -> Elm.Expression
-rangeToGen range =
-    Gen.Elm.Syntax.Range.make_.range
-        { start = locationToGen range.start
-        , end = locationToGen range.end
-        }
-
-
-locationToGen : Range.Location -> Elm.Expression
-locationToGen location =
-    Gen.Elm.Syntax.Range.make_.location
-        { row = Elm.int location.row
-        , column = Elm.int location.column
-        }
+    else
+        Gen.H.node range.start.row range.start.column range.end.row range.end.column (toGen value)
 
 
 renodeList : (a -> Elm.Expression) -> List (Node a) -> Elm.Expression
@@ -550,6 +539,9 @@ expressionToGen expression =
                 (infixToGen infix_)
                 (renode expressionToGen l)
                 (renode expressionToGen r)
+
+        Expression.FunctionOrValue [] name ->
+            Gen.H.val name
 
         Expression.FunctionOrValue moduleName name ->
             Gen.Elm.Syntax.Expression.make_.functionOrValue (Elm.list <| List.map Elm.string moduleName) (Elm.string name)

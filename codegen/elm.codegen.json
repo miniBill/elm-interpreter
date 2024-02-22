@@ -1,11 +1,13 @@
 {
-    "elm-codegen-version": "0.3.0",
+    "elm-codegen-version": "0.5.2",
     "codegen-helpers": {
         "packages": {
             "elm/core": "1.0.5",
             "stil4m/elm-syntax": "7.2.9",
             "miniBill/elm-fast-dict": "1.1.0"
         },
-        "local": []
+        "local": [
+            "helpers"
+        ]
     }
 }
