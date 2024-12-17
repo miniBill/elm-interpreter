@@ -1,11 +1,18 @@
 {
-  "license": "BSD-3-Clause",
-  "devDependencies": {
-    "elm-codegen": "^0.5.2",
-    "elm-pages": "^3.0.12",
-    "elm-review": "^2.10.3",
-    "elm-test": "^0.19.1-revision12",
-    "elm-test-rs": "^3.0.0-5",
-    "elm-watch": "^2.0.0-beta.2"
-  }
+    "license": "BSD-3-Clause",
+    "devDependencies": {
+        "elm-codegen": "^0.6.1",
+        "elm-pages": "^3.0.19",
+        "elm-review": "^2.12.0",
+        "elm-test-rs": "^3.0.0-5",
+        "elm-watch": "^2.0.0-beta.3"
+    },
+    "overrides": {
+        "elm-doc-preview": ">=6.0.0",
+        "cross-spawn": ">=7.0.3"
+    },
+    "resolutions": {
+        "elm-doc-preview": ">=6.0.0",
+        "cross-spawn": ">=7.0.3"
+    }
 }
