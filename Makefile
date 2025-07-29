@@ -3,7 +3,9 @@ LIBRARIES = elm/core/1.0.5 elmcraft/core-extra/2.2.0
 .PHONY: all
 all: generated/Core/Basics.elm
 
-generated/Core/Basics.elm: codegen/Gen/Basics.elm codegen/Generate.elm node_modules/elm-codegen/bin/elm-codegen $(patsubst %,build/src/%/elm.json,$(LIBRARIES)) build/src/codegen/Elm/Kernel/List.elm
+KERNEL_PATH = build/src/elm/kernel/0.0.0
+
+generated/Core/Basics.elm: codegen/Gen/Basics.elm codegen/Generate.elm node_modules/elm-codegen/bin/elm-codegen $(patsubst %,build/src/%/elm.json,$(LIBRARIES)) $(KERNEL_PATH)/src/Elm/Kernel/List.elm
 	yarn elm-codegen run --flags-from build/src
 
 codegen/Gen/Basics.elm: codegen/elm.codegen.json node_modules/elm-codegen/bin/elm-codegen $(wildcard helpers/*.elm)
@@ -25,9 +27,9 @@ build/src/%/elm.json: build/%.tar.gz
 	mkdir -p $(@D)
 	tar -xf $< --strip-components=1 -C $(@D) -m
 
-build/src/codegen/Elm/Kernel/List.elm: $(wildcard codegen/Elm/Kernel/*.elm)
-	mkdir -p build/src/codegen
-	cp -r codegen/Elm build/src/codegen
+$(KERNEL_PATH)/src/Elm/Kernel/List.elm: $(wildcard codegen/Elm/Kernel/*.elm)
+	mkdir -p $(KERNEL_PATH)/src
+	cp -r codegen/Elm $(KERNEL_PATH)/src
 
 ALL_GENERATED = $(shell find generated -type f -name '*.elm')
 ALL_SRC = $(shell find src -type f -name '*.elm')
