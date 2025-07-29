@@ -24,7 +24,6 @@ build/%.tar.gz:
 build/src/%/elm.json: build/%.tar.gz
 	mkdir -p $(@D)
 	tar -xf $< --strip-components=1 -C $(@D) -m
-	-test -f $(@D)/src/List.elm && (sed -i.bck 's/n-1/n - 1/g' $(@D)/src/List.elm && rm $(@D)/src/List.elm.bck)
 
 build/src/codegen/Elm/Kernel/List.elm: $(wildcard codegen/Elm/Kernel/*.elm)
 	mkdir -p build/src/codegen
