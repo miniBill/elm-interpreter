@@ -241,30 +241,35 @@ directionToGen direction =
 traverseDirectoryForFiles : Directory -> List String
 traverseDirectoryForFiles d =
     let
-        go : Directory -> List String -> List String
-        go (Directory directory) acc =
-            Dict.foldl
-                (\subdirName subdir iacc ->
-                    if subdirName == "tests" then
-                        iacc
+        go : Bool -> Directory -> List String -> List String
+        go inSrc (Directory directory) acc =
+            case Dict.get "src" directory.directories of
+                Just src ->
+                    go True src acc
 
-                    else
-                        go subdir iacc
-                )
-                (Dict.foldl
-                    (\name content iacc ->
-                        if String.endsWith ".elm" name then
-                            content :: iacc
+                Nothing ->
+                    Dict.foldl
+                        (\_ subdir iacc ->
+                            go inSrc subdir iacc
+                        )
+                        (if inSrc then
+                            Dict.foldl
+                                (\name content iacc ->
+                                    if String.endsWith ".elm" name then
+                                        content :: iacc
 
-                        else
-                            iacc
-                    )
-                    acc
-                    directory.files
-                )
-                directory.directories
+                                    else
+                                        iacc
+                                )
+                                acc
+                                directory.files
+
+                         else
+                            acc
+                        )
+                        directory.directories
     in
-    go d []
+    go False d []
 
 
 type alias FileResult a =
