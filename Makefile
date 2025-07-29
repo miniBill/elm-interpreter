@@ -1,4 +1,4 @@
-LIBRARIES = elm/core/1.0.5 elm-community/list-extra/8.7.0
+LIBRARIES = elm/core/1.0.5 elmcraft/core-extra/2.2.0
 
 .PHONY: all
 all: generated/Core/Basics.elm
