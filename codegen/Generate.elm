@@ -18,7 +18,6 @@ import Elm.Syntax.Module as Module
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
-import Elm.Syntax.Range as Range
 import Gen.CodeGen.Generate as Generate exposing (Directory(..))
 import Gen.Dict
 import Gen.Elm.Dependency
@@ -26,9 +25,7 @@ import Gen.Elm.Interface
 import Gen.Elm.Syntax.Expression
 import Gen.Elm.Syntax.Infix
 import Gen.Elm.Syntax.ModuleName
-import Gen.Elm.Syntax.Node
 import Gen.Elm.Syntax.Pattern
-import Gen.Elm.Syntax.Range
 import Gen.FastDict
 import Gen.H
 import Gen.List
