@@ -1,6 +1,6 @@
 {
   "license": "BSD-3-Clause",
   "devDependencies": {
-    "elm-pages": "^3.0.24"
+    "elm-pages": "^3.0.26"
   }
 }

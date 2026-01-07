@@ -2,10 +2,10 @@
     "license": "BSD-3-Clause",
     "devDependencies": {
         "elm-codegen": "^0.6.1",
-        "elm-pages": "^3.0.19",
-        "elm-review": "^2.13.3",
-        "elm-test-rs": "^3.0.0-5",
-        "elm-watch": "^2.0.0-beta.3"
+        "elm-pages": "^3.0.26",
+        "elm-review": "^2.13.5",
+        "elm-test-rs": "^3.0.1-0",
+        "elm-watch": "^1.2.3"
     },
     "overrides": {
         "elm-doc-preview": ">=6.0.0",
