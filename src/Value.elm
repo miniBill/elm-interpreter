@@ -5,7 +5,6 @@ import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
 import Expression.Extra
 import FastDict as Dict
-import String exposing (String)
 import Syntax exposing (fakeNode)
 import Types exposing (Env, EvalErrorData, EvalErrorKind(..), Value(..))
 

@@ -773,7 +773,7 @@ isLetDeclarationFunction : Node LetDeclaration -> Bool
 isLetDeclarationFunction (Node _ d) =
     case d of
         Expression.LetFunction { declaration } ->
-            List.length (Node.value declaration).arguments > 0
+            not (List.isEmpty (Node.value declaration).arguments)
 
         _ ->
             False

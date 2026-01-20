@@ -40,6 +40,7 @@ config =
     , NoUnused.Exports.rule
     , NoUnused.Modules.rule
     , NoUnused.Parameters.rule
+        |> Rule.ignoreErrorsForFiles [ "src/Kernel.elm" ]
     , NoUnused.Patterns.rule
     , NoUnused.Variables.rule
     , Simplify.rule Simplify.defaults
