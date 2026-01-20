@@ -361,7 +361,7 @@ list selector =
         \value ->
             case value of
                 List l ->
-                    Maybe.Extra.traverse selector.fromValue l
+                    Maybe.Extra.combineMap selector.fromValue l
 
                 _ ->
                     Nothing
@@ -382,7 +382,7 @@ jsArray selector =
                 JsArray jsa ->
                     jsa
                         |> Array.toList
-                        |> Maybe.Extra.traverse selector.fromValue
+                        |> Maybe.Extra.combineMap selector.fromValue
                         |> Maybe.map Array.fromList
 
                 _ ->
