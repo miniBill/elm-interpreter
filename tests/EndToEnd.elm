@@ -1,4 +1,4 @@
-module EndToEnd exposing (suite)
+module EndToEnd exposing (caseBoolPatternTest, suite)
 
 import Elm.Syntax.Expression as Expression
 import Eval.Module
@@ -275,3 +275,27 @@ main =
             [ 0, 1 ]
     in
     foo [ 4, 5 ] [ node ]""" (list (list Int)) [ [ 4, 5 ], [ 0, 1 ] ]
+
+
+caseBoolPatternTest : Test
+caseBoolPatternTest =
+    describe "Case matching on Bool constructors"
+        [ evalTest "True branch"
+            """case True of
+    True -> 1
+    False -> 0"""
+            Int
+            1
+        , evalTest "False branch"
+            """case False of
+    True -> 1
+    False -> 0"""
+            Int
+            0
+        , evalTest "Bool variable"
+            """let x = True in case x of
+    True -> "yes"
+    False -> "no" """
+            String
+            "yes"
+        ]

@@ -1106,6 +1106,20 @@ match env (Node _ pattern) value =
         ( ParenthesizedPattern subPattern, _ ) ->
             match env subPattern value
 
+        ( NamedPattern { name } [], Bool True ) ->
+            if name == "True" then
+                ok Dict.empty
+
+            else
+                noMatch
+
+        ( NamedPattern { name } [], Bool False ) ->
+            if name == "False" then
+                ok Dict.empty
+
+            else
+                noMatch
+
         ( NamedPattern namePattern argsPatterns, Custom variant args ) ->
             -- Two names from different modules can never have the same type
             -- so if we assume the code typechecks we can skip the module name check
