@@ -3,7 +3,6 @@ module Value exposing (eqValue, fromOrder, gtValue, ltValue, nameError, nothingV
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.Node exposing (Node)
-import Expression.Extra
 import FastDict as Dict
 import Syntax exposing (fakeNode)
 import Types exposing (Env, EvalErrorData, EvalErrorKind(..), Value(..))
@@ -192,9 +191,110 @@ boolToString b =
 
 toString : Value -> String
 toString value =
-    -- TODO: This is inefficient and subtly different from Debug.toString
-    toExpression value
-        |> Expression.Extra.toString
+    case value of
+        String s ->
+            "\"" ++ escapeString s ++ "\""
+
+        Int i ->
+            String.fromInt i
+
+        Float f ->
+            String.fromFloat f
+
+        Char c ->
+            "'" ++ escapeChar c ++ "'"
+
+        Bool True ->
+            "True"
+
+        Bool False ->
+            "False"
+
+        Unit ->
+            "()"
+
+        Tuple l r ->
+            "(" ++ toString l ++ "," ++ toString r ++ ")"
+
+        Triple l m r ->
+            "(" ++ toString l ++ "," ++ toString m ++ "," ++ toString r ++ ")"
+
+        Record fields ->
+            case Dict.toList fields of
+                [] ->
+                    "{}"
+
+                pairs ->
+                    "{ " ++ String.join ", " (List.map (\( k, v ) -> k ++ " = " ++ toString v) pairs) ++ " }"
+
+        List items ->
+            "[" ++ String.join "," (List.map toString items) ++ "]"
+
+        Custom name args ->
+            case toArray value of
+                Just array ->
+                    "Array.fromList [" ++ String.join "," (List.map toString array) ++ "]"
+
+                Nothing ->
+                    case args of
+                        [] ->
+                            name.name
+
+                        _ ->
+                            name.name ++ " " ++ String.join " " (List.map toStringParens args)
+
+        JsArray arr ->
+            "[" ++ String.join "," (List.map toString (Array.toList arr)) ++ "]"
+
+        PartiallyApplied _ _ _ _ _ ->
+            "<function>"
+
+
+toStringParens : Value -> String
+toStringParens value =
+    case value of
+        Custom _ (_ :: _) ->
+            "(" ++ toString value ++ ")"
+
+        Int i ->
+            if i < 0 then
+                "(" ++ String.fromInt i ++ ")"
+
+            else
+                String.fromInt i
+
+        Float f ->
+            if f < 0 then
+                "(" ++ String.fromFloat f ++ ")"
+
+            else
+                String.fromFloat f
+
+        _ ->
+            toString value
+
+
+escapeString : String -> String
+escapeString s =
+    s
+        |> String.replace "\\" "\\\\"
+        |> String.replace "\"" "\\\""
+        |> String.replace "\n" "\\n"
+        |> String.replace "\u{000D}" "\\r"
+        |> String.replace "\t" "\\t"
+
+
+escapeChar : Char -> String
+escapeChar c =
+    case c of
+        '\\' ->
+            "\\\\"
+
+        '\'' ->
+            "\\'"
+
+        _ ->
+            String.fromChar c
 
 
 {-| Pre-computed Order values. Avoids allocating QualifiedNameRef + Custom
