@@ -110,7 +110,7 @@ functions evalFunction =
         , ( "foldr", threeWithError (function2 evalFunction anything anything to anything) anything (jsArray anything) to anything Kernel.JsArray.foldr Core.Elm.JsArray.foldr )
         , ( "foldl", threeWithError (function2 evalFunction anything anything to anything) anything (jsArray anything) to anything Kernel.JsArray.foldl Core.Elm.JsArray.foldl )
         , ( "initialize", threeWithError int int (function evalFunction int to anything) to (jsArray anything) Kernel.JsArray.initialize Core.Elm.JsArray.initialize )
-        , ( "initializeFromList", two int (list anything) to (tuple (jsArray anything) (list anything)) Kernel.JsArray.initializeFromList Core.Elm.JsArray.initializeFromList )
+        , ( "initializeFromList", two int anyList to (tuple (jsArray anything) anyList) Kernel.JsArray.initializeFromList Core.Elm.JsArray.initializeFromList )
         , ( "length", one (jsArray anything) to int Array.length Core.Elm.JsArray.length )
         , ( "map", twoWithError (function evalFunction anything to anything) (jsArray anything) to (jsArray anything) Kernel.JsArray.map Core.Elm.JsArray.map )
         , ( "indexedMap", twoWithError (function2 evalFunction int anything to anything) (jsArray anything) to (jsArray anything) Kernel.JsArray.indexedMap Core.Elm.JsArray.indexedMap )
@@ -124,9 +124,9 @@ functions evalFunction =
 
     -- Elm.Kernel.List
     , ( [ "Elm", "Kernel", "List" ]
-      , [ ( "cons", two anything (list anything) to (list anything) (::) Core.List.cons )
-        , ( "fromArray", one (jsArray anything) to (list anything) Array.toList Core.Array.toList )
-        , ( "toArray", one (list anything) to (jsArray anything) Array.fromList Core.Array.fromList )
+      , [ ( "cons", two anything anyList to anyList (::) Core.List.cons )
+        , ( "fromArray", one (jsArray anything) to anyList Array.toList Core.Array.toList )
+        , ( "toArray", one anyList to (jsArray anything) Array.fromList Core.Array.fromList )
         ]
       )
 
@@ -371,6 +371,21 @@ list selector =
                 |> List.map selector.toValue
                 |> List
     , name = "List " ++ selector.name
+    }
+
+
+anyList : Selector (List Value)
+anyList =
+    { fromValue =
+        \value ->
+            case value of
+                List l ->
+                    Just l
+
+                _ ->
+                    Nothing
+    , toValue = List
+    , name = "List anything"
     }
 
 
