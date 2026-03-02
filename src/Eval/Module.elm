@@ -14,6 +14,8 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern
 import Elm.Syntax.Range as Range
 import Elm.Syntax.Type as Type exposing (Type)
+import Elm.Syntax.TypeAlias exposing (TypeAlias)
+import Elm.Syntax.TypeAnnotation exposing (TypeAnnotation(..))
 import Environment
 import Eval.Expression
 import FastDict as Dict exposing (Dict)
@@ -138,8 +140,8 @@ buildInitialEnv file =
                     -- This doesn't happen in valid Elm modules
                     Err <| Types.EvalError <| unsupported env "Top level destructuring"
 
-                AliasDeclaration _ ->
-                    Ok env
+                AliasDeclaration alias_ ->
+                    Ok (registerRecordAliasConstructor moduleName alias_ env)
 
                 CustomTypeDeclaration customType ->
                     Ok (registerConstructors moduleName customType env)
@@ -464,10 +466,62 @@ buildModuleEnv allInterfaces { file, moduleName } env =
                 Destructuring _ _ ->
                     Err <| Types.EvalError <| unsupported envAcc "Top level destructuring"
 
-                AliasDeclaration _ ->
-                    Ok envAcc
+                AliasDeclaration alias_ ->
+                    Ok (registerRecordAliasConstructor moduleName alias_ envAcc)
     in
     Result.Extra.foldlWhileOk addDeclaration envWithModuleImports file.declarations
+
+
+{-| If a type alias has a record type annotation, register its name as a
+function that constructs a Record value from positional arguments.
+
+    type alias Point =
+        { x : Int, y : Int }
+
+registers `Point` as a 2-argument function whose body is
+`RecordExpr [("x", $arg0), ("y", $arg1)]`.
+
+-}
+registerRecordAliasConstructor : ModuleName -> TypeAlias -> Env -> Env
+registerRecordAliasConstructor moduleName alias_ env =
+    case Node.value alias_.typeAnnotation of
+        Record fields ->
+            let
+                aliasName : String
+                aliasName =
+                    Node.value alias_.name
+
+                fieldNames : List String
+                fieldNames =
+                    List.map (\(Node _ ( Node _ fieldName, _ )) -> fieldName) fields
+
+                argNames : List String
+                argNames =
+                    List.indexedMap (\i _ -> "$alias_arg" ++ String.fromInt i) fieldNames
+
+                implementation : Expression.FunctionImplementation
+                implementation =
+                    { name = fakeNode aliasName
+                    , arguments =
+                        argNames
+                            |> List.map (\n -> fakeNode (Pattern.VarPattern n))
+                    , expression =
+                        fakeNode
+                            (RecordExpr
+                                (List.map2
+                                    (\fieldName argName ->
+                                        fakeNode ( fakeNode fieldName, fakeNode (FunctionOrValue [] argName) )
+                                    )
+                                    fieldNames
+                                    argNames
+                                )
+                            )
+                    }
+            in
+            Environment.addFunction moduleName implementation env
+
+        _ ->
+            env
 
 
 {-| Register constructors from a custom type declaration as functions in env.

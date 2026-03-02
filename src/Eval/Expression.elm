@@ -374,10 +374,64 @@ call maybeQualifiedName implementation cfg env =
 evalFunctionOrValue : ModuleName -> String -> PartialEval Value
 evalFunctionOrValue moduleName name cfg env =
     if isVariant name then
-        evalVariant moduleName env name
+        -- Check if this variant name is a record alias constructor
+        -- (registered with a RecordExpr body). If so, treat it as a
+        -- function rather than a bare constructor.
+        case findRecordAliasConstructor moduleName name env of
+            Just ( resolvedModule, function ) ->
+                if List.isEmpty function.arguments then
+                    call (Just { moduleName = resolvedModule, name = name }) function.expression cfg env
+
+                else
+                    PartiallyApplied
+                        (Environment.call resolvedModule name env)
+                        []
+                        function.arguments
+                        (Just { moduleName = resolvedModule, name = name })
+                        function.expression
+                        |> Types.succeedPartial
+
+            Nothing ->
+                evalVariant moduleName env name
 
     else
         evalNonVariant moduleName name cfg env
+
+
+{-| Look up a record alias constructor function for a given variant name.
+Returns the function only if its body is a RecordExpr, to avoid infinite
+loops with regular custom type constructors.
+-}
+findRecordAliasConstructor : ModuleName -> String -> Env -> Maybe ( ModuleName, Expression.FunctionImplementation )
+findRecordAliasConstructor moduleName name env =
+    let
+        resolvedModule : ModuleName
+        resolvedModule =
+            if List.isEmpty moduleName then
+                env.currentModule
+
+            else
+                fixModuleName moduleName env
+
+        isRecordExprBody : Expression.FunctionImplementation -> Bool
+        isRecordExprBody func =
+            case Node.value func.expression of
+                Expression.RecordExpr _ ->
+                    True
+
+                _ ->
+                    False
+    in
+    Dict.get resolvedModule env.functions
+        |> Maybe.andThen (Dict.get name)
+        |> Maybe.andThen
+            (\f ->
+                if isRecordExprBody f then
+                    Just ( resolvedModule, f )
+
+                else
+                    Nothing
+            )
 
 
 fixModuleName : ModuleName -> Env -> ModuleName
@@ -508,7 +562,22 @@ evalNonVariant moduleName name cfg env =
                                                 Nothing
 
                             else
-                                fromModule
+                                case fromModule of
+                                    Just _ ->
+                                        fromModule
+
+                                    Nothing ->
+                                        -- Alias resolution may have mapped to the wrong
+                                        -- module (e.g. `import MyArray` and
+                                        -- `import MyArray.Extra as MyArray`). Fall back
+                                        -- to the original AST module name.
+                                        if fixedModuleName /= moduleName then
+                                            Dict.get moduleName env.functions
+                                                |> Maybe.andThen (Dict.get name)
+                                                |> Maybe.map (\f -> ( moduleName, f ))
+
+                                        else
+                                            Nothing
                     in
                     case maybeFunction of
                         Just ( resolvedModule, function ) ->

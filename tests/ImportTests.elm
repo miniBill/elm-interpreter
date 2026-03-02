@@ -19,6 +19,7 @@ suite =
         , shadowingTests
         , multiModuleTests
         , userCustomTypeTests
+        , moduleAliasCollisionTests
         ]
 
 
@@ -375,4 +376,52 @@ main =
 """
                     (Expression.FunctionOrValue [] "main")
                     |> Expect.equal (Ok (Float 5.0))
+        ]
+
+
+moduleAliasCollisionTests : Test
+moduleAliasCollisionTests =
+    describe "Module alias collision (original module + alias with same name)"
+        [ test "Original module name resolves when alias collides" <|
+            \_ ->
+                Eval.Module.evalProject
+                    [ """module MyArray exposing (fromMyList)
+
+fromMyList xs = xs
+"""
+                    , """module MyArray.Extra exposing (customOp)
+
+customOp xs = List.length xs
+"""
+                    , """module Main exposing (main)
+
+import MyArray
+import MyArray.Extra as MyArray
+
+main = MyArray.fromMyList [1, 2, 3]
+"""
+                    ]
+                    (Expression.FunctionOrValue [] "main")
+                    |> Expect.equal (Ok (List [ Int 1, Int 2, Int 3 ]))
+        , test "Aliased module resolves through alias" <|
+            \_ ->
+                Eval.Module.evalProject
+                    [ """module MyArray exposing (fromMyList)
+
+fromMyList xs = xs
+"""
+                    , """module MyArray.Extra exposing (customOp)
+
+customOp xs = List.length xs
+"""
+                    , """module Main exposing (main)
+
+import MyArray
+import MyArray.Extra as MyArray
+
+main = MyArray.customOp [1, 2, 3]
+"""
+                    ]
+                    (Expression.FunctionOrValue [] "main")
+                    |> Expect.equal (Ok (Int 3))
         ]

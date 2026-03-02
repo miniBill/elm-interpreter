@@ -2,11 +2,10 @@ module RandomTests exposing (suite)
 
 import Bitwise
 import Elm.Syntax.Expression as Expression
-import Eval
 import Eval.Module
 import Expect
 import Test exposing (Test, describe, test)
-import TestUtils exposing (evalTest, evalTest_, list)
+import TestUtils exposing (evalTest, list)
 import Types exposing (Value(..))
 
 
@@ -253,32 +252,32 @@ main =
 """
                 ]
                 Int
-                0 -- value doesn't matter; evalProjectTest just checks for Int, not crash
+                0
+
+            -- value doesn't matter; evalProjectTest just checks for Int, not crash
             ]
         ]
 
 
 evalTestModule : String -> String -> (a -> Value) -> a -> Test
 evalTestModule name source toValue a =
-    test name <|
-        \_ ->
-            Eval.Module.eval source (Expression.FunctionOrValue [] "main")
-                |> Expect.equal (Ok (toValue a))
+    test name <| \_ ->
+    Eval.Module.eval source (Expression.FunctionOrValue [] "main")
+        |> Expect.equal (Ok (toValue a))
 
 
 evalProjectTest : String -> List String -> (a -> Value) -> a -> Test
 evalProjectTest name sources toValue a =
-    test name <|
-        \_ ->
-            case Eval.Module.evalProject sources (Expression.FunctionOrValue [] "main") of
-                Err e ->
-                    Expect.fail (Debug.toString e)
+    test name <| \_ ->
+    case Eval.Module.evalProject sources (Expression.FunctionOrValue [] "main") of
+        Err e ->
+            Expect.fail (Debug.toString e)
 
-                Ok value ->
-                    -- Just check it's an Int (not erroring is the main test)
-                    case value of
-                        Int _ ->
-                            Expect.pass
+        Ok value ->
+            -- Just check it's an Int (not erroring is the main test)
+            case value of
+                Int _ ->
+                    Expect.pass
 
-                        _ ->
-                            Expect.fail ("Expected Int, got " ++ Debug.toString value)
+                _ ->
+                    Expect.fail ("Expected Int, got " ++ Debug.toString value)
