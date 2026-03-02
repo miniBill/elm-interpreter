@@ -111,28 +111,12 @@ innerCompare l r env =
         ( Triple _ _ _, _ ) ->
             uncomparable ()
 
-        ( List [], List (_ :: _) ) ->
-            Ok LT
-
-        ( List (_ :: _), List [] ) ->
-            Ok GT
-
-        ( List [], List [] ) ->
-            Ok EQ
-
-        ( List (lh :: lt), List (rh :: rt) ) ->
-            innerCompare lh rh env
-                |> Result.andThen
-                    (\h ->
-                        if h /= EQ then
-                            Ok h
-
-                        else
-                            innerCompare (List lt) (List rt) env
-                    )
+        ( List ll, List rl ) ->
+            compareListHelp ll rl env
 
         ( List _, _ ) ->
             uncomparable ()
+
 
         ( Custom lname lvalues, Custom rname rvalues ) ->
             if lname.moduleName /= rname.moduleName then
@@ -196,6 +180,30 @@ innerCompare l r env =
 
         ( PartiallyApplied _ _ _ _ _, _ ) ->
             uncomparable ()
+
+
+compareListHelp : List Value -> List Value -> Env -> Result EvalErrorData Order
+compareListHelp ll rl env =
+    case ( ll, rl ) of
+        ( [], [] ) ->
+            Ok EQ
+
+        ( [], _ :: _ ) ->
+            Ok LT
+
+        ( _ :: _, [] ) ->
+            Ok GT
+
+        ( lh :: lt, rh :: rt ) ->
+            case innerCompare lh rh env of
+                Err e ->
+                    Err e
+
+                Ok EQ ->
+                    compareListHelp lt rt env
+
+                ok ->
+                    ok
 
 
 comparison : List Order -> ModuleName -> ( Int, List Value -> Eval Value )
