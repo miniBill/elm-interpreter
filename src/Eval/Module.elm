@@ -120,12 +120,13 @@ buildInitialEnv file =
                     Ok (Environment.addFunction moduleName implementation env)
 
                 PortDeclaration _ ->
-                    Err <| Types.EvalError <| unsupported env "Port declaration"
+                    Ok env
 
                 InfixDeclaration _ ->
-                    Err <| Types.EvalError <| unsupported env "Infix declaration"
+                    Ok env
 
                 Destructuring _ _ ->
+                    -- This doesn't happen in valid Elm modules
                     Err <| Types.EvalError <| unsupported env "Top level destructuring"
 
                 AliasDeclaration _ ->
