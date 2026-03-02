@@ -516,13 +516,27 @@ evalNonVariant moduleName name cfg env =
                                 qualifiedNameRef : QualifiedNameRef
                                 qualifiedNameRef =
                                     { moduleName = resolvedModule, name = name }
+
+                                -- Clear caller's local values when calling into
+                                -- a different module, so they don't leak into
+                                -- the callee's scope and shadow its own names.
+                                -- We keep values for same-module calls because
+                                -- let-bound functions are stored in env.functions
+                                -- and need access to their enclosing scope.
+                                targetEnv : Env
+                                targetEnv =
+                                    if resolvedModule /= env.currentModule then
+                                        { env | values = Dict.empty }
+
+                                    else
+                                        env
                             in
                             if List.isEmpty function.arguments then
-                                call (Just qualifiedNameRef) function.expression cfg env
+                                call (Just qualifiedNameRef) function.expression cfg targetEnv
 
                             else
                                 PartiallyApplied
-                                    (Environment.call resolvedModule name env)
+                                    (Environment.call resolvedModule name targetEnv)
                                     []
                                     function.arguments
                                     (Just qualifiedNameRef)
