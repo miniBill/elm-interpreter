@@ -16,7 +16,7 @@
             "elmcraft/core-extra": "2.2.0",
             "mdgriffith/elm-ui": "1.1.8",
             "micahhahn/elm-safe-recursion": "2.0.0",
-            "miniBill/elm-fast-dict": "1.2.4",
+            "miniBill/elm-fast-dict": "1.2.5",
             "miniBill/elm-rope": "1.1.0",
             "miniBill/elm-unicode": "1.1.1",
             "rtfeldman/elm-hex": "1.0.0",
@@ -37,7 +37,7 @@
     },
     "test-dependencies": {
         "direct": {
-            "elm-explorations/test": "2.2.0"
+            "elm-explorations/test": "2.2.1"
         },
         "indirect": {
             "elm/bytes": "1.0.8",
