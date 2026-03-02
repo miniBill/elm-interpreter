@@ -1138,21 +1138,8 @@ match env (Node _ pattern) value =
         ( NamedPattern _ _, _ ) ->
             noMatch
 
-        ( ListPattern [], List [] ) ->
-            -- We assume the code typechecks!
-            ok Dict.empty
-
-        ( ListPattern (patternHead :: patternTail), List (listHead :: listTail) ) ->
-            match env patternHead listHead
-                |> andThen
-                    (\headEnv ->
-                        match env (fakeNode <| ListPattern patternTail) (List listTail)
-                            |> andThen
-                                (\tailEnv ->
-                                    ok
-                                        (Dict.union tailEnv headEnv)
-                                )
-                    )
+        ( ListPattern patterns, List values ) ->
+            matchListHelp env Dict.empty patterns values
 
         ( UnConsPattern patternHead patternTail, List (listHead :: listTail) ) ->
             match env patternHead listHead
@@ -1277,3 +1264,24 @@ match env (Node _ pattern) value =
 
         ( RecordPattern _, _ ) ->
             noMatch
+
+
+matchListHelp : Env -> EnvValues -> List (Node Pattern) -> List Value -> Result EvalErrorData (Maybe EnvValues)
+matchListHelp env acc patterns values =
+    case ( patterns, values ) of
+        ( [], [] ) ->
+            Ok (Just acc)
+
+        ( patternHead :: patternTail, valueHead :: valueTail ) ->
+            case match env patternHead valueHead of
+                Err e ->
+                    Err e
+
+                Ok Nothing ->
+                    Ok Nothing
+
+                Ok (Just headEnv) ->
+                    matchListHelp env (Dict.union headEnv acc) patternTail valueTail
+
+        _ ->
+            Ok Nothing
