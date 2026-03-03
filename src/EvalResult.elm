@@ -1,7 +1,22 @@
-module EvalResult exposing (andThen, combine, fail, fromResult, map, map2, onValue, succeed, toResult)
+module EvalResult exposing (andThen, appendRopes, combine, fail, fromResult, map, map2, onValue, succeed, toResult)
 
 import Rope exposing (Rope)
 import Types exposing (CallTree, EvalErrorData, EvalResult)
+
+
+{-| Append two ropes, short-circuiting when either is empty.
+This avoids building deep trees of empty Node wrappers when trace is off.
+-}
+appendRopes : Rope a -> Rope a -> Rope a
+appendRopes a b =
+    if Rope.isEmpty a then
+        b
+
+    else if Rope.isEmpty b then
+        a
+
+    else
+        Rope.appendTo a b
 
 
 succeed : a -> EvalResult a
@@ -44,16 +59,16 @@ andThen f ( v, callTrees, logs ) =
                     f w
             in
             ( y
-            , Rope.appendTo callTrees fxCallTrees
-            , Rope.appendTo logs fxLogs
+            , appendRopes callTrees fxCallTrees
+            , appendRopes logs fxLogs
             )
 
 
 map2 : (a -> b -> out) -> EvalResult a -> EvalResult b -> EvalResult out
 map2 f ( lv, lc, ll ) ( rv, rc, rl ) =
     ( Result.map2 f lv rv
-    , Rope.appendTo lc rc
-    , Rope.appendTo ll rl
+    , appendRopes lc rc
+    , appendRopes ll rl
     )
 
 
@@ -75,9 +90,9 @@ combine ls =
                     ( Ok <| List.reverse vacc, tacc, lacc )
 
                 ( Err e, trees, logs ) :: _ ->
-                    ( Err e, Rope.appendTo tacc trees, Rope.appendTo lacc logs )
+                    ( Err e, appendRopes tacc trees, appendRopes lacc logs )
 
                 ( Ok v, trees, logs ) :: tail ->
-                    go tail ( v :: vacc, Rope.appendTo tacc trees, Rope.appendTo lacc logs )
+                    go tail ( v :: vacc, appendRopes tacc trees, appendRopes lacc logs )
     in
     go ls ( [], Rope.empty, Rope.empty )

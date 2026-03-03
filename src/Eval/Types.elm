@@ -126,8 +126,8 @@ wrapThen f ( value, trees, logs ) =
                 |> Recursion.map
                     (\( result, ftrees, flogs ) ->
                         ( result
-                        , Rope.appendTo trees ftrees
-                        , Rope.appendTo logs flogs
+                        , EvalResult.appendRopes trees ftrees
+                        , EvalResult.appendRopes logs flogs
                         )
                     )
 
@@ -152,8 +152,8 @@ recurseMapThen ( exprs, cfg, env ) f =
                         |> Recursion.map
                             (\( result, ftrees, flogs ) ->
                                 ( result
-                                , Rope.appendTo trees ftrees
-                                , Rope.appendTo logs flogs
+                                , EvalResult.appendRopes trees ftrees
+                                , EvalResult.appendRopes logs flogs
                                 )
                             )
         )
