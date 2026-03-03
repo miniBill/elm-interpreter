@@ -125,16 +125,20 @@ evalExpression initExpression initCfg initEnv =
             result
                 |> Recursion.map
                     (\( value, trees, logs ) ->
-                        ( value
-                        , CallNode
-                            { env = env
-                            , expression = Node range expression
-                            , children = trees
-                            , result = value
-                            }
-                            |> Rope.singleton
-                        , logs
-                        )
+                        if cfg.trace then
+                            ( value
+                            , CallNode
+                                { env = env
+                                , expression = Node range expression
+                                , children = trees
+                                , result = value
+                                }
+                                |> Rope.singleton
+                            , logs
+                            )
+
+                        else
+                            ( value, Rope.empty, logs )
                     )
         )
         ( initExpression, initCfg, initEnv )
