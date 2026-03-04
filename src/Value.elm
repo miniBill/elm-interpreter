@@ -1,4 +1,4 @@
-module Value exposing (fromOrder, nameError, toArray, toExpression, toOrder, toString, todo, typeError, unsupported)
+module Value exposing (eqValue, fromOrder, gtValue, ltValue, nameError, nothingValue, toArray, toExpression, toOrder, toString, todo, typeError, unsupported)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression)
@@ -197,17 +197,42 @@ toString value =
         |> Expression.Extra.toString
 
 
+{-| Pre-computed Order values. Avoids allocating QualifiedNameRef + Custom
+on every comparison result (millions of times in fuzz tests).
+-}
+ltValue : Value
+ltValue =
+    Custom { moduleName = [ "Basics" ], name = "LT" } []
+
+
+eqValue : Value
+eqValue =
+    Custom { moduleName = [ "Basics" ], name = "EQ" } []
+
+
+gtValue : Value
+gtValue =
+    Custom { moduleName = [ "Basics" ], name = "GT" } []
+
+
+{-| Pre-computed Nothing value.
+-}
+nothingValue : Value
+nothingValue =
+    Custom { moduleName = [ "Maybe" ], name = "Nothing" } []
+
+
 fromOrder : Order -> Value
 fromOrder order =
     case order of
         LT ->
-            Custom { moduleName = [ "Basics" ], name = "LT" } []
+            ltValue
 
         EQ ->
-            Custom { moduleName = [ "Basics" ], name = "EQ" } []
+            eqValue
 
         GT ->
-            Custom { moduleName = [ "Basics" ], name = "GT" } []
+            gtValue
 
 
 toOrder : Value -> Maybe Order

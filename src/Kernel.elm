@@ -347,7 +347,7 @@ maybe selector =
         \maybeValue ->
             case maybeValue of
                 Nothing ->
-                    Custom { moduleName = [ "Maybe" ], name = "Nothing" } []
+                    Value.nothingValue
 
                 Just value ->
                     Custom { moduleName = [ "Maybe" ], name = "Just" } [ selector.toValue value ]
