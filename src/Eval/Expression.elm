@@ -970,7 +970,7 @@ evalRecordUpdate (Node range name) setters cfg env =
     Types.recurseThen ( Node range <| Expression.FunctionOrValue [] name, cfg, env )
         (\value ->
             case value of
-                Record _ ->
+                Record originalFields ->
                     let
                         ( fieldNames, fieldExpressions ) =
                             setters
@@ -984,8 +984,13 @@ evalRecordUpdate (Node range name) setters cfg env =
                     in
                     Types.recurseMapThen ( fieldExpressions, cfg, env )
                         (\fieldValues ->
-                            List.map2 Tuple.pair fieldNames fieldValues
-                                |> Dict.fromList
+                            let
+                                updates : Dict String Value
+                                updates =
+                                    List.map2 Tuple.pair fieldNames fieldValues
+                                        |> Dict.fromList
+                            in
+                            Dict.union updates originalFields
                                 |> Record
                                 |> Types.succeedPartial
                         )
