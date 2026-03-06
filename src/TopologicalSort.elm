@@ -36,6 +36,25 @@ sort :
     }
     -> (List a -> Result SortError (List a))
 sort config items =
+    case items of
+        [] ->
+            Ok []
+
+        [ x ] ->
+            Ok [ x ]
+
+        _ ->
+            innerSort config items
+
+
+innerSort :
+    { id : a -> comparable1
+    , defVars : a -> Set comparable2
+    , refVars : a -> Set comparable2
+    , cycleAllowed : a -> Bool
+    }
+    -> (List a -> Result SortError (List a))
+innerSort config items =
     let
         graph :
             { goalIds : List comparable1
