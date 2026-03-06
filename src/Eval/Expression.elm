@@ -630,7 +630,7 @@ evalFunction oldArgs patterns functionName implementation cfg localEnv =
                                         EvalResult.fail <| nameError localEnv fullName
 
                                     Just ( _, f ) ->
-                                        f []
+                                        f oldArgs
                                             cfg
                                             (Environment.call moduleName name localEnv)
 

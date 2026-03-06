@@ -1,5 +1,6 @@
 module EndToEnd exposing (caseBoolPatternTest, suite)
 
+import Array
 import Elm.Syntax.Expression as Expression
 import Eval.Module
 import Expect
@@ -31,6 +32,7 @@ suite =
         , shadowingTest
         , recordUpdateTest
         , caseBoolPatternTest
+        , kernelFunctionAsArgTest
         ]
 
 
@@ -315,4 +317,34 @@ caseBoolPatternTest =
     False -> "no" """
             String
             "yes"
+        ]
+
+
+kernelFunctionAsArgTest : Test
+kernelFunctionAsArgTest =
+    describe "Kernel function as higher-order argument"
+        [ evalTest "List.map String.fromInt"
+            "List.map String.fromInt [1, 2, 3]"
+            (list String)
+            (List.map String.fromInt [ 1, 2, 3 ])
+        , evalTest "List.map negate"
+            "List.map negate [1, 2, 3]"
+            (list Int)
+            (List.map negate [ 1, 2, 3 ])
+        , evalTest "List.filterMap String.toInt"
+            """List.filterMap String.toInt ["1", "a", "3"]"""
+            (list Int)
+            (List.filterMap String.toInt [ "1", "a", "3" ])
+        , evalTest "Array.map with kernel function"
+            "Array.map negate (Array.fromList [1, 2, 3]) |> Array.toList"
+            (list Int)
+            (Array.map negate (Array.fromList [ 1, 2, 3 ]) |> Array.toList)
+        , evalTest "Array.map with 0-arg kernel wrapper (Char.toUpper)"
+            "Array.map Char.toUpper (Array.fromList ['a', 'b', 'c']) |> Array.toList"
+            (list Char)
+            [ 'A', 'B', 'C' ]
+        , evalTest "String.filter with kernel predicate"
+            "String.filter Char.isUpper \"Hello World\""
+            String
+            "HW"
         ]
