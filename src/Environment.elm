@@ -9,30 +9,38 @@ import Types exposing (Env, EnvValues, Value)
 
 addValue : String -> Value -> Env -> Env
 addValue name value env =
-    { env
-        | values = Dict.insert name value env.values
+    { currentModule = env.currentModule
+    , callStack = env.callStack
+    , functions = env.functions
+    , values = Dict.insert name value env.values
     }
 
 
 addFunction : ModuleName -> FunctionImplementation -> Env -> Env
 addFunction moduleName function env =
-    { env
-        | functions =
-            Dict.insert
-                moduleName
-                (Dict.insert (Node.value function.name)
-                    function
-                    (Maybe.withDefault Dict.empty
-                        (Dict.get moduleName env.functions)
-                    )
+    { currentModule = env.currentModule
+    , callStack = env.callStack
+    , functions =
+        Dict.insert
+            moduleName
+            (Dict.insert (Node.value function.name)
+                function
+                (Maybe.withDefault Dict.empty
+                    (Dict.get moduleName env.functions)
                 )
-                env.functions
+            )
+            env.functions
+    , values = env.values
     }
 
 
 with : EnvValues -> Env -> Env
 with newValues old =
-    { old | values = Dict.union newValues old.values }
+    { currentModule = old.currentModule
+    , callStack = old.callStack
+    , functions = old.functions
+    , values = Dict.union newValues old.values
+    }
 
 
 empty : ModuleName -> Env
@@ -46,9 +54,10 @@ empty moduleName =
 
 call : ModuleName -> String -> Env -> Env
 call moduleName name env =
-    { env
-        | currentModule = moduleName
-        , callStack =
-            { moduleName = moduleName, name = name }
-                :: env.callStack
+    { currentModule = moduleName
+    , callStack =
+        { moduleName = moduleName, name = name }
+            :: env.callStack
+    , functions = env.functions
+    , values = env.values
     }
