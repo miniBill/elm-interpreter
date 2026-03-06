@@ -168,29 +168,37 @@ innerSort config items =
                         state
 
                     else if Set.member node state.temporary then
-                        { state | error = checkCycle node state.path }
+                        { error = checkCycle node state.path
+                        , path = state.path
+                        , temporary = state.temporary
+                        , permanent = state.permanent
+                        , sorted = state.sorted
+                        }
 
                     else
                         let
                             newState : State a comparable1
                             newState =
                                 Set.foldl visit
-                                    { state
-                                        | temporary = Set.insert node state.temporary
-                                        , path = node :: state.path
+                                    { temporary = Set.insert node state.temporary
+                                    , path = node :: state.path
+                                    , sorted = state.sorted
+                                    , error = state.error
+                                    , permanent = state.permanent
                                     }
                                     (Dict.get node graph.id2refs |> Maybe.withDefault Set.empty)
                         in
-                        { state
-                            | sorted =
-                                case Dict.get node graph.id2item of
-                                    Nothing ->
-                                        newState.sorted
+                        { sorted =
+                            case Dict.get node graph.id2item of
+                                Nothing ->
+                                    newState.sorted
 
-                                    Just item ->
-                                        item :: newState.sorted
-                            , permanent = Set.insert node newState.permanent
-                            , error = newState.error
+                                Just item ->
+                                    item :: newState.sorted
+                        , permanent = Set.insert node newState.permanent
+                        , error = newState.error
+                        , path = state.path
+                        , temporary = state.temporary
                         }
 
         result : State a comparable1
