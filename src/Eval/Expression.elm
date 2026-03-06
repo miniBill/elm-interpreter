@@ -424,7 +424,7 @@ evalVariant moduleName env name =
             Types.succeedPartial <| Bool False
 
         ( [], "Nothing" ) ->
-            variant0 [ "Maybe" ] "Nothing"
+            Types.succeedPartial Value.nothingValue
 
         ( [], "Just" ) ->
             variant1 [ "Maybe" ] "Just"
@@ -436,13 +436,13 @@ evalVariant moduleName env name =
             variant1 [ "Result" ] "Ok"
 
         ( [], "LT" ) ->
-            variant0 [ "Basics" ] "LT"
+            Types.succeedPartial Value.ltValue
 
         ( [], "EQ" ) ->
-            variant0 [ "Basics" ] "EQ"
+            Types.succeedPartial Value.eqValue
 
         ( [], "GT" ) ->
-            variant0 [ "Basics" ] "GT"
+            Types.succeedPartial Value.gtValue
 
         _ ->
             let
