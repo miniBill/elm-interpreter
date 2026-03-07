@@ -1,7 +1,6 @@
 module Eval.Expression exposing (evalExpression, evalFunction)
 
 import Core
-import Core.Basics
 import Elm.Syntax.Expression as Expression exposing (Expression(..), LetDeclaration)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node(..))
@@ -14,7 +13,7 @@ import FastDict as Dict exposing (Dict)
 import Kernel
 import List.Extra
 import Recursion
-import Result.MyExtra
+import Result.Extra
 import Rope
 import Set exposing (Set)
 import Syntax exposing (fakeNode)
@@ -1042,7 +1041,7 @@ evalCase { expression, cases } cfg env =
             let
                 maybePartial : Result EvalErrorData (Maybe ( EnvValues, Node Expression ))
                 maybePartial =
-                    Result.MyExtra.combineFoldl
+                    Result.Extra.foldlWhileOk
                         (\( pattern, branchExpression ) acc ->
                             case acc of
                                 Just _ ->
@@ -1059,7 +1058,7 @@ evalCase { expression, cases } cfg env =
                                         Ok (Just additionalEnv) ->
                                             Ok <| Just ( additionalEnv, branchExpression )
                         )
-                        (Ok Nothing)
+                        Nothing
                         cases
             in
             case maybePartial of

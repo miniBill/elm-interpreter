@@ -19,7 +19,6 @@ import Eval.Expression
 import FastDict as Dict exposing (Dict)
 import List.Extra
 import Result.Extra
-import Result.MyExtra
 import Rope exposing (Rope)
 import Syntax exposing (fakeNode)
 import Types exposing (CallTree, Env, Error(..), ImportedNames, Value)
@@ -198,7 +197,7 @@ exposeFromInterface moduleName exposed acc =
 
         Elm.Interface.CustomType ( _, constructors ) ->
             let
-                newConstructors : Dict.Dict String ModuleName
+                newConstructors : Dict String ModuleName
                 newConstructors =
                     List.foldl (\ctor d -> Dict.insert ctor moduleName d) acc.exposedConstructors constructors
             in
@@ -259,7 +258,7 @@ exposeExplicitItem allInterfaces moduleName (Node _ item) acc =
             acc
 
 
-defaultImports : List (Node Elm.Syntax.Import.Import)
+defaultImports : List (Node Import)
 defaultImports =
     [ -- Internal core aliases (baked into Core.functions ASTs)
       makeImport [ "Elm", "JsArray" ] (Just [ "JsArray" ]) Nothing
@@ -299,7 +298,7 @@ defaultImports =
     ]
 
 
-makeImport : ModuleName -> Maybe ModuleName -> Maybe Exposing -> Node Elm.Syntax.Import.Import
+makeImport : ModuleName -> Maybe ModuleName -> Maybe Exposing -> Node Import
 makeImport moduleName maybeAlias maybeExposing =
     fakeNode
         { moduleName = fakeNode moduleName
@@ -558,11 +557,7 @@ buildInterfaceFromFile file =
                 )
                 file.declarations
 
-        declarationDict : Dict String Exposed
-        declarationDict =
-            Dict.fromList allDeclarations
-
-        exposingList : Elm.Syntax.Exposing.Exposing
+        exposingList : Exposing
         exposingList =
             case Node.value file.moduleDefinition of
                 NormalModule normal ->
@@ -579,6 +574,11 @@ buildInterfaceFromFile file =
             List.map Tuple.second allDeclarations
 
         Explicit items ->
+            let
+                declarationDict : Dict String Exposed
+                declarationDict =
+                    Dict.fromList allDeclarations
+            in
             List.filterMap
                 (\(Node _ expose) ->
                     case expose of

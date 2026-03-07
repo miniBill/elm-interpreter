@@ -6,7 +6,6 @@ import EvalResult
 import Parser
 import Recursion exposing (Rec)
 import Recursion.Traverse
-import Rope
 import Syntax
 import Types exposing (Config, Env, Error(..), Eval, EvalErrorData, EvalErrorKind(..), EvalResult, PartialResult)
 

@@ -4,7 +4,7 @@ import Elm.Syntax.Expression exposing (FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node
 import FastDict as Dict
-import Types exposing (Env, EnvValues, Error(..), EvalErrorKind(..), Value)
+import Types exposing (Env, EnvValues, Value)
 
 
 addValue : String -> Value -> Env -> Env
