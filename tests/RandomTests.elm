@@ -67,6 +67,7 @@ main =
                 "let range = 6 in Bitwise.shiftRightZfBy 0 (remainderBy range (Bitwise.shiftRightZfBy 0 -range))"
                 Int
                 (let
+                    range : number
                     range =
                         6
                  in
@@ -153,6 +154,7 @@ main =
                 "let range = 6 in (0 - range) |> Bitwise.shiftRightZfBy 0 |> remainderBy range |> Bitwise.shiftRightZfBy 0"
                 Int
                 (let
+                    range : number
                     range =
                         6
                  in
