@@ -1,4 +1,4 @@
-module EvalResult exposing (andThen, combine, fail, fromResult, map, map2, onValue, succeed, toResult)
+module EvalResult exposing (andThen, combine, fail, foldl, fromResult, map, map2, onValue, succeed, toResult)
 
 import Rope exposing (Rope)
 import Types exposing (CallTree, EvalErrorData, EvalResult)
@@ -81,3 +81,35 @@ combine ls =
                     go tail ( v :: vacc, Rope.appendTo tacc trees, Rope.appendTo lacc logs )
     in
     go ls ( [], Rope.empty, Rope.empty )
+
+
+foldl : (a -> b -> EvalResult b) -> b -> List a -> EvalResult b
+foldl f i list =
+    foldlHelp f i Rope.empty Rope.empty list
+
+
+foldlHelp : (a -> b -> EvalResult b) -> b -> Rope CallTree -> Rope String -> List a -> EvalResult b
+foldlHelp f i callTreesAcc logsAcc list =
+    case list of
+        [] ->
+            ( Ok i, callTreesAcc, logsAcc )
+
+        head :: tail ->
+            let
+                ( v, callTrees, logs ) =
+                    f head i
+
+                newCallTrees : Rope CallTree
+                newCallTrees =
+                    Rope.appendTo callTreesAcc callTrees
+
+                newLogs : Rope String
+                newLogs =
+                    Rope.appendTo logsAcc logs
+            in
+            case v of
+                Err e ->
+                    ( Err e, newCallTrees, newLogs )
+
+                Ok next ->
+                    foldlHelp f next newCallTrees newLogs tail

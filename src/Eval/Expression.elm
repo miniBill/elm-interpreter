@@ -836,13 +836,11 @@ evalLetBlock letBlock cfg env =
                 Ok sd ->
                     -- We can't use combineMap and need to fold
                     -- because we need to change the environment for each call
-                    List.foldl
+                    EvalResult.foldl
                         (\declaration acc ->
-                            EvalResult.andThen
-                                (\e -> addLetDeclaration declaration cfg e)
-                                acc
+                            addLetDeclaration declaration cfg acc
                         )
-                        (EvalResult.succeed env)
+                        env
                         sd
     in
     case newEnv of
