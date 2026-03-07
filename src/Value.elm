@@ -152,7 +152,7 @@ toArray value =
                     let
                         treeToArray : Array Value -> List Value
                         treeToArray arr =
-                            List.concatMap nodeToList (Array.toList arr)
+                            Array.foldr (\e a -> nodeToList e ++ a) [] arr
 
                         nodeToList : Value -> List Value
                         nodeToList node =
