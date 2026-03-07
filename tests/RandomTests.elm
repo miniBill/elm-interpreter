@@ -82,10 +82,10 @@ import Bitwise
 main =
     let
         range = 6
-        threshhold = Bitwise.shiftRightZfBy 0 (remainderBy range (Bitwise.shiftRightZfBy 0 -range))
+        threshold = Bitwise.shiftRightZfBy 0 (remainderBy range (Bitwise.shiftRightZfBy 0 -range))
 
         loop x =
-            if x < threshhold then
+            if x < threshold then
                 loop (x + 1)
             else
                 remainderBy range x
@@ -97,11 +97,11 @@ main =
                     range =
                         6
 
-                    threshhold =
+                    threshold =
                         Bitwise.shiftRightZfBy 0 (remainderBy range (Bitwise.shiftRightZfBy 0 -range))
 
                     loop x =
-                        if x < threshhold then
+                        if x < threshold then
                             loop (x + 1)
 
                         else
@@ -221,7 +221,7 @@ int a b =
 
             else
                 let
-                    threshhold =
+                    threshold =
                         Bitwise.shiftRightZfBy 0 (remainderBy range (Bitwise.shiftRightZfBy 0 (0 - range)))
 
                     accountForBias : Seed -> ( Int, Seed )
@@ -233,7 +233,7 @@ int a b =
                             seedN =
                                 next seed
                         in
-                        if x < threshhold then
+                        if x < threshold then
                             accountForBias seedN
 
                         else
@@ -261,23 +261,25 @@ main =
 
 evalTestModule : String -> String -> (a -> Value) -> a -> Test
 evalTestModule name source toValue a =
-    test name <| \_ ->
-    Eval.Module.eval source (Expression.FunctionOrValue [] "main")
-        |> Expect.equal (Ok (toValue a))
+    test name <|
+        \_ ->
+            Eval.Module.eval source (Expression.FunctionOrValue [] "main")
+                |> Expect.equal (Ok (toValue a))
 
 
 evalProjectTest : String -> List String -> (a -> Value) -> a -> Test
 evalProjectTest name sources toValue a =
-    test name <| \_ ->
-    case Eval.Module.evalProject sources (Expression.FunctionOrValue [] "main") of
-        Err e ->
-            Expect.fail (Debug.toString e)
+    test name <|
+        \_ ->
+            case Eval.Module.evalProject sources (Expression.FunctionOrValue [] "main") of
+                Err e ->
+                    Expect.fail (Debug.toString e)
 
-        Ok value ->
-            -- Just check it's an Int (not erroring is the main test)
-            case value of
-                Int _ ->
-                    Expect.pass
+                Ok value ->
+                    -- Just check it's an Int (not erroring is the main test)
+                    case value of
+                        Int _ ->
+                            Expect.pass
 
-                _ ->
-                    Expect.fail ("Expected Int, got " ++ Debug.toString value)
+                        _ ->
+                            Expect.fail ("Expected Int, got " ++ Debug.toString value)
