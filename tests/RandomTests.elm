@@ -94,12 +94,15 @@ main =
 """
                 Int
                 (let
+                    range : number
                     range =
                         6
 
+                    threshold : Int
                     threshold =
                         Bitwise.shiftRightZfBy 0 (remainderBy range (Bitwise.shiftRightZfBy 0 -range))
 
+                    loop : Int -> Int
                     loop x =
                         if x < threshold then
                             loop (x + 1)
@@ -252,9 +255,7 @@ main =
 """
                 ]
                 Int
-                0
-
-            -- value doesn't matter; evalProjectTest just checks for Int, not crash
+                5
             ]
         ]
 
@@ -276,10 +277,4 @@ evalProjectTest name sources toValue a =
                     Expect.fail (Debug.toString e)
 
                 Ok value ->
-                    -- Just check it's an Int (not erroring is the main test)
-                    case value of
-                        Int _ ->
-                            Expect.pass
-
-                        _ ->
-                            Expect.fail ("Expected Int, got " ++ Debug.toString value)
+                    value |> Expect.equal (toValue a)
