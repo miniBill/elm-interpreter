@@ -442,7 +442,13 @@ buildModuleEnv allInterfaces { file, moduleName } env =
 
         envWithModuleImports : Env
         envWithModuleImports =
-            { env | moduleImports = Dict.insert moduleName moduleImportedNames env.moduleImports }
+            { currentModule = env.currentModule
+            , functions = env.functions
+            , values = env.values
+            , callStack = env.callStack
+            , imports = env.imports
+            , moduleImports = Dict.insert moduleName moduleImportedNames env.moduleImports
+            }
 
         addDeclaration : Node Declaration -> Env -> Result Error Env
         addDeclaration (Node _ decl) envAcc =
