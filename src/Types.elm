@@ -1,11 +1,11 @@
-module Types exposing (CallTree(..), Config, Env, EnvValues, Error(..), Eval, EvalErrorData, EvalErrorKind(..), EvalResult, PartialEval, PartialResult, Value(..))
+module Types exposing (CallTree(..), Config, Env, EnvValues, Error(..), Eval, EvalErrorData, EvalErrorKind(..), EvalResult, ImportedNames, PartialEval, PartialResult, Value(..), emptyImports)
 
 import Array exposing (Array)
 import Elm.Syntax.Expression exposing (Expression, FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern, QualifiedNameRef)
-import FastDict exposing (Dict)
+import FastDict as Dict exposing (Dict)
 import Parser exposing (DeadEnd)
 import Recursion exposing (Rec)
 import Rope exposing (Rope)
@@ -73,6 +73,23 @@ type alias Env =
     , functions : Dict ModuleName (Dict String FunctionImplementation)
     , values : EnvValues
     , callStack : List QualifiedNameRef
+    , imports : ImportedNames
+    , moduleImports : Dict ModuleName ImportedNames
+    }
+
+
+type alias ImportedNames =
+    { aliases : Dict ModuleName ModuleName
+    , exposedValues : Dict String ModuleName
+    , exposedConstructors : Dict String ModuleName
+    }
+
+
+emptyImports : ImportedNames
+emptyImports =
+    { aliases = Dict.empty
+    , exposedValues = Dict.empty
+    , exposedConstructors = Dict.empty
     }
 
 

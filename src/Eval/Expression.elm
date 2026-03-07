@@ -386,36 +386,17 @@ fixModuleName moduleName env =
     if List.isEmpty moduleName then
         env.currentModule
 
-    else if moduleName == [ "JsArray" ] then
-        -- TODO: Generic import aliases
-        [ "Elm", "JsArray" ]
-
     else
-        moduleName
+        case Dict.get moduleName env.imports.aliases of
+            Just canonical ->
+                canonical
+
+            Nothing ->
+                moduleName
 
 
 evalVariant : ModuleName -> Env -> String -> PartialResult Value
 evalVariant moduleName env name =
-    let
-        variant0 : ModuleName -> String -> PartialResult Value
-        variant0 modName ctorName =
-            Types.succeedPartial <| Custom { moduleName = modName, name = ctorName } []
-
-        variant1 : ModuleName -> String -> PartialResult Value
-        variant1 modName ctorName =
-            Types.succeedPartial <|
-                PartiallyApplied
-                    (Environment.empty modName)
-                    []
-                    [ fakeNode <| VarPattern "$x" ]
-                    Nothing
-                    (fakeNode <|
-                        Expression.Application
-                            [ fakeNode <| FunctionOrValue modName ctorName
-                            , fakeNode <| FunctionOrValue [] "$x"
-                            ]
-                    )
-    in
     case ( moduleName, name ) of
         ( [], "True" ) ->
             Types.succeedPartial <| Bool True
@@ -423,17 +404,16 @@ evalVariant moduleName env name =
         ( [], "False" ) ->
             Types.succeedPartial <| Bool False
 
+        -- True/False must remain as Bool values (not Custom) because
+        -- the evaluator's if/then/else, &&, || depend on matching Bool
+        ( "Basics" :: _, "True" ) ->
+            Types.succeedPartial <| Bool True
+
+        ( "Basics" :: _, "False" ) ->
+            Types.succeedPartial <| Bool False
+
         ( [], "Nothing" ) ->
             Types.succeedPartial Value.nothingValue
-
-        ( [], "Just" ) ->
-            variant1 [ "Maybe" ] "Just"
-
-        ( [], "Err" ) ->
-            variant1 [ "Result" ] "Err"
-
-        ( [], "Ok" ) ->
-            variant1 [ "Result" ] "Ok"
 
         ( [], "LT" ) ->
             Types.succeedPartial Value.ltValue
@@ -446,13 +426,23 @@ evalVariant moduleName env name =
 
         _ ->
             let
-                fixedModuleName : ModuleName
-                fixedModuleName =
-                    fixModuleName moduleName env
+                resolvedModuleName : ModuleName
+                resolvedModuleName =
+                    if List.isEmpty moduleName then
+                        -- Unqualified constructor: check exposed constructors first
+                        case Dict.get name env.imports.exposedConstructors of
+                            Just sourceModule ->
+                                sourceModule
+
+                            Nothing ->
+                                env.currentModule
+
+                    else
+                        fixModuleName moduleName env
 
                 qualifiedNameRef : QualifiedNameRef
                 qualifiedNameRef =
-                    { moduleName = fixedModuleName, name = name }
+                    { moduleName = resolvedModuleName, name = name }
             in
             Types.succeedPartial <| Custom qualifiedNameRef []
 
@@ -493,38 +483,47 @@ evalNonVariant moduleName name cfg env =
                         fixedModuleName =
                             fixModuleName moduleName env
 
-                        maybeFunction : Maybe Expression.FunctionImplementation
+                        maybeFunction : Maybe ( ModuleName, Expression.FunctionImplementation )
                         maybeFunction =
                             let
-                                fromModule : Maybe Expression.FunctionImplementation
+                                fromModule : Maybe ( ModuleName, Expression.FunctionImplementation )
                                 fromModule =
                                     Dict.get fixedModuleName env.functions
                                         |> Maybe.andThen (Dict.get name)
+                                        |> Maybe.map (\f -> ( fixedModuleName, f ))
                             in
                             if List.isEmpty moduleName then
                                 case fromModule of
-                                    Just function ->
-                                        Just function
+                                    Just _ ->
+                                        fromModule
 
                                     Nothing ->
-                                        Dict.get name Core.Basics.functions
+                                        -- Check exposed values from imports
+                                        case Dict.get name env.imports.exposedValues of
+                                            Just sourceModule ->
+                                                Dict.get sourceModule env.functions
+                                                    |> Maybe.andThen (Dict.get name)
+                                                    |> Maybe.map (\f -> ( sourceModule, f ))
+
+                                            Nothing ->
+                                                Nothing
 
                             else
                                 fromModule
                     in
                     case maybeFunction of
-                        Just function ->
+                        Just ( resolvedModule, function ) ->
                             let
                                 qualifiedNameRef : QualifiedNameRef
                                 qualifiedNameRef =
-                                    { moduleName = fixedModuleName, name = name }
+                                    { moduleName = resolvedModule, name = name }
                             in
                             if List.isEmpty function.arguments then
                                 call (Just qualifiedNameRef) function.expression cfg env
 
                             else
                                 PartiallyApplied
-                                    (Environment.call fixedModuleName name env)
+                                    (Environment.call resolvedModule name env)
                                     []
                                     function.arguments
                                     (Just qualifiedNameRef)
