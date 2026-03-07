@@ -234,25 +234,25 @@ exposeExplicitItem allInterfaces moduleName (Node _ item) acc =
 
                         Just interface ->
                             let
-                                constructors : List String
+                                constructors : Dict String ModuleName
                                 constructors =
-                                    interface
-                                        |> List.filterMap
-                                            (\exposed ->
-                                                case exposed of
-                                                    Elm.Interface.CustomType ( typeName, ctors ) ->
-                                                        if typeName == name then
-                                                            Just ctors
+                                    List.foldl
+                                        (\exposed found ->
+                                            case exposed of
+                                                Elm.Interface.CustomType ( typeName, ctors ) ->
+                                                    if typeName == name then
+                                                        List.foldl (\ctor d -> Dict.insert ctor moduleName d) found ctors
 
-                                                        else
-                                                            Nothing
+                                                    else
+                                                        found
 
-                                                    _ ->
-                                                        Nothing
-                                            )
-                                        |> List.concat
+                                                _ ->
+                                                    found
+                                        )
+                                        acc.exposedConstructors
+                                        interface
                             in
-                            { acc | exposedConstructors = List.foldl (\ctor d -> Dict.insert ctor moduleName d) acc.exposedConstructors constructors }
+                            { acc | exposedConstructors = constructors }
 
         InfixExpose _ ->
             acc
