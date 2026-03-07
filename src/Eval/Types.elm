@@ -6,6 +6,7 @@ import EvalResult
 import Parser
 import Recursion exposing (Rec)
 import Recursion.Traverse
+import Rope
 import Syntax
 import Types exposing (Config, Env, Error(..), Eval, EvalErrorData, EvalErrorKind(..), EvalResult, PartialResult)
 
@@ -125,8 +126,8 @@ wrapThen f ( value, trees, logs ) =
                 |> Recursion.map
                     (\( result, ftrees, flogs ) ->
                         ( result
-                        , EvalResult.appendRopes trees ftrees
-                        , EvalResult.appendRopes logs flogs
+                        , Rope.appendTo trees ftrees
+                        , Rope.appendTo logs flogs
                         )
                     )
 
@@ -151,8 +152,8 @@ recurseMapThen ( exprs, cfg, env ) f =
                         |> Recursion.map
                             (\( result, ftrees, flogs ) ->
                                 ( result
-                                , EvalResult.appendRopes trees ftrees
-                                , EvalResult.appendRopes logs flogs
+                                , Rope.appendTo trees ftrees
+                                , Rope.appendTo logs flogs
                                 )
                             )
         )
