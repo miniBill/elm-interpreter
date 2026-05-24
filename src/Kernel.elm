@@ -22,7 +22,6 @@ import Kernel.JsArray
 import Kernel.String
 import Kernel.Utils
 import Maybe.Extra
-import Syntax exposing (fakeNode)
 import Types exposing (Eval, EvalErrorData, EvalResult, Value(..))
 import Value exposing (typeError)
 
@@ -187,14 +186,14 @@ functions evalFunction =
 
 log : FunctionImplementation
 log =
-    { name = fakeNode "log"
-    , arguments = [ fakeNode <| VarPattern "$x" ]
+    { name = Node.empty "log"
+    , arguments = [ Node.empty <| VarPattern "$x" ]
     , expression =
-        fakeNode <|
+        Node.empty <|
             Expression.Application
                 [ Core.Basics.logBase.expression
-                , fakeNode <| FunctionOrValue [] "e"
-                , fakeNode <| FunctionOrValue [] "$x"
+                , Node.empty <| FunctionOrValue [] "e"
+                , Node.empty <| FunctionOrValue [] "$x"
                 ]
     }
 

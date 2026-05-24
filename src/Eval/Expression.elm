@@ -16,7 +16,7 @@ import Recursion
 import Result.Extra
 import Rope
 import Set exposing (Set)
-import Syntax exposing (fakeNode)
+import Syntax
 import TopologicalSort
 import Types exposing (CallTree(..), Env, EnvValues, Eval, EvalErrorData, EvalResult, PartialEval, PartialResult, Value(..))
 import Unicode
@@ -59,7 +59,7 @@ evalExpression initExpression initCfg initEnv =
                             let
                                 first : Node Expression
                                 first =
-                                    fakeNode <| Expression.Operator opName
+                                    Node.empty <| Expression.Operator opName
 
                                 rest : List (Node Expression)
                                 rest =
@@ -229,9 +229,9 @@ evalApplication first rest cfg env =
             if not (List.isEmpty leftover) then
                 -- Too many args, we split
                 Recursion.recurse
-                    ( fakeNode <|
+                    ( Node.empty <|
                         Expression.Application
-                            (fakeNode
+                            (Node.empty
                                 (Expression.Application (first :: used))
                                 :: leftover
                             )
@@ -285,7 +285,7 @@ evalFullyApplied localEnv args patterns maybeQualifiedName implementation cfg en
         maybeNewEnvValues : Result EvalErrorData (Maybe EnvValues)
         maybeNewEnvValues =
             match env
-                (fakeNode <| ListPattern patterns)
+                (Node.empty <| ListPattern patterns)
                 (List args)
     in
     case maybeNewEnvValues of
@@ -749,7 +749,7 @@ evalKernelFunction moduleName name cfg env =
                                 callTree =
                                     CallNode
                                         { env = env
-                                        , expression = fakeNode <| FunctionOrValue moduleName name
+                                        , expression = Node.empty <| FunctionOrValue moduleName name
                                         , result = result
                                         , children = callTrees
                                         }
@@ -762,9 +762,9 @@ evalKernelFunction moduleName name cfg env =
                     else
                         PartiallyApplied (Environment.empty moduleName)
                             []
-                            (List.repeat argCount (fakeNode AllPattern))
+                            (List.repeat argCount (Node.empty AllPattern))
                             (Just { moduleName = moduleName, name = name })
-                            (fakeNode <| Expression.FunctionOrValue moduleName name)
+                            (Node.empty <| Expression.FunctionOrValue moduleName name)
                             |> Types.succeedPartial
 
 
@@ -1039,12 +1039,12 @@ evalRecordAccessFunction field =
     PartiallyApplied
         (Environment.empty [])
         []
-        [ fakeNode (VarPattern "$r") ]
+        [ Node.empty (VarPattern "$r") ]
         Nothing
-        (fakeNode <|
+        (Node.empty <|
             Expression.RecordAccess
-                (fakeNode <| Expression.FunctionOrValue [] "$r")
-                (fakeNode <| String.dropLeft 1 field)
+                (Node.empty <| Expression.FunctionOrValue [] "$r")
+                (Node.empty <| String.dropLeft 1 field)
         )
 
 
@@ -1093,13 +1093,13 @@ evalOperator opName _ env =
             PartiallyApplied
                 (Environment.call kernelFunction.moduleName opName env)
                 []
-                [ fakeNode <| VarPattern "$l", fakeNode <| VarPattern "$r" ]
+                [ Node.empty <| VarPattern "$l", Node.empty <| VarPattern "$r" ]
                 Nothing
-                (fakeNode <|
+                (Node.empty <|
                     Expression.Application
-                        [ fakeNode <| Expression.FunctionOrValue kernelFunction.moduleName kernelFunction.name
-                        , fakeNode <| Expression.FunctionOrValue [] "$l"
-                        , fakeNode <| Expression.FunctionOrValue [] "$r"
+                        [ Node.empty <| Expression.FunctionOrValue kernelFunction.moduleName kernelFunction.name
+                        , Node.empty <| Expression.FunctionOrValue [] "$l"
+                        , Node.empty <| Expression.FunctionOrValue [] "$r"
                         ]
                 )
                 |> Types.succeedPartial

@@ -2,9 +2,8 @@ module Value exposing (eqValue, fromOrder, gtValue, ltValue, nameError, nothingV
 
 import Array exposing (Array)
 import Elm.Syntax.Expression as Expression exposing (Expression)
-import Elm.Syntax.Node exposing (Node)
+import Elm.Syntax.Node as Node exposing (Node)
 import FastDict as Dict
-import Syntax exposing (fakeNode)
 import Types exposing (Env, EvalErrorData, EvalErrorKind(..), Value(..))
 
 
@@ -38,7 +37,7 @@ error env msg =
 
 toExpression : Value -> Node Expression
 toExpression value =
-    fakeNode <|
+    Node.empty <|
         case value of
             String s ->
                 Expression.Literal s
@@ -76,7 +75,7 @@ toExpression value =
                     |> Dict.toList
                     |> List.map
                         (\( fieldName, fieldValue ) ->
-                            fakeNode ( fakeNode fieldName, toExpression fieldValue )
+                            Node.empty ( Node.empty fieldName, toExpression fieldValue )
                         )
                     |> Expression.RecordExpr
 
@@ -91,7 +90,7 @@ toExpression value =
                         arrayToExpression "Array" array
 
                     Nothing ->
-                        (fakeNode (Expression.FunctionOrValue name.moduleName name.name)
+                        (Node.empty (Expression.FunctionOrValue name.moduleName name.name)
                             :: List.map toExpression args
                         )
                             |> Expression.Application
@@ -103,7 +102,7 @@ toExpression value =
                 Expression.FunctionOrValue qualifiedName.moduleName qualifiedName.name
 
             PartiallyApplied _ args _ (Just qualifiedName) _ ->
-                (fakeNode
+                (Node.empty
                     (Expression.FunctionOrValue
                         qualifiedName.moduleName
                         qualifiedName.name
@@ -119,7 +118,7 @@ toExpression value =
                     }
 
             PartiallyApplied _ args patterns Nothing implementation ->
-                (fakeNode
+                (Node.empty
                     (Expression.LambdaExpression
                         { args = patterns
                         , expression = implementation
@@ -136,7 +135,7 @@ arrayToExpression name array =
         [ Expression.FunctionOrValue
             [ name ]
             "fromList"
-            |> fakeNode
+            |> Node.empty
         , array
             |> List
             |> toExpression

@@ -22,7 +22,6 @@ import FastDict as Dict exposing (Dict)
 import List.Extra
 import Result.Extra
 import Rope exposing (Rope)
-import Syntax exposing (fakeNode)
 import Types exposing (CallTree, Env, Error(..), ImportedNames, Value)
 import Value exposing (unsupported)
 
@@ -77,10 +76,10 @@ traceOrEvalModule cfg source expression =
                                             , end = { row = index + 1, column = 1 + String.length name }
                                             }
                                     )
-                                |> Maybe.withDefault fakeNode
+                                |> Maybe.withDefault Node.empty
 
                         _ ->
-                            fakeNode
+                            Node.empty
 
                 ( result, callTrees, logLines ) =
                     Eval.Expression.evalExpression
@@ -269,13 +268,13 @@ defaultImports =
     , makeImport [ "Basics" ] Nothing (Just (All Range.emptyRange))
 
     -- import List exposing (List, (::))
-    , makeImport [ "List" ] Nothing (Just (Explicit [ fakeNode (TypeOrAliasExpose "List"), fakeNode (InfixExpose "::") ]))
+    , makeImport [ "List" ] Nothing (Just (Explicit [ Node.empty (TypeOrAliasExpose "List"), Node.empty (InfixExpose "::") ]))
 
     -- import Maybe exposing (Maybe(..))
-    , makeImport [ "Maybe" ] Nothing (Just (Explicit [ fakeNode (TypeExpose { name = "Maybe", open = Just Range.emptyRange }) ]))
+    , makeImport [ "Maybe" ] Nothing (Just (Explicit [ Node.empty (TypeExpose { name = "Maybe", open = Just Range.emptyRange }) ]))
 
     -- import Result exposing (Result(..))
-    , makeImport [ "Result" ] Nothing (Just (Explicit [ fakeNode (TypeExpose { name = "Result", open = Just Range.emptyRange }) ]))
+    , makeImport [ "Result" ] Nothing (Just (Explicit [ Node.empty (TypeExpose { name = "Result", open = Just Range.emptyRange }) ]))
 
     -- import String
     , makeImport [ "String" ] Nothing Nothing
@@ -293,19 +292,19 @@ defaultImports =
     , makeImport [ "Platform" ] Nothing Nothing
 
     -- import Platform.Cmd exposing (Cmd)
-    , makeImport [ "Platform", "Cmd" ] Nothing (Just (Explicit [ fakeNode (TypeOrAliasExpose "Cmd") ]))
+    , makeImport [ "Platform", "Cmd" ] Nothing (Just (Explicit [ Node.empty (TypeOrAliasExpose "Cmd") ]))
 
     -- import Platform.Sub exposing (Sub)
-    , makeImport [ "Platform", "Sub" ] Nothing (Just (Explicit [ fakeNode (TypeOrAliasExpose "Sub") ]))
+    , makeImport [ "Platform", "Sub" ] Nothing (Just (Explicit [ Node.empty (TypeOrAliasExpose "Sub") ]))
     ]
 
 
 makeImport : ModuleName -> Maybe ModuleName -> Maybe Exposing -> Node Import
 makeImport moduleName maybeAlias maybeExposing =
-    fakeNode
-        { moduleName = fakeNode moduleName
-        , moduleAlias = Maybe.map fakeNode maybeAlias
-        , exposingList = Maybe.map fakeNode maybeExposing
+    Node.empty
+        { moduleName = Node.empty moduleName
+        , moduleAlias = Maybe.map Node.empty maybeAlias
+        , exposingList = Maybe.map Node.empty maybeExposing
         }
 
 
@@ -416,7 +415,7 @@ evalProject sources expression =
 
                         ( result, _, _ ) =
                             Eval.Expression.evalExpression
-                                (fakeNode expression)
+                                (Node.empty expression)
                                 { trace = False }
                                 finalEnv
                     in
@@ -507,16 +506,16 @@ registerRecordAliasConstructor moduleName alias_ env =
 
                 implementation : Expression.FunctionImplementation
                 implementation =
-                    { name = fakeNode aliasName
+                    { name = Node.empty aliasName
                     , arguments =
                         argNames
-                            |> List.map (\n -> fakeNode (Pattern.VarPattern n))
+                            |> List.map (\n -> Node.empty (Pattern.VarPattern n))
                     , expression =
-                        fakeNode
+                        Node.empty
                             (RecordExpr
                                 (List.map2
                                     (\fieldName argName ->
-                                        fakeNode ( fakeNode fieldName, fakeNode (FunctionOrValue [] argName) )
+                                        Node.empty ( Node.empty fieldName, Node.empty (FunctionOrValue [] argName) )
                                     )
                                     fieldNames
                                     argNames
@@ -556,22 +555,22 @@ registerConstructors moduleName customType env =
                 -- Build the function implementation
                 implementation : Expression.FunctionImplementation
                 implementation =
-                    { name = fakeNode ctorName
+                    { name = Node.empty ctorName
                     , arguments =
                         argNames
-                            |> List.map (\n -> fakeNode (Pattern.VarPattern n))
+                            |> List.map (\n -> Node.empty (Pattern.VarPattern n))
                     , expression =
                         if arity == 0 then
                             -- Zero-arg constructor: just the constructor itself
-                            fakeNode (FunctionOrValue moduleName ctorName)
+                            Node.empty (FunctionOrValue moduleName ctorName)
 
                         else
                             -- N-arg constructor: application of constructor to args
-                            fakeNode
+                            Node.empty
                                 (Application
-                                    (fakeNode (FunctionOrValue moduleName ctorName)
+                                    (Node.empty (FunctionOrValue moduleName ctorName)
                                         :: List.map
-                                            (\n -> fakeNode (FunctionOrValue [] n))
+                                            (\n -> Node.empty (FunctionOrValue [] n))
                                             argNames
                                     )
                                 )
