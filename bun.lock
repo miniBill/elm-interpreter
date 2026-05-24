@@ -4,11 +4,11 @@
   "workspaces": {
     "": {
       "devDependencies": {
-        "elm-codegen": "latest",
-        "elm-pages": "latest",
-        "elm-review": "latest",
-        "elm-test-rs": "latest",
-        "elm-watch": "latest",
+        "elm-codegen": "^0.6.3",
+        "elm-pages": "^3.5.1",
+        "elm-review": "^2.13.5",
+        "elm-test-rs": "^3.0.2-0",
+        "elm-watch": "^2.0.0-beta.13",
       },
     },
   },
@@ -371,7 +371,7 @@
 
     "elm-test-rs": ["elm-test-rs@3.0.2-0", "", { "optionalDependencies": { "@mattpiz/elm-test-rs-darwin-arm64": "3.0.2-0", "@mattpiz/elm-test-rs-darwin-x64": "3.0.2-0", "@mattpiz/elm-test-rs-linux-arm": "3.0.2-0", "@mattpiz/elm-test-rs-linux-arm64": "3.0.2-0", "@mattpiz/elm-test-rs-linux-x64": "3.0.2-0", "@mattpiz/elm-test-rs-win32-x64": "3.0.2-0" }, "bin": { "elm-test-rs": "elm-test-rs.js" } }, "sha512-Rzk3PD4unWvuzdzYthUoMjFELL78oRHeYTXpF8KDp/fyHLbb+vxOzmDXHRt51ogvfKSTyiK8y0xa4F+q7lzyfQ=="],
 
-    "elm-watch": ["elm-watch@1.2.7", "", { "dependencies": { "chokidar": "^3.5.3", "cross-spawn": "^7.0.6", "tiny-decoders": "^23.0.0", "ws": "^8.18.0" }, "bin": { "elm-watch": "index.js" } }, "sha512-AnSFk9HOcydhXUo6TAZzh8LshXgGDMM0uwxhEnfDQuSjHidsZwO3wHZ+2HBpSOFrQ/sU5Yh5Cu3mbKqOgMFyfQ=="],
+    "elm-watch": ["elm-watch@2.0.0-beta.13", "", { "dependencies": { "chokidar": "^3.5.3", "cross-spawn": "^7.0.6", "tiny-decoders": "^23.0.0", "ws": "^8.18.0" }, "bin": { "elm-watch": "index.js" } }, "sha512-V2NoNAcQaACnAk1JcFW0Q2U7pWxNFav7D08aIOGi9KTkF9U/Sq25SF8JagF9nkcQn5EJ/QzBJcfhwho3LyYQOg=="],
 
     "emoji-regex": ["emoji-regex@8.0.0", "", {}, "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A=="],
 
