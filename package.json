@@ -14,5 +14,8 @@
     "resolutions": {
         "elm-doc-preview": ">=6.0.0",
         "cross-spawn": ">=7.0.3"
+    },
+    "scripts": {
+        "start": "elm-watch hot"
     }
 }
