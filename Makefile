@@ -6,13 +6,13 @@ all: generated/Core/Basics.elm
 KERNEL_PATH = build/src/elm/kernel/0.0.0
 
 generated/Core/Basics.elm: codegen/Gen/Basics.elm codegen/Generate.elm node_modules/elm-codegen/bin/elm-codegen $(patsubst %,build/src/%/elm.json,$(LIBRARIES)) $(KERNEL_PATH)/src/Elm/Kernel/List.elm
-	yarn elm-codegen run --flags-from build/src
+	bun elm-codegen run --flags-from build/src
 
 codegen/Gen/Basics.elm: codegen/elm.codegen.json node_modules/elm-codegen/bin/elm-codegen $(wildcard helpers/*.elm)
-	yarn elm-codegen install
+	bun elm-codegen install
 
-node_modules/elm-codegen/bin/elm-codegen: package.json yarn.lock
-	yarn install
+node_modules/elm-codegen/bin/elm-codegen: package.json bun.lock
+	bun install
 	touch -c $@
 
 .PRECIOUS: build/%.tar.gz
